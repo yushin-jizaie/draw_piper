@@ -1,0 +1,9 @@
+numpy
+opencv-python
+pillow
+piper_sdk
+python-can
+# VLM and image-gen libraries to be evaluated (not installed by default):
+# - transformers
+# - diffusers
+# - accelerate

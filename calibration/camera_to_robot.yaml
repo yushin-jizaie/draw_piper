@@ -1,0 +1,4 @@
+# camera_to_robot calibration results (placeholder)
+transform:
+  translation: [0.0, 0.0, 0.0]
+  rotation: [0.0, 0.0, 0.0, 1.0]
