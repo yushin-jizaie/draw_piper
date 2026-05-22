@@ -1,0 +1,7 @@
+torch
+torchvision
+transformers>=4.49.0
+accelerate
+bitsandbytes
+qwen-vl-utils
+pillow
