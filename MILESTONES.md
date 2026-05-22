@@ -11,10 +11,10 @@
 
 | 項目 | 値 |
 |------|-----|
-| マイルストーン | **M4 — ready pose 実機テスト PASS** |
-| コミット | `3c23e92` |
-| 戻り方 | `git checkout 3c23e92`（または最新 `main`） |
-| 正常の確認 | `venv/bin/python test_ready_pose.py inspect` が joints / end-pose を表示する |
+| マイルストーン | **M5 — cartesian / EndPoseCtrl 実機検証 PASS** |
+| コミット | `3a4e4b8` |
+| 戻り方 | `git checkout 3a4e4b8`（または最新 `main`） |
+| 正常の確認 | `venv/bin/python test_cartesian.py inspect` が end-pose を表示する |
 
 ---
 
@@ -55,8 +55,11 @@
               │           対処: USB-CAN アダプタ抜き差し
               │           ┗━ 復旧先 ▶ 直前の正常地点（コード変更は不要）
               │
-05-22 17:55   ● M4  ready pose 実機テスト PASS  ★★ 現在地 ★★   [3c23e92]
-                     └ 直立ゼロ姿勢 → ready pose、最大関節誤差 0.054°
+05-22 17:55   ● M4  ready pose 実機テスト PASS                  [3c23e92]
+              │      └ 直立ゼロ姿勢 → ready pose、最大関節誤差 0.054°
+              │
+05-22 18:44   ● M5  cartesian / EndPoseCtrl 実機検証 PASS  ★★ 現在地 ★★  [3a4e4b8]
+                     └ 空中 30mm 正方形トレース、最大軸誤差 0.4mm
 ```
 
 ---
@@ -72,6 +75,7 @@
 | M2 | 2026-05-22 17:11 | JointCtrl 実機解決（Config Init が鍵） | `14afe6e` | Config Init 後、JointCtrl で実機が指令通り動く |
 | M3 | 2026-05-22 17:40 | `connect()` に Config Init 自動統合（GUI フリー） | `019dfd7` | `Robot(mock=False).connect()` が `[robot] Config Init done` を出す |
 | M4 | 2026-05-22 17:55 | ready pose 実機テスト PASS | `3c23e92` | `venv/bin/python test_ready_pose.py move` が `RESULT: PASS` |
+| M5 | 2026-05-22 18:44 | cartesian / EndPoseCtrl 実機検証 PASS（空中 30mm 正方形） | `3a4e4b8` | `venv/bin/python test_cartesian.py move` が `RESULT: PASS` |
 
 ---
 
