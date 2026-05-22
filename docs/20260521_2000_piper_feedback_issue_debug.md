@@ -258,3 +258,97 @@ p.DisableArm(7, 0x01)
 print('Disabled')
 "
 ```
+
+---
+
+# 続報: 実機動作テスト (2026-05-22)
+
+> ステータス: 🔶 一部解決・一部未解決
+> CAN 物理層障害と feedback ID 不整合は解決。動作コマンド実行ブロックは未解決 → AgileX 純正 GUI / サポート案件。
+
+## この日やったこと
+
+feedback workaround 完成後、実機でアームを動かす段になり、JointCtrl を送ってもアームが動かない問題を追跡。
+
+## 判明した原因と対処
+
+### 1. ✅ マスター/スレーブ設定によるフィードバック ID シフト
+
+`0x3A*` 系の正体が確定。`MasterSlaveConfig` (CAN ID 0x470) の `feedback_offset` によるもの。
+このアームは**マスターアーム (示教入力臂, linkage_config=0xFA)** に設定されており、
+feedback が `0x2A*` → `0x3A*` にシフトしていた。
+
+対処: `MasterSlaveConfig(0xFC, 0x00, 0x00, 0x00)` 送信 + **電源再投入**で `0x2A*` に復帰。
+- `linkage_config=0xFC` = 運動出力臂
+- `feedback_offset=0x00` = フィードバック ID をデフォルトに戻す
+- マスターモードから抜ける場合は電源再投入が必須 (`piper_set_slave.py` のコメントに明記)
+
+これにより piper_sdk 標準の `GetArmJointMsgs()` / `GetArmEndPoseMsgs()` が正常値を返すように。
+自前 workaround `modules/piper_feedback.py` は不要になる見込み (公式パスが使えるため)。
+
+### 2. ✅ CAN バス物理層障害 (TX 不能)
+
+実機テスト中、`SendCanMessage(SEND_MESSAGE_FAILED (100017))` が頻発。
+`ip -details -statistics link show can0` で `can state ERROR-PASSIVE`、`error-pass` カウンタが
+数秒で数万まで急増することを確認。
+
+- **受信は完璧** (380万パケット、feedback 正常)
+- **送信が壊滅** (ACK されず error-passive 即発)
+
+原因: CAN 物理層の問題。セッション中の USB / コネクタ抜き差しで配線か終端が劣化したと推定。
+
+対処: **USB-CAN アダプタの USB を抜き差し** + CAN 配線の再接続。
+その後 `sudo ip link set can0 up type can bitrate 1000000` で再 up。
+→ 連続 290 フレーム送信しても `error-pass 0` を維持、TX 完全回復。
+
+教訓:
+- `candump` に自分の送信フレームが見えても、それは socketcan のローカル TX エコーであり
+  **実際にバス上で ACK され相手に届いた保証にはならない**。
+- 送信の健全性は `ip -details -statistics link show can0` の `error-pass` / `bus-off` で確認する。
+
+## ❌ 未解決: 動作コマンド実行ブロック
+
+CAN TX 回復・feedback 正常化の後も、**JointCtrl を送ってもアームが関節を動かさない**。
+
+確認済みの状態 (すべて正常):
+- CAN バス healthy (`error-pass 0`)
+- `EnablePiper()` OK、全6モータ励磁 (`EnableStatus [True]*6`)、保持トルクあり (手で確認)
+- `Control Mode: CAN_CTRL`、`Mode Feed: MOVE_J`、`Arm Status: NORMAL`、`Error Code: 0`
+- `MotionCtrl_2` / `ModeCtrl` / `EnableArm` / `MasterSlaveConfig` は効く (設定コマンドは通る)
+- JointCtrl フレーム (0x155-0x157) は正しいデータでバス送出されている
+
+排除した原因:
+- CAN 物理層 (健全、error 0)
+- 制御 ID オフセット (`0x155-157` / `0x165-167` / `0x175-177` の3系統に同時送信 → 全て無反応)
+- `C_PiperInterface` (V1) と `C_PiperInterface_V2` の差 (両方とも不可)
+- 連続 `MotionCtrl_2` + `JointCtrl` ループ (公式デモ `piper_ctrl_joint.py` 方式) → 不可
+- 速度設定 (10% / 100% 両方)
+- teaching モード残留・急停ラッチ (`MotionCtrl_1` で recover + exit drag-teach 送信済み)
+- `MasterSlaveConfig` の `linkage_config` = `0xFC` / `0x00` (両方を健全バス + 電源再投入で試行)
+
+→ piper_sdk から打てる手は出し尽くした。アーム本体の設定をホスト外から触る必要がある。
+
+## 次にやること
+
+🔲 **AgileX 純正 GUI でアーム設定を完全リセット**
+- このアームを master モードにしたのは (おそらく Kachaka チームの) 純正 GUI
+- 同じ GUI なら master/slave を含むアーム設定を確実に初期化できるはず
+
+🔲 **AgileX サポートに問い合わせ**
+- ファームウェア S-V1.8-2 でマスター/スレーブを完全解除し、直接 CAN 制御に戻す正規手順
+- 「設定コマンドは通るが JointCtrl だけ実行されない」状態の原因
+
+## メモ: 重要コマンド (続報分)
+
+```bash
+# CAN バスの送信健全性チェック (error-pass が増えなければ TX 健全)
+ip -details -statistics link show can0 | grep -A1 re-started
+
+# マスター/スレーブ設定 (CAN 0x470) -- 送信後は電源再投入
+python3 -c "
+from piper_sdk import C_PiperInterface_V2
+import time
+p = C_PiperInterface_V2('can0'); p.ConnectPort(); time.sleep(0.5)
+p.MasterSlaveConfig(0xFC, 0x00, 0x00, 0x00)  # 0xFC=運動出力臂, offset全0
+"
+```
