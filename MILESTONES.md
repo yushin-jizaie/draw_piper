@@ -11,10 +11,10 @@
 
 | 項目 | 値 |
 |------|-----|
-| マイルストーン | **M5 — cartesian / EndPoseCtrl 実機検証 PASS** |
-| コミット | `3a4e4b8` |
-| 戻り方 | `git checkout 3a4e4b8`（または最新 `main`） |
-| 正常の確認 | `venv/bin/python test_cartesian.py inspect` が end-pose を表示する |
+| マイルストーン | **M6 — draw_stroke() 実機統合テスト PASS** |
+| コミット | `8b27f8b` |
+| 戻り方 | `git checkout 8b27f8b`（または最新 `main`） |
+| 正常の確認 | `venv/bin/python test_draw_stroke.py inspect` が end-pose を表示する |
 
 ---
 
@@ -58,8 +58,12 @@
 05-22 17:55   ● M4  ready pose 実機テスト PASS                  [3c23e92]
               │      └ 直立ゼロ姿勢 → ready pose、最大関節誤差 0.054°
               │
-05-22 18:44   ● M5  cartesian / EndPoseCtrl 実機検証 PASS  ★★ 現在地 ★★  [3a4e4b8]
-                     └ 空中 30mm 正方形トレース、最大軸誤差 0.4mm
+05-22 18:44   ● M5  cartesian / EndPoseCtrl 実機検証 PASS         [3a4e4b8]
+              │      └ 空中 30mm 正方形トレース、最大軸誤差 0.4mm
+              │
+05-22 18:50   ● M6  draw_stroke() 実機統合テスト PASS  ★★ 現在地 ★★  [8b27f8b]
+                     └ 空中 30mm 正方形、7 ウェイポイント最大誤差 0.3mm、
+                       閉ループ復帰 0.2mm
 ```
 
 ---
@@ -76,6 +80,7 @@
 | M3 | 2026-05-22 17:40 | `connect()` に Config Init 自動統合（GUI フリー） | `019dfd7` | `Robot(mock=False).connect()` が `[robot] Config Init done` を出す |
 | M4 | 2026-05-22 17:55 | ready pose 実機テスト PASS | `3c23e92` | `venv/bin/python test_ready_pose.py move` が `RESULT: PASS` |
 | M5 | 2026-05-22 18:44 | cartesian / EndPoseCtrl 実機検証 PASS（空中 30mm 正方形） | `3a4e4b8` | `venv/bin/python test_cartesian.py move` が `RESULT: PASS` |
+| M6 | 2026-05-22 18:50 | draw_stroke() 実機統合テスト PASS（travel→pen-down→描画→pen-up） | `8b27f8b` | `venv/bin/python test_draw_stroke.py move` が `RESULT: PASS` |
 
 ---
 
