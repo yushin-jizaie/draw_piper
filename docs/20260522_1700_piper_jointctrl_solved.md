@@ -205,13 +205,51 @@ ip -details -statistics link show can0 | grep -A2 "re-started\|bus-errors\|error
 
 ## 未解決の小問題
 
-- [ ] **`Config Init` ボタンが内部で何のコマンドを送っているか調査**
-  - `Piper_sdk_ui/piper_ui.py` のソースを読めば分かるはず
-  - これを Python 化できれば GUI なしで完全自動化可能
+- [x] **`Config Init` ボタンが内部で何のコマンドを送っているか調査** → ✅ 解決 (2026-05-22, 下記参照)
 - [ ] **GUI で「No information for the CAN port」警告が頻発する理由**
   - 動作には影響しないが、ノイジー
 - [ ] **ROS_DOMAIN_ID の分離 (Kachaka と共存しやすくする)**
   - `/kachaka/joint_states` が見えているので、現状は共有状態
+
+---
+
+## 追記: Config Init を Python 化 (2026-05-22, Claude Code)
+
+### `Config Init` ボタンの内部実装
+
+`Piper_sdk_ui/piper_ui.py` の `run_config_init()` (551行目) は以下:
+
+```python
+def run_config_init(self):
+    self.piper.ArmParamEnquiryAndConfig(0x01, 0x02, 0, 0, 0x02)
+    self.piper.SearchAllMotorMaxAngleSpd()
+    self.text_edit.append(str(self.piper.GetAllMotorAngleLimitMaxSpd()))
+```
+
+核心は **`ArmParamEnquiryAndConfig(0x01, 0x02, 0, 0, 0x02)`** (CAN ID 0x477)。
+`param_setting=0x02` = 「全関節の限位・最大速度・最大加速度をデフォルト値に設定」。
+`SearchAllMotorMaxAngleSpd()` / `GetAllMotorAngleLimitMaxSpd()` は読み戻し(表示用)。
+
+### 検証結果
+
+- `GetAllMotorAngleLimitMaxSpd()` は Config Init 前後で表示上は同値 (max_joint_spd=300 等)。
+  効果は別の内部状態にあるが、**送るだけで JointCtrl が有効になる**ことを実機で確認。
+- Python 単独 (GUI なし) で `ArmParamEnquiryAndConfig(0x01,0x02,0,0,0x02)` → `EnablePiper`
+  → `JointCtrl` を実行 → **j1 が指令通り +4.93度 移動**。GUI 不要を実証。
+
+### draw_piper への統合
+
+`modules/robot.py` の `Robot.connect()` に Config Init を組み込み済み:
+
+```
+ConnectPort → ArmParamEnquiryAndConfig(0x01,0x02,0,0,0x02) → SearchAllMotorMaxAngleSpd
+  → EnablePiper → ModeCtrl → orientation cache
+```
+
+- `C_PiperInterface_V2` に統一 (V1 では動作未確認のため)
+- `connect(config_init=True)` がデフォルト。GUI なしで初期化が完結する。
+- マスターモード残留時 (feedback が 0x3A*) は別途 `MasterSlaveConfig(0xFC,0,0,0)` +
+  電源再投入のリカバリが必要 (本ドキュメント上部の手順)。
 
 ---
 

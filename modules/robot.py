@@ -2,13 +2,21 @@
 
 Concrete implementation for Step A: simple utilities to move the arm in
 the XY plane and emulate pen up/down using Z offsets. The implementation
-uses `piper_sdk.C_PiperInterface` when available; otherwise it falls back
-to a mock mode so the code can be developed without hardware.
+uses `piper_sdk.C_PiperInterface_V2` when available; otherwise it falls
+back to a mock mode so the code can be developed without hardware.
 
 Notes about units (per project docs):
 - EndPoseCtrl accepts position in 0.001mm (i.e. mm * 1000)
 - Rotation in 0.001deg
 - JointCtrl accepts joint angles in 0.001deg
+
+Initialization (firmware S-V1.8-2):
+- `Config Init` (ArmParamEnquiryAndConfig 0x01,0x02,0,0,0x02) MUST be sent
+  after ConnectPort, otherwise JointCtrl/EndPoseCtrl are silently ignored.
+  This reproduces the AgileX GUI "Config Init" button — see
+  docs/20260522_1700_piper_jointctrl_solved.md.
+- If the arm is in master mode (feedback on 0x3A* not 0x2A*), run the
+  MasterSlaveConfig(0xFC,0,0,0) recovery + power cycle first.
 
 This module exposes a small API:
 - `connect()` / `disconnect()`
@@ -22,9 +30,13 @@ This module exposes a small API:
 import time
 import math
 try:
-    from piper_sdk import C_PiperInterface
+    from piper_sdk import C_PiperInterface_V2
 except Exception:
-    C_PiperInterface = None
+    C_PiperInterface_V2 = None
+
+# backwards-compat alias: callers (e.g. run_draw_test.py) check SDK availability
+# via `C_PiperInterface is None`.
+C_PiperInterface = C_PiperInterface_V2
 
 try:
     from .piper_feedback import PiperFeedback
@@ -38,28 +50,31 @@ DEFAULT_READY_POSE_DEG = {'j1': -45.0, 'j2': 60.0, 'j3': -60.0, 'j4': 0.0, 'j5':
 
 
 class Robot:
-    def __init__(self, can_port='can0', default_z_mm=10.0, ready_pose=None, mock=None):
+    def __init__(self, can_port='can0', default_z_mm=10.0, ready_pose=None, mock=None,
+                 use_feedback_workaround=False):
         """If mock is None: auto-detect (mock when piper_sdk is unavailable).
         Pass mock=True to force mock even when piper_sdk is installed
         (the safe default for tests). Pass mock=False to require real hardware.
+
+        use_feedback_workaround: start the 0x3A* side listener (only needed if
+        the arm is still in master mode; normally feedback is on 0x2A* and the
+        SDK reads it natively).
         """
         self.can_port = can_port
         self.default_z_mm = default_z_mm
         self.ready_pose = ready_pose or dict(DEFAULT_READY_POSE_DEG)
         self._conn = None
         self.connected = False
+        self.use_feedback_workaround = use_feedback_workaround
         if mock is None:
-            self._mock = C_PiperInterface is None
+            self._mock = C_PiperInterface_V2 is None
         else:
-            if not mock and C_PiperInterface is None:
+            if not mock and C_PiperInterface_V2 is None:
                 raise RuntimeError("mock=False requested but piper_sdk is not installed")
             self._mock = bool(mock)
-        # firmware S-V1.8-x broadcasts feedback at 0x3A*, but piper_sdk 0.6.1
-        # only parses 0x2A*. A side listener fills the gap.
+        # optional 0x3A* side listener (master-mode fallback only)
         self._feedback = None
         # cached end-pose orientation (0.001 deg) — used when caller omits rx/ry/rz.
-        # populated after connect() so we preserve the current wrist orientation
-        # instead of snapping to (0,0,0).
         self._rx_mdeg = 0
         self._ry_mdeg = 0
         self._rz_mdeg = 0
@@ -67,39 +82,62 @@ class Robot:
     # ------------------------------------------------------------------
     # connect / disconnect
     # ------------------------------------------------------------------
-    def connect(self, enable_motors=True, settle_s=1.5):
+    def connect(self, enable_motors=True, settle_s=1.5, config_init=True):
+        """Connect and initialize the arm.
+
+        config_init: send the Config Init sequence (required for JointCtrl /
+        EndPoseCtrl to take effect on firmware S-V1.8-2). Leave True unless you
+        have a specific reason to skip it.
+        """
         if self._mock:
-            reason = 'piper_sdk not installed' if C_PiperInterface is None else 'mock=True'
+            reason = 'piper_sdk not installed' if C_PiperInterface_V2 is None else 'mock=True'
             print(f'[robot] MOCK mode ({reason}) — no CAN traffic')
             self.connected = True
             return
 
-        self._conn = C_PiperInterface(self.can_port)
+        self._conn = C_PiperInterface_V2(self.can_port)
         self._conn.ConnectPort()
-        time.sleep(0.5)
+        time.sleep(1.0)
 
-        # start the side listener for V1.8 firmware (0x3A* feedback).
-        # safe no-op if PiperFeedback unavailable.
-        if PiperFeedback is not None:
+        # optional master-mode fallback listener (0x3A* feedback)
+        if self.use_feedback_workaround and PiperFeedback is not None:
             try:
                 self._feedback = PiperFeedback(self.can_port)
                 self._feedback.start()
                 if self._feedback.wait_until_ready(timeout=2.0):
-                    print('[robot] V1.8 feedback listener ready')
+                    print('[robot] 0x3A* feedback listener ready (master-mode fallback)')
                 else:
-                    print('[robot] V1.8 feedback listener: no frames within 2s '
-                          '(arm may be silent — moves still work but state will be None)')
+                    print('[robot] 0x3A* feedback listener: no frames within 2s')
             except Exception as e:
                 print('[robot] feedback listener failed to start:', e)
                 self._feedback = None
 
-        if enable_motors:
+        # Config Init — resets joint params to defaults; without this the arm
+        # silently ignores motion commands on firmware S-V1.8-2.
+        if config_init:
             try:
-                self._conn.EnableArm(7, 0x02)
+                self._conn.ArmParamEnquiryAndConfig(0x01, 0x02, 0, 0, 0x02)
+                time.sleep(0.5)
+                self._conn.SearchAllMotorMaxAngleSpd()
+                time.sleep(0.3)
+                print('[robot] Config Init done')
             except Exception as e:
-                print('[robot] EnableArm error:', e)
-            # motors need time to come online before the first motion command
-            time.sleep(settle_s)
+                print('[robot] Config Init error:', e)
+
+        if enable_motors:
+            # high-level enable: loops until all motors are energized
+            t0 = time.time()
+            try:
+                while not self._conn.EnablePiper():
+                    time.sleep(0.01)
+                    if time.time() - t0 > settle_s + 4.0:
+                        print('[robot] EnablePiper timeout')
+                        break
+                else:
+                    print('[robot] EnablePiper OK')
+            except Exception as e:
+                print('[robot] EnablePiper error:', e)
+            time.sleep(0.5)
 
         # CAN control mode (0x01) + MOVE J (0x01) at safe speed by default
         try:
@@ -134,11 +172,7 @@ class Robot:
     # state read-back
     # ------------------------------------------------------------------
     def get_end_pose(self):
-        """Return (x_mm, y_mm, z_mm, rx_deg, ry_deg, rz_deg) or None in mock mode.
-
-        Prefers the V1.8 side listener (0x3A*) over the SDK's 0x2A* parser,
-        which returns zeros on firmware S-V1.8-x.
-        """
+        """Return (x_mm, y_mm, z_mm, rx_deg, ry_deg, rz_deg) or None in mock mode."""
         if self._mock:
             return None
         if self._feedback:
@@ -196,8 +230,8 @@ class Robot:
     def goto_ready_pose(self, speed_pct=15, settle_s=6.0):
         """Move the arm to the configured ready pose via JointCtrl (MOVE J).
 
-        Uses the "hold current first" pattern from goto_ready_pose_v2.py to
-        avoid sudden jumps when the controller comes online.
+        Uses the "hold current first" pattern to avoid sudden jumps when the
+        controller comes online.
         """
         if not self.connected:
             raise RuntimeError('Robot not connected')
@@ -246,7 +280,7 @@ class Robot:
         X = int(round(x_mm * 1000.0))
         Y = int(round(y_mm * 1000.0))
         Z = int(round(z_mm * 1000.0))
-        # fall back to cached orientation when caller does not pass one — preserves wrist
+        # fall back to cached orientation when caller does not pass one
         RX = int(round(rx_deg * 1000.0)) if rx_deg is not None else self._rx_mdeg
         RY = int(round(ry_deg * 1000.0)) if ry_deg is not None else self._ry_mdeg
         RZ = int(round(rz_deg * 1000.0)) if rz_deg is not None else self._rz_mdeg
@@ -257,9 +291,8 @@ class Robot:
                  speed_pct=50, move_mode=0x02, wait_s=0.0):
         """Move the end-effector to the given pose (mm, deg).
 
-        rx/ry/rz default to the cached current orientation (set at connect or
-        after goto_ready_pose). move_mode: 0x01=MOVE J, 0x02=MOVE L.
-        wait_s blocks after issuing the command — set per-waypoint for real hw.
+        rx/ry/rz default to the cached current orientation. move_mode:
+        0x01=MOVE J, 0x02=MOVE L. wait_s blocks after issuing the command.
         """
         if not self.connected:
             raise RuntimeError('Robot not connected')
