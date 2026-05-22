@@ -11,10 +11,10 @@
 
 | 項目 | 値 |
 |------|-----|
-| マイルストーン | **M6 — draw_stroke() 実機統合テスト PASS** |
-| コミット | `8b27f8b` |
-| 戻り方 | `git checkout 8b27f8b`（または最新 `main`） |
-| 正常の確認 | `venv/bin/python test_draw_stroke.py inspect` が end-pose を表示する |
+| マイルストーン | **M7 — robot.py パネル座標層を一般化（mock 検証）** |
+| コミット | `07311e6` |
+| 戻り方 | `git checkout 07311e6`（または最新 `main`） |
+| 正常の確認 | `venv/bin/python run_draw_test.py --strokes square` が mock 完走する |
 
 ---
 
@@ -61,9 +61,13 @@
 05-22 18:44   ● M5  cartesian / EndPoseCtrl 実機検証 PASS         [3a4e4b8]
               │      └ 空中 30mm 正方形トレース、最大軸誤差 0.4mm
               │
-05-22 18:50   ● M6  draw_stroke() 実機統合テスト PASS  ★★ 現在地 ★★  [8b27f8b]
-                     └ 空中 30mm 正方形、7 ウェイポイント最大誤差 0.3mm、
-                       閉ループ復帰 0.2mm
+05-22 18:50   ● M6  draw_stroke() 実機統合テスト PASS         [8b27f8b]
+              │      └ 空中 30mm 正方形、7 ウェイポイント最大誤差 0.3mm、
+              │        閉ループ復帰 0.2mm
+              │
+05-22 19:04   ● M7  robot.py パネル座標層を一般化（mock 検証） ★★ 現在地 ★★  [07311e6]
+                     └ PanelFrame + goto_panel/draw_stroke_panel、
+                       垂直アクリル板対応。実ジオメトリは Step B 待ち
 ```
 
 ---
@@ -81,6 +85,7 @@
 | M4 | 2026-05-22 17:55 | ready pose 実機テスト PASS | `3c23e92` | `venv/bin/python test_ready_pose.py move` が `RESULT: PASS` |
 | M5 | 2026-05-22 18:44 | cartesian / EndPoseCtrl 実機検証 PASS（空中 30mm 正方形） | `3a4e4b8` | `venv/bin/python test_cartesian.py move` が `RESULT: PASS` |
 | M6 | 2026-05-22 18:50 | draw_stroke() 実機統合テスト PASS（travel→pen-down→描画→pen-up） | `8b27f8b` | `venv/bin/python test_draw_stroke.py move` が `RESULT: PASS` |
+| M7 | 2026-05-22 19:04 | robot.py にパネル座標層を一般化（垂直パネル対応、mock 検証） | `07311e6` | `run_draw_test.py` mock 完走（非破壊）、`Robot(mock=True)` がパネル YAML をロード |
 
 ---
 
