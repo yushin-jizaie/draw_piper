@@ -25,8 +25,17 @@ This module exposes a small API:
 - `draw_stroke(points_mm, z_down_mm, z_up_mm)`
 - `goto_ready_pose()`             (joint-space, MOVE J)
 - `get_end_pose()` / `get_joints()` (read-back from hardware)
+
+Panel (drawing-surface) layer -- for drawing on an arbitrarily oriented
+flat surface, e.g. a vertical acrylic panel. Panel coordinates (u, v, w)
+are converted to robot base coordinates via a `PanelFrame` loaded from
+`calibration/panel_frame.yaml` (populated by Step B / ArUco calibration):
+- `panel_to_base(u, v, w)`
+- `goto_panel(u, v, w)` / `pen_up_panel()` / `pen_down_panel()`
+- `draw_stroke_panel(points_uv, w_contact, w_clear)`
 """
 
+import os
 import time
 import math
 try:
@@ -48,10 +57,85 @@ except Exception:
 # Avoids shoulder + wrist singularities.
 DEFAULT_READY_POSE_DEG = {'j1': -45.0, 'j2': 60.0, 'j3': -60.0, 'j4': 0.0, 'j5': 30.0, 'j6': 0.0}
 
+# Default location of the panel-frame calibration file (project_root/calibration).
+DEFAULT_PANEL_FRAME_PATH = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    'calibration', 'panel_frame.yaml')
+
+
+def _unit(vec):
+    """Return vec normalised to a unit-length 3-tuple."""
+    v = [float(c) for c in vec]
+    n = math.sqrt(sum(c * c for c in v))
+    if n == 0.0:
+        raise ValueError('panel frame: zero-length axis vector')
+    return tuple(c / n for c in v)
+
+
+class PanelFrame:
+    """Drawing-surface coordinate frame, expressed in the robot base_link.
+
+    Panel coordinates (all mm):
+      u -- panel horizontal (+u = the drawing's right)
+      v -- panel vertical   (+v = up)
+      w -- panel normal     (w = 0 at the surface, +w = away from the panel)
+
+    Conversion to robot base coordinates:
+      base = origin + u * u_axis + v * v_axis + w * normal
+    """
+
+    def __init__(self, origin_mm, u_axis, v_axis, normal, pen_orientation_deg,
+                 size_mm, w_contact_mm=0.0, w_clear_mm=25.0,
+                 ready_pose_deg=None, calibrated=False):
+        self.origin = tuple(float(c) for c in origin_mm)
+        self.u_axis = _unit(u_axis)
+        self.v_axis = _unit(v_axis)
+        self.normal = _unit(normal)
+        self.pen_orientation_deg = tuple(float(c) for c in pen_orientation_deg)
+        self.size_mm = tuple(float(c) for c in size_mm)
+        self.w_contact_mm = float(w_contact_mm)
+        self.w_clear_mm = float(w_clear_mm)
+        self.ready_pose_deg = ready_pose_deg
+        self.calibrated = bool(calibrated)
+
+    def to_base(self, u_mm, v_mm, w_mm):
+        """Convert panel (u, v, w) mm to robot base (x, y, z) mm."""
+        return tuple(
+            self.origin[i]
+            + u_mm * self.u_axis[i]
+            + v_mm * self.v_axis[i]
+            + w_mm * self.normal[i]
+            for i in range(3)
+        )
+
+    def in_bounds(self, u_mm, v_mm):
+        """True if (u, v) lies within the declared drawing area."""
+        return 0.0 <= u_mm <= self.size_mm[0] and 0.0 <= v_mm <= self.size_mm[1]
+
+    @classmethod
+    def from_yaml(cls, path):
+        """Load a PanelFrame from a YAML file (see calibration/panel_frame.yaml)."""
+        import yaml  # lazy import: keep robot.py importable without pyyaml
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+        p = data.get('panel', data)
+        return cls(
+            origin_mm=p['origin_mm'],
+            u_axis=p['u_axis'],
+            v_axis=p['v_axis'],
+            normal=p['normal'],
+            pen_orientation_deg=p['pen_orientation_deg'],
+            size_mm=p['size_mm'],
+            w_contact_mm=p.get('w_contact_mm', 0.0),
+            w_clear_mm=p.get('w_clear_mm', 25.0),
+            ready_pose_deg=p.get('ready_pose_deg'),
+            calibrated=p.get('calibrated', False),
+        )
+
 
 class Robot:
     def __init__(self, can_port='can0', default_z_mm=10.0, ready_pose=None, mock=None,
-                 use_feedback_workaround=False):
+                 use_feedback_workaround=False, panel_frame=None):
         """If mock is None: auto-detect (mock when piper_sdk is unavailable).
         Pass mock=True to force mock even when piper_sdk is installed
         (the safe default for tests). Pass mock=False to require real hardware.
@@ -59,6 +143,10 @@ class Robot:
         use_feedback_workaround: start the 0x3A* side listener (only needed if
         the arm is still in master mode; normally feedback is on 0x2A* and the
         SDK reads it natively).
+
+        panel_frame: drawing-surface frame for the panel API. Pass a PanelFrame,
+        a path to a YAML file, or None to auto-load calibration/panel_frame.yaml
+        when present. The panel_* methods raise if no frame is configured.
         """
         self.can_port = can_port
         self.default_z_mm = default_z_mm
@@ -66,6 +154,9 @@ class Robot:
         self._conn = None
         self.connected = False
         self.use_feedback_workaround = use_feedback_workaround
+        # optional panel (drawing-surface) frame for the panel-space API
+        self.panel = self._load_panel_frame(panel_frame)
+        self._panel_calib_warned = False
         if mock is None:
             self._mock = C_PiperInterface_V2 is None
         else:
@@ -78,6 +169,23 @@ class Robot:
         self._rx_mdeg = 0
         self._ry_mdeg = 0
         self._rz_mdeg = 0
+
+    @staticmethod
+    def _load_panel_frame(panel_frame):
+        """Resolve the panel_frame argument into a PanelFrame, or None."""
+        if isinstance(panel_frame, PanelFrame):
+            return panel_frame
+        path = panel_frame or DEFAULT_PANEL_FRAME_PATH
+        if not os.path.exists(path):
+            return None
+        try:
+            pf = PanelFrame.from_yaml(path)
+            status = 'calibrated' if pf.calibrated else 'PLACEHOLDER values'
+            print(f'[robot] panel frame loaded from {path} ({status})')
+            return pf
+        except Exception as e:
+            print(f'[robot] panel frame load failed ({path}): {e}')
+            return None
 
     # ------------------------------------------------------------------
     # connect / disconnect
@@ -350,6 +458,84 @@ class Robot:
         # pen up at end
         self.goto_xyz(points_mm[-1][0], points_mm[-1][1], z_up_mm,
                       speed_pct=travel_speed, move_mode=0x02, wait_s=settle_s)
+
+    # ------------------------------------------------------------------
+    # panel (drawing-surface) coordinate layer
+    # ------------------------------------------------------------------
+    def _require_panel(self):
+        if self.panel is None:
+            raise RuntimeError(
+                'panel frame not configured — create calibration/panel_frame.yaml '
+                'or pass panel_frame= to Robot()')
+        return self.panel
+
+    def panel_to_base(self, u_mm, v_mm, w_mm):
+        """Convert panel coordinates (u, v, w) mm to robot base (x, y, z) mm."""
+        return self._require_panel().to_base(u_mm, v_mm, w_mm)
+
+    def goto_panel(self, u_mm, v_mm, w_mm,
+                   speed_pct=50, move_mode=0x02, wait_s=0.0):
+        """Move the pen to panel coordinates (u, v, w).
+
+        The end-effector is held at the panel's pen orientation (pen ⊥ panel).
+        w = 0 is the panel surface; +w retracts the pen. move_mode 0x02 = MOVE L.
+        """
+        panel = self._require_panel()
+        if not panel.calibrated and not self._panel_calib_warned:
+            print('[robot] WARNING: panel frame uses PLACEHOLDER geometry '
+                  '(calibrated: false) — run Step B before real drawing')
+            self._panel_calib_warned = True
+        if not panel.in_bounds(u_mm, v_mm):
+            print(f'[robot] WARNING: panel point ({u_mm:.1f},{v_mm:.1f}) is '
+                  f'outside the {panel.size_mm[0]:.0f}x{panel.size_mm[1]:.0f} mm '
+                  'drawing area')
+        x, y, z = panel.to_base(u_mm, v_mm, w_mm)
+        rx, ry, rz = panel.pen_orientation_deg
+        if self._mock:
+            print(f'[MOCK] goto_panel: u={u_mm:.1f} v={v_mm:.1f} w={w_mm:.1f} '
+                  f'-> base ({x:.1f},{y:.1f},{z:.1f})')
+        return self.goto_xyz(x, y, z, rx_deg=rx, ry_deg=ry, rz_deg=rz,
+                             speed_pct=speed_pct, move_mode=move_mode, wait_s=wait_s)
+
+    def pen_down_panel(self, u_mm, v_mm, speed_pct=25, wait_s=0.0):
+        """Bring the pen into contact with the panel at (u, v)."""
+        panel = self._require_panel()
+        return self.goto_panel(u_mm, v_mm, panel.w_contact_mm,
+                               speed_pct=speed_pct, move_mode=0x02, wait_s=wait_s)
+
+    def pen_up_panel(self, u_mm, v_mm, speed_pct=50, wait_s=0.0):
+        """Retract the pen clear of the panel above (u, v)."""
+        panel = self._require_panel()
+        return self.goto_panel(u_mm, v_mm, panel.w_clear_mm,
+                               speed_pct=speed_pct, move_mode=0x02, wait_s=wait_s)
+
+    def draw_stroke_panel(self, points_uv, w_contact=None, w_clear=None,
+                          travel_speed=60, draw_speed=25,
+                          inter_point_delay=0.02, settle_s=2.0):
+        """Draw a stroke on the panel from a list of (u, v) points (mm).
+
+        Panel-space counterpart of draw_stroke(): travel above the first point
+        with the pen clear of the panel, pen down, trace the path, pen up.
+        w_contact / w_clear default to the panel frame's configured values.
+        """
+        panel = self._require_panel()
+        if not points_uv:
+            return
+        wc = panel.w_contact_mm if w_contact is None else w_contact
+        wu = panel.w_clear_mm if w_clear is None else w_clear
+        u0, v0 = points_uv[0]
+        # travel to the first point with the pen clear of the panel
+        self.goto_panel(u0, v0, wu, speed_pct=travel_speed, move_mode=0x02,
+                        wait_s=settle_s)
+        # pen down onto the panel
+        self.goto_panel(u0, v0, wc, speed_pct=draw_speed, move_mode=0x02,
+                        wait_s=settle_s)
+        for (u, v) in points_uv[1:]:
+            self.goto_panel(u, v, wc, speed_pct=draw_speed, move_mode=0x02,
+                            wait_s=inter_point_delay)
+        # pen up at the end
+        self.goto_panel(points_uv[-1][0], points_uv[-1][1], wu,
+                        speed_pct=travel_speed, move_mode=0x02, wait_s=settle_s)
 
 
 if __name__ == '__main__':

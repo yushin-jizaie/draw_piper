@@ -1,0 +1,46 @@
+# Panel (drawing-surface) coordinate frame, expressed in the robot base_link.
+#
+# Coordinate convention (right-handed), all distances in mm:
+#   u  -- panel horizontal axis  (+u = the drawing's right)
+#   v  -- panel vertical axis    (+v = up)
+#   w  -- panel normal           (w = 0 at the surface, +w = away from the
+#                                 panel toward the arm, i.e. pen retracted)
+#
+#   base(x, y, z) = origin_mm + u * u_axis + v * v_axis + w * normal
+#
+# ALL VALUES BELOW ARE PLACEHOLDERS. Step B (ArUco calibration,
+# calibration/aruco_calibrate.py) measures the real geometry and overwrites
+# this file. While `calibrated: false`, robot.py warns before any panel move.
+
+panel:
+  calibrated: false
+
+  # Panel drawing-area reference point -- the (u=0, v=0) corner, e.g. the
+  # bottom-left of the drawing area -- in robot base coordinates.
+  origin_mm: [350.0, -150.0, 100.0]
+
+  # Unit axes of the panel frame, in robot base coordinates.
+  # Assumption: table-mounted arm, panel standing vertically in front of it.
+  #   u (panel horizontal) -> base +Y
+  #   v (panel vertical)   -> base +Z (up)
+  #   normal (toward arm)  -> base -X
+  u_axis: [0.0, 1.0, 0.0]
+  v_axis: [0.0, 0.0, 1.0]
+  normal: [-1.0, 0.0, 0.0]
+
+  # End-effector orientation (RX, RY, RZ in deg) that holds the pen
+  # perpendicular to the panel. Must be found by jogging the arm on hardware.
+  pen_orientation_deg: [0.0, 0.0, 0.0]
+
+  # Drawing-area extent for bounds checking: [width_u, height_v] in mm.
+  size_mm: [300.0, 200.0]
+
+  # Pen-contact depth and clearance along the w axis, in mm.
+  w_contact_mm: 0.0     # pen touches the panel at w = 0
+  w_clear_mm: 25.0      # pen-up retract distance
+
+  # Joint-space ready pose for panel drawing (deg), as [j1..j6]. Placeholder:
+  # the real angles -- pen facing the panel, clear of singularities -- must be
+  # found by jogging on hardware. While null, goto_ready_pose() keeps using
+  # DEFAULT_READY_POSE_DEG.
+  ready_pose_deg: null
