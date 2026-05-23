@@ -1,0 +1,162 @@
+2026-05-23 15:02:29,790 [INFO] ============================================================
+2026-05-23 15:02:29,790 [INFO] Diff detection experiment: user vs generated
+2026-05-23 15:02:29,790 [INFO] Output dir: /home/jizaiedev2026/draw_piper/logs/diff_experiment
+2026-05-23 15:02:29,790 [INFO] ============================================================
+2026-05-23 15:02:29,794 [INFO] User image: test_sketch.jpg, shape=(768, 1024)
+2026-05-23 15:02:29,804 [INFO] User binary: line_ratio=0.498%, strokes=3
+2026-05-23 15:02:29,805 [INFO] Found 21 generated images
+2026-05-23 15:02:29,805 [INFO] Processing: sdxl_output_20260523_140432_1step.png
+2026-05-23 15:02:29,904 [INFO]   generated_canny: line_ratio=3.293%, strokes=324
+2026-05-23 15:02:29,916 [INFO]   diff_k05: line_ratio=3.189%, strokes=344
+2026-05-23 15:02:29,922 [INFO]   diff_k11: line_ratio=3.096%, strokes=348
+2026-05-23 15:02:29,928 [INFO]   diff_k21: line_ratio=3.068%, strokes=314
+2026-05-23 15:02:29,934 [INFO]   diff_k31: line_ratio=3.068%, strokes=314
+2026-05-23 15:02:29,941 [INFO]   diff_k51: line_ratio=3.068%, strokes=315
+2026-05-23 15:02:29,942 [INFO] Processing: sdxl_output_20260523_140435_2step.png
+2026-05-23 15:02:30,012 [INFO]   generated_canny: line_ratio=1.054%, strokes=75
+2026-05-23 15:02:30,018 [INFO]   diff_k05: line_ratio=0.942%, strokes=150
+2026-05-23 15:02:30,023 [INFO]   diff_k11: line_ratio=0.896%, strokes=73
+2026-05-23 15:02:30,028 [INFO]   diff_k21: line_ratio=0.896%, strokes=73
+2026-05-23 15:02:30,033 [INFO]   diff_k31: line_ratio=0.896%, strokes=73
+2026-05-23 15:02:30,039 [INFO]   diff_k51: line_ratio=0.896%, strokes=73
+2026-05-23 15:02:30,039 [INFO] Processing: sdxl_output_20260523_140438_4step.png
+2026-05-23 15:02:30,107 [INFO]   generated_canny: line_ratio=1.183%, strokes=83
+2026-05-23 15:02:30,113 [INFO]   diff_k05: line_ratio=1.138%, strokes=83
+2026-05-23 15:02:30,118 [INFO]   diff_k11: line_ratio=1.134%, strokes=86
+2026-05-23 15:02:30,123 [INFO]   diff_k21: line_ratio=1.130%, strokes=82
+2026-05-23 15:02:30,128 [INFO]   diff_k31: line_ratio=1.130%, strokes=82
+2026-05-23 15:02:30,135 [INFO]   diff_k51: line_ratio=1.130%, strokes=82
+2026-05-23 15:02:30,135 [INFO] Processing: sdxl_output_20260523_141456_1step.png
+2026-05-23 15:02:30,208 [INFO]   generated_canny: line_ratio=3.353%, strokes=232
+2026-05-23 15:02:30,214 [INFO]   diff_k05: line_ratio=3.231%, strokes=250
+2026-05-23 15:02:30,220 [INFO]   diff_k11: line_ratio=3.183%, strokes=256
+2026-05-23 15:02:30,225 [INFO]   diff_k21: line_ratio=3.074%, strokes=230
+2026-05-23 15:02:30,231 [INFO]   diff_k31: line_ratio=3.051%, strokes=228
+2026-05-23 15:02:30,238 [INFO]   diff_k51: line_ratio=3.002%, strokes=227
+2026-05-23 15:02:30,239 [INFO] Processing: sdxl_output_20260523_141458_2step.png
+2026-05-23 15:02:30,312 [INFO]   generated_canny: line_ratio=3.920%, strokes=446
+2026-05-23 15:02:30,318 [INFO]   diff_k05: line_ratio=3.832%, strokes=514
+2026-05-23 15:02:30,324 [INFO]   diff_k11: line_ratio=3.743%, strokes=450
+2026-05-23 15:02:30,331 [INFO]   diff_k21: line_ratio=3.584%, strokes=442
+2026-05-23 15:02:30,338 [INFO]   diff_k31: line_ratio=3.554%, strokes=442
+2026-05-23 15:02:30,345 [INFO]   diff_k51: line_ratio=3.479%, strokes=437
+2026-05-23 15:02:30,346 [INFO] Processing: sdxl_output_20260523_141501_4step.png
+2026-05-23 15:02:30,417 [INFO]   generated_canny: line_ratio=2.747%, strokes=304
+2026-05-23 15:02:30,423 [INFO]   diff_k05: line_ratio=2.617%, strokes=307
+2026-05-23 15:02:30,429 [INFO]   diff_k11: line_ratio=2.592%, strokes=342
+2026-05-23 15:02:30,434 [INFO]   diff_k21: line_ratio=2.527%, strokes=301
+2026-05-23 15:02:30,440 [INFO]   diff_k31: line_ratio=2.510%, strokes=298
+2026-05-23 15:02:30,447 [INFO]   diff_k51: line_ratio=2.484%, strokes=293
+2026-05-23 15:02:30,447 [INFO] Processing: sdxl_output_20260523_141512_1step.png
+2026-05-23 15:02:30,520 [INFO]   generated_canny: line_ratio=2.919%, strokes=324
+2026-05-23 15:02:30,526 [INFO]   diff_k05: line_ratio=2.803%, strokes=329
+2026-05-23 15:02:30,531 [INFO]   diff_k11: line_ratio=2.732%, strokes=358
+2026-05-23 15:02:30,537 [INFO]   diff_k21: line_ratio=2.660%, strokes=320
+2026-05-23 15:02:30,543 [INFO]   diff_k31: line_ratio=2.647%, strokes=318
+2026-05-23 15:02:30,550 [INFO]   diff_k51: line_ratio=2.620%, strokes=314
+2026-05-23 15:02:30,550 [INFO] Processing: sdxl_output_20260523_141514_2step.png
+2026-05-23 15:02:30,623 [INFO]   generated_canny: line_ratio=5.770%, strokes=432
+2026-05-23 15:02:30,630 [INFO]   diff_k05: line_ratio=5.686%, strokes=542
+2026-05-23 15:02:30,636 [INFO]   diff_k11: line_ratio=5.602%, strokes=434
+2026-05-23 15:02:30,643 [INFO]   diff_k21: line_ratio=5.448%, strokes=438
+2026-05-23 15:02:30,649 [INFO]   diff_k31: line_ratio=5.412%, strokes=439
+2026-05-23 15:02:30,657 [INFO]   diff_k51: line_ratio=5.333%, strokes=433
+2026-05-23 15:02:30,657 [INFO] Processing: sdxl_output_20260523_141517_4step.png
+2026-05-23 15:02:30,727 [INFO]   generated_canny: line_ratio=1.458%, strokes=147
+2026-05-23 15:02:30,733 [INFO]   diff_k05: line_ratio=1.458%, strokes=147
+2026-05-23 15:02:30,739 [INFO]   diff_k11: line_ratio=1.457%, strokes=147
+2026-05-23 15:02:30,744 [INFO]   diff_k21: line_ratio=1.454%, strokes=148
+2026-05-23 15:02:30,749 [INFO]   diff_k31: line_ratio=1.452%, strokes=147
+2026-05-23 15:02:30,755 [INFO]   diff_k51: line_ratio=1.444%, strokes=147
+2026-05-23 15:02:30,756 [INFO] Processing: sdxl_output_20260523_141833_1step.png
+2026-05-23 15:02:30,830 [INFO]   generated_canny: line_ratio=3.670%, strokes=409
+2026-05-23 15:02:30,836 [INFO]   diff_k05: line_ratio=3.535%, strokes=450
+2026-05-23 15:02:30,842 [INFO]   diff_k11: line_ratio=3.475%, strokes=428
+2026-05-23 15:02:30,848 [INFO]   diff_k21: line_ratio=3.398%, strokes=406
+2026-05-23 15:02:30,855 [INFO]   diff_k31: line_ratio=3.371%, strokes=400
+2026-05-23 15:02:30,861 [INFO]   diff_k51: line_ratio=3.329%, strokes=382
+2026-05-23 15:02:30,862 [INFO] Processing: sdxl_output_20260523_141835_2step.png
+2026-05-23 15:02:30,933 [INFO]   generated_canny: line_ratio=1.951%, strokes=154
+2026-05-23 15:02:30,939 [INFO]   diff_k05: line_ratio=1.838%, strokes=150
+2026-05-23 15:02:30,944 [INFO]   diff_k11: line_ratio=1.726%, strokes=201
+2026-05-23 15:02:30,949 [INFO]   diff_k21: line_ratio=1.685%, strokes=147
+2026-05-23 15:02:30,955 [INFO]   diff_k31: line_ratio=1.684%, strokes=145
+2026-05-23 15:02:30,961 [INFO]   diff_k51: line_ratio=1.681%, strokes=145
+2026-05-23 15:02:30,962 [INFO] Processing: sdxl_output_20260523_141838_4step.png
+2026-05-23 15:02:31,033 [INFO]   generated_canny: line_ratio=3.401%, strokes=482
+2026-05-23 15:02:31,040 [INFO]   diff_k05: line_ratio=3.281%, strokes=542
+2026-05-23 15:02:31,045 [INFO]   diff_k11: line_ratio=3.241%, strokes=481
+2026-05-23 15:02:31,051 [INFO]   diff_k21: line_ratio=3.235%, strokes=482
+2026-05-23 15:02:31,057 [INFO]   diff_k31: line_ratio=3.230%, strokes=481
+2026-05-23 15:02:31,064 [INFO]   diff_k51: line_ratio=3.218%, strokes=479
+2026-05-23 15:02:31,065 [INFO] Processing: sdxl_output_20260523_141849_1step.png
+2026-05-23 15:02:31,143 [INFO]   generated_canny: line_ratio=4.434%, strokes=402
+2026-05-23 15:02:31,150 [INFO]   diff_k05: line_ratio=4.326%, strokes=430
+2026-05-23 15:02:31,156 [INFO]   diff_k11: line_ratio=4.241%, strokes=422
+2026-05-23 15:02:31,162 [INFO]   diff_k21: line_ratio=4.121%, strokes=422
+2026-05-23 15:02:31,168 [INFO]   diff_k31: line_ratio=4.070%, strokes=395
+2026-05-23 15:02:31,175 [INFO]   diff_k51: line_ratio=3.994%, strokes=376
+2026-05-23 15:02:31,176 [INFO] Processing: sdxl_output_20260523_141851_2step.png
+2026-05-23 15:02:31,244 [INFO]   generated_canny: line_ratio=0.764%, strokes=40
+2026-05-23 15:02:31,250 [INFO]   diff_k05: line_ratio=0.672%, strokes=50
+2026-05-23 15:02:31,255 [INFO]   diff_k11: line_ratio=0.627%, strokes=69
+2026-05-23 15:02:31,260 [INFO]   diff_k21: line_ratio=0.604%, strokes=38
+2026-05-23 15:02:31,265 [INFO]   diff_k31: line_ratio=0.604%, strokes=38
+2026-05-23 15:02:31,271 [INFO]   diff_k51: line_ratio=0.604%, strokes=38
+2026-05-23 15:02:31,271 [INFO] Processing: sdxl_output_20260523_141854_4step.png
+2026-05-23 15:02:31,342 [INFO]   generated_canny: line_ratio=3.037%, strokes=370
+2026-05-23 15:02:31,348 [INFO]   diff_k05: line_ratio=2.889%, strokes=408
+2026-05-23 15:02:31,354 [INFO]   diff_k11: line_ratio=2.872%, strokes=368
+2026-05-23 15:02:31,360 [INFO]   diff_k21: line_ratio=2.871%, strokes=366
+2026-05-23 15:02:31,366 [INFO]   diff_k31: line_ratio=2.869%, strokes=366
+2026-05-23 15:02:31,373 [INFO]   diff_k51: line_ratio=2.865%, strokes=366
+2026-05-23 15:02:31,373 [INFO] Processing: sdxl_output_20260523_144702_1step.png
+2026-05-23 15:02:31,447 [INFO]   generated_canny: line_ratio=2.994%, strokes=307
+2026-05-23 15:02:31,453 [INFO]   diff_k05: line_ratio=2.874%, strokes=331
+2026-05-23 15:02:31,459 [INFO]   diff_k11: line_ratio=2.791%, strokes=332
+2026-05-23 15:02:31,464 [INFO]   diff_k21: line_ratio=2.741%, strokes=300
+2026-05-23 15:02:31,470 [INFO]   diff_k31: line_ratio=2.720%, strokes=299
+2026-05-23 15:02:31,477 [INFO]   diff_k51: line_ratio=2.670%, strokes=292
+2026-05-23 15:02:31,478 [INFO] Processing: sdxl_output_20260523_144704_2step.png
+2026-05-23 15:02:31,549 [INFO]   generated_canny: line_ratio=3.506%, strokes=327
+2026-05-23 15:02:31,556 [INFO]   diff_k05: line_ratio=3.397%, strokes=376
+2026-05-23 15:02:31,562 [INFO]   diff_k11: line_ratio=3.315%, strokes=341
+2026-05-23 15:02:31,568 [INFO]   diff_k21: line_ratio=3.285%, strokes=322
+2026-05-23 15:02:31,574 [INFO]   diff_k31: line_ratio=3.278%, strokes=323
+2026-05-23 15:02:31,581 [INFO]   diff_k51: line_ratio=3.252%, strokes=322
+2026-05-23 15:02:31,582 [INFO] Processing: sdxl_output_20260523_144707_4step.png
+2026-05-23 15:02:31,654 [INFO]   generated_canny: line_ratio=2.218%, strokes=258
+2026-05-23 15:02:31,660 [INFO]   diff_k05: line_ratio=2.112%, strokes=280
+2026-05-23 15:02:31,665 [INFO]   diff_k11: line_ratio=2.058%, strokes=268
+2026-05-23 15:02:31,671 [INFO]   diff_k21: line_ratio=2.042%, strokes=251
+2026-05-23 15:02:31,677 [INFO]   diff_k31: line_ratio=2.042%, strokes=251
+2026-05-23 15:02:31,683 [INFO]   diff_k51: line_ratio=2.038%, strokes=251
+2026-05-23 15:02:31,684 [INFO] Processing: sdxl_output_20260523_144718_1step.png
+2026-05-23 15:02:31,758 [INFO]   generated_canny: line_ratio=3.430%, strokes=383
+2026-05-23 15:02:31,764 [INFO]   diff_k05: line_ratio=3.313%, strokes=403
+2026-05-23 15:02:31,770 [INFO]   diff_k11: line_ratio=3.249%, strokes=411
+2026-05-23 15:02:31,776 [INFO]   diff_k21: line_ratio=3.207%, strokes=381
+2026-05-23 15:02:31,783 [INFO]   diff_k31: line_ratio=3.182%, strokes=381
+2026-05-23 15:02:31,790 [INFO]   diff_k51: line_ratio=3.138%, strokes=373
+2026-05-23 15:02:31,790 [INFO] Processing: sdxl_output_20260523_144720_2step.png
+2026-05-23 15:02:31,859 [INFO]   generated_canny: line_ratio=1.111%, strokes=79
+2026-05-23 15:02:31,864 [INFO]   diff_k05: line_ratio=0.960%, strokes=151
+2026-05-23 15:02:31,869 [INFO]   diff_k11: line_ratio=0.928%, strokes=95
+2026-05-23 15:02:31,875 [INFO]   diff_k21: line_ratio=0.837%, strokes=75
+2026-05-23 15:02:31,880 [INFO]   diff_k31: line_ratio=0.832%, strokes=75
+2026-05-23 15:02:31,887 [INFO]   diff_k51: line_ratio=0.817%, strokes=73
+2026-05-23 15:02:31,887 [INFO] Processing: sdxl_output_20260523_144723_4step.png
+2026-05-23 15:02:31,957 [INFO]   generated_canny: line_ratio=1.081%, strokes=121
+2026-05-23 15:02:31,963 [INFO]   diff_k05: line_ratio=1.081%, strokes=121
+2026-05-23 15:02:31,968 [INFO]   diff_k11: line_ratio=1.081%, strokes=121
+2026-05-23 15:02:31,973 [INFO]   diff_k21: line_ratio=1.081%, strokes=121
+2026-05-23 15:02:31,978 [INFO]   diff_k31: line_ratio=1.080%, strokes=121
+2026-05-23 15:02:31,984 [INFO]   diff_k51: line_ratio=1.076%, strokes=121
+2026-05-23 15:02:31,985 [INFO] Summary written to: /home/jizaiedev2026/draw_piper/logs/diff_experiment/summary.md
+2026-05-23 15:02:31,985 [INFO] 
+2026-05-23 15:02:31,985 [INFO] Recommended viewing order for each image folder:
+2026-05-23 15:02:31,985 [INFO]   00_user_resized.png         <- ユーザの絵 (リサイズ済み)
+2026-05-23 15:02:31,985 [INFO]   00_generated_original.png   <- SDXL出力 (元)
+2026-05-23 15:02:31,985 [INFO]   03_generated_canny.png      <- Canny線画化後 (差分前)
+2026-05-23 15:02:31,985 [INFO]   04_diff_k11.png             <- 差分結果 (kernel=11)
+2026-05-23 15:02:31,985 [INFO]   04_diff_k21.png             <- 差分結果 (kernel=21) 推奨開始点

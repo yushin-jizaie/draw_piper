@@ -1,0 +1,116 @@
+2026-05-23 14:02:12,568 [INFO] ============================================================
+2026-05-23 14:02:12,568 [INFO] SDXL Turbo + Lineart ControlNet VRAM Measurement
+2026-05-23 14:02:12,568 [INFO] Log file: /home/jizaiedev2026/draw_piper/logs/sdxl_vram_20260523_140212.log
+2026-05-23 14:02:12,568 [INFO] ============================================================
+2026-05-23 14:02:12,705 [INFO] GPU: NVIDIA RTX 2000 Ada Generation
+2026-05-23 14:02:12,705 [INFO] Total VRAM: 15.57GB
+2026-05-23 14:02:12,706 [INFO] torch: 2.12.0+cu130
+2026-05-23 14:02:12,706 [INFO] [baseline] allocated=0.00GB reserved=0.00GB peak=0.00GB
+2026-05-23 14:02:12,706 [INFO] Importing diffusers...
+2026-05-23 14:02:15,483 [INFO] diffusers: 0.38.0
+2026-05-23 14:02:15,483 [INFO] Loading Lineart ControlNet (SDXL用)...
+2026-05-23 14:02:15,702 [INFO] HTTP Request: HEAD https://huggingface.co/TheMistoAI/MistoLine/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:15,703 [WARNING] Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-23 14:02:15,713 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TheMistoAI/MistoLine/1d9d0b3d48b295cf70d80a0f839a3055672f8393/config.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:15,725 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/TheMistoAI/MistoLine/1d9d0b3d48b295cf70d80a0f839a3055672f8393/config.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:15,907 [INFO] HTTP Request: HEAD https://huggingface.co/TheMistoAI/MistoLine/resolve/1d9d0b3d48b295cf70d80a0f839a3055672f8393/diffusion_pytorch_model.safetensors.index.fp16.json "HTTP/1.1 404 Not Found"
+2026-05-23 14:02:16,081 [INFO] HTTP Request: HEAD https://huggingface.co/TheMistoAI/MistoLine/resolve/1d9d0b3d48b295cf70d80a0f839a3055672f8393/diffusion_pytorch_model.safetensors.fp16.index.json "HTTP/1.1 404 Not Found"
+2026-05-23 14:02:16,253 [INFO] HTTP Request: HEAD https://huggingface.co/TheMistoAI/MistoLine/resolve/1d9d0b3d48b295cf70d80a0f839a3055672f8393/diffusion_pytorch_model.fp16.safetensors "HTTP/1.1 302 Found"
+2026-05-23 14:02:16,462 [INFO] HTTP Request: GET https://huggingface.co/api/models/TheMistoAI/MistoLine/xet-read-token/1d9d0b3d48b295cf70d80a0f839a3055672f8393 "HTTP/1.1 200 OK"
+2026-05-23 14:02:55,703 [INFO] ControlNet loaded in 40.2s
+2026-05-23 14:02:55,703 [INFO] [after controlnet load (cpu)] allocated=0.00GB reserved=0.00GB peak=0.00GB
+2026-05-23 14:02:55,703 [INFO] Loading SDXL Turbo pipeline with ControlNet...
+2026-05-23 14:02:56,012 [INFO] HTTP Request: GET https://huggingface.co/api/models/stabilityai/sdxl-turbo "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,182 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/main/model_index.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,192 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/model_index.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,201 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/model_index.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,379 [INFO] HTTP Request: GET https://huggingface.co/api/models/stabilityai/sdxl-turbo/revision/main "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,551 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/scheduler/scheduler_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,562 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/scheduler%2Fscheduler_config.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,571 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/text_encoder_2/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,574 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/scheduler%2Fscheduler_config.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,575 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/text_encoder/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,579 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/text_encoder/model.fp16.safetensors "HTTP/1.1 302 Found"
+2026-05-23 14:02:56,582 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer/merges.txt "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,583 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/text_encoder_2%2Fconfig.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,584 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,585 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/text_encoder_2/model.fp16.safetensors "HTTP/1.1 302 Found"
+2026-05-23 14:02:56,588 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,589 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/text_encoder%2Fconfig.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,597 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer%2Fmerges.txt "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,603 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer%2Fspecial_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,607 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer%2Ftokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,615 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/text_encoder_2%2Fconfig.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,619 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer%2Fmerges.txt "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,625 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer%2Fspecial_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,627 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/text_encoder%2Fconfig.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,629 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer%2Ftokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,761 [INFO] HTTP Request: GET https://huggingface.co/api/models/stabilityai/sdxl-turbo/xet-read-token/71153311d3dbb46851df1931d3ca6e939de83304 "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,774 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer/vocab.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,778 [INFO] HTTP Request: GET https://huggingface.co/api/models/stabilityai/sdxl-turbo/xet-read-token/71153311d3dbb46851df1931d3ca6e939de83304 "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,785 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer%2Fvocab.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,787 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2/merges.txt "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,794 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer%2Fvocab.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,796 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2%2Fmerges.txt "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,800 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2/vocab.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,801 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2/special_tokens_map.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,805 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2/tokenizer_config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,809 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2%2Fspecial_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,809 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2%2Fvocab.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,812 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2%2Ftokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,817 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2%2Fspecial_tokens_map.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,818 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/unet/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,821 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/tokenizer_2%2Ftokenizer_config.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,826 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/unet%2Fconfig.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,834 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/unet%2Fconfig.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,964 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/unet/diffusion_pytorch_model.fp16.safetensors "HTTP/1.1 302 Found"
+2026-05-23 14:02:56,975 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/vae/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:02:56,981 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/71153311d3dbb46851df1931d3ca6e939de83304/vae/diffusion_pytorch_model.fp16.safetensors "HTTP/1.1 302 Found"
+2026-05-23 14:02:56,983 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/vae%2Fconfig.json "HTTP/1.1 200 OK"
+2026-05-23 14:02:56,992 [INFO] HTTP Request: GET https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/vae%2Fconfig.json "HTTP/1.1 200 OK"
+2026-05-23 14:04:28,017 [INFO] Pipeline loaded in 92.3s
+2026-05-23 14:04:28,018 [INFO] [after pipeline load (cpu)] allocated=0.00GB reserved=0.00GB peak=0.00GB
+2026-05-23 14:04:28,018 [INFO] Moving pipeline to CUDA...
+2026-05-23 14:04:29,400 [INFO] Moved to CUDA in 1.4s
+2026-05-23 14:04:29,401 [INFO] [after pipeline to(cuda)] allocated=8.96GB reserved=9.24GB peak=8.96GB
+2026-05-23 14:04:29,401 [INFO] Loading test sketch: /home/jizaiedev2026/draw_piper/scripts/test_sketch.jpg
+2026-05-23 14:04:29,413 [INFO] [after inputs prepared] allocated=8.96GB reserved=9.24GB peak=8.96GB
+2026-05-23 14:04:29,413 [INFO] Warmup generation (1 step, discarded)...
+2026-05-23 14:04:31,363 [INFO] Warmup done in 1.95s
+2026-05-23 14:04:31,363 [INFO] [after warmup] allocated=8.97GB reserved=14.56GB peak=12.93GB
+2026-05-23 14:04:31,363 [INFO] --- Inference with 1 step(s) ---
+2026-05-23 14:04:32,855 [INFO] [after inference (1 step)] allocated=8.97GB reserved=14.56GB peak=12.93GB
+2026-05-23 14:04:32,855 [INFO] 1-step: 1.49s
+2026-05-23 14:04:33,203 [INFO] Saved output to /home/jizaiedev2026/draw_piper/logs/sdxl_output_20260523_140432_1step.png
+2026-05-23 14:04:33,203 [INFO] --- Inference with 2 step(s) ---
+2026-05-23 14:04:35,079 [INFO] [after inference (2 step)] allocated=8.97GB reserved=14.56GB peak=12.93GB
+2026-05-23 14:04:35,079 [INFO] 2-step: 1.87s
+2026-05-23 14:04:35,410 [INFO] Saved output to /home/jizaiedev2026/draw_piper/logs/sdxl_output_20260523_140435_2step.png
+2026-05-23 14:04:35,410 [INFO] --- Inference with 4 step(s) ---
+2026-05-23 14:04:38,121 [INFO] [after inference (4 step)] allocated=8.97GB reserved=14.56GB peak=12.94GB
+2026-05-23 14:04:38,121 [INFO] 4-step: 2.71s
+2026-05-23 14:04:38,503 [INFO] Saved output to /home/jizaiedev2026/draw_piper/logs/sdxl_output_20260523_140438_4step.png
+2026-05-23 14:04:38,503 [INFO] Cleanup...
+2026-05-23 14:04:38,897 [INFO] [after cleanup] allocated=0.01GB reserved=0.02GB peak=12.94GB
+2026-05-23 14:04:38,897 [INFO] ============================================================
+2026-05-23 14:04:38,897 [INFO] SUMMARY
+2026-05-23 14:04:38,897 [INFO] ============================================================
+2026-05-23 14:04:38,897 [INFO] Label                                  Alloc     Resv     Peak
+2026-05-23 14:04:38,897 [INFO] baseline                               0.00G    0.00G    0.00G
+2026-05-23 14:04:38,897 [INFO] after controlnet load (cpu)            0.00G    0.00G    0.00G
+2026-05-23 14:04:38,897 [INFO] after pipeline load (cpu)              0.00G    0.00G    0.00G
+2026-05-23 14:04:38,897 [INFO] after pipeline to(cuda)                8.96G    9.24G    8.96G
+2026-05-23 14:04:38,897 [INFO] after inputs prepared                  8.96G    9.24G    8.96G
+2026-05-23 14:04:38,897 [INFO] after warmup                           8.97G   14.56G   12.93G
+2026-05-23 14:04:38,897 [INFO] after cleanup                          0.01G    0.02G   12.94G
+2026-05-23 14:04:38,897 [INFO] 
+2026-05-23 14:04:38,897 [INFO] Inference latency:
+2026-05-23 14:04:38,897 [INFO]   1-step: 1.49s (peak=12.93GB)
+2026-05-23 14:04:38,897 [INFO]   2-step: 1.87s (peak=12.93GB)
+2026-05-23 14:04:38,897 [INFO]   4-step: 2.71s (peak=12.94GB)
+2026-05-23 14:04:38,898 [INFO] 
+2026-05-23 14:04:38,898 [INFO] Done. Compare 'after pipeline to(cuda)' value with VLM measurement
+2026-05-23 14:04:38,898 [INFO]   (VLM was 5.51GB allocated, 5.98GB peak)
+2026-05-23 14:04:38,898 [INFO]   Sum for coexistence estimate:
+2026-05-23 14:04:38,898 [INFO]   VLM(5.98) + SDXL(12.94) = 18.92GB
+2026-05-23 14:04:38,898 [INFO]   16GB budget remaining: -2.92GB

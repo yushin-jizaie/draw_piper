@@ -1,0 +1,199 @@
+2026-05-23 14:49:46,458 [INFO] ============================================================
+2026-05-23 14:49:46,458 [INFO] SDXL output post-processing experiment
+2026-05-23 14:49:46,458 [INFO] Output dir: /home/jizaiedev2026/draw_piper/logs/canny_experiment
+2026-05-23 14:49:46,458 [INFO] ============================================================
+2026-05-23 14:49:46,458 [INFO] Found 21 input images
+2026-05-23 14:49:46,458 [INFO] Processing: sdxl_output_20260523_140432_1step.png
+2026-05-23 14:49:46,563 [INFO]   01_canny_low: line_ratio=10.348%, strokes=3392
+2026-05-23 14:49:46,571 [INFO]   02_canny_mid: line_ratio=7.768%, strokes=1995
+2026-05-23 14:49:46,576 [INFO]   03_canny_high: line_ratio=6.561%, strokes=1487
+2026-05-23 14:49:46,581 [INFO]   04_canny_blur_high: line_ratio=4.449%, strokes=530
+2026-05-23 14:49:46,586 [INFO]   05_canny_strong_blur: line_ratio=3.293%, strokes=324
+2026-05-23 14:49:46,594 [INFO]   06_adaptive_thresh: line_ratio=16.272%, strokes=13598
+2026-05-23 14:49:46,598 [INFO]   07_otsu: line_ratio=22.731%, strokes=294
+2026-05-23 14:49:46,604 [INFO]   08_canny_dilate: line_ratio=17.112%, strokes=110
+2026-05-23 14:49:46,605 [INFO] Processing: sdxl_output_20260523_140435_2step.png
+2026-05-23 14:49:46,673 [INFO]   01_canny_low: line_ratio=13.631%, strokes=3456
+2026-05-23 14:49:46,679 [INFO]   02_canny_mid: line_ratio=10.050%, strokes=2205
+2026-05-23 14:49:46,684 [INFO]   03_canny_high: line_ratio=6.828%, strokes=1835
+2026-05-23 14:49:46,688 [INFO]   04_canny_blur_high: line_ratio=1.995%, strokes=239
+2026-05-23 14:49:46,692 [INFO]   05_canny_strong_blur: line_ratio=1.054%, strokes=75
+2026-05-23 14:49:46,702 [INFO]   06_adaptive_thresh: line_ratio=16.591%, strokes=24118
+2026-05-23 14:49:46,707 [INFO]   07_otsu: line_ratio=20.302%, strokes=1135
+2026-05-23 14:49:46,716 [INFO]   08_canny_dilate: line_ratio=22.407%, strokes=138
+2026-05-23 14:49:46,716 [INFO] Processing: sdxl_output_20260523_140438_4step.png
+2026-05-23 14:49:46,783 [INFO]   01_canny_low: line_ratio=11.613%, strokes=2569
+2026-05-23 14:49:46,789 [INFO]   02_canny_mid: line_ratio=8.507%, strokes=1596
+2026-05-23 14:49:46,794 [INFO]   03_canny_high: line_ratio=6.044%, strokes=1320
+2026-05-23 14:49:46,798 [INFO]   04_canny_blur_high: line_ratio=2.662%, strokes=361
+2026-05-23 14:49:46,801 [INFO]   05_canny_strong_blur: line_ratio=1.183%, strokes=83
+2026-05-23 14:49:46,809 [INFO]   06_adaptive_thresh: line_ratio=13.214%, strokes=8172
+2026-05-23 14:49:46,812 [INFO]   07_otsu: line_ratio=19.335%, strokes=680
+2026-05-23 14:49:46,818 [INFO]   08_canny_dilate: line_ratio=18.618%, strokes=292
+2026-05-23 14:49:46,818 [INFO] Processing: sdxl_output_20260523_141456_1step.png
+2026-05-23 14:49:46,886 [INFO]   01_canny_low: line_ratio=11.106%, strokes=3287
+2026-05-23 14:49:46,892 [INFO]   02_canny_mid: line_ratio=9.667%, strokes=2107
+2026-05-23 14:49:46,898 [INFO]   03_canny_high: line_ratio=8.061%, strokes=1726
+2026-05-23 14:49:46,903 [INFO]   04_canny_blur_high: line_ratio=4.992%, strokes=538
+2026-05-23 14:49:46,907 [INFO]   05_canny_strong_blur: line_ratio=3.353%, strokes=232
+2026-05-23 14:49:46,914 [INFO]   06_adaptive_thresh: line_ratio=16.380%, strokes=10009
+2026-05-23 14:49:46,918 [INFO]   07_otsu: line_ratio=31.451%, strokes=163
+2026-05-23 14:49:46,925 [INFO]   08_canny_dilate: line_ratio=21.165%, strokes=77
+2026-05-23 14:49:46,925 [INFO] Processing: sdxl_output_20260523_141458_2step.png
+2026-05-23 14:49:46,996 [INFO]   01_canny_low: line_ratio=12.474%, strokes=3619
+2026-05-23 14:49:47,002 [INFO]   02_canny_mid: line_ratio=11.280%, strokes=2824
+2026-05-23 14:49:47,008 [INFO]   03_canny_high: line_ratio=10.592%, strokes=2418
+2026-05-23 14:49:47,014 [INFO]   04_canny_blur_high: line_ratio=7.861%, strokes=878
+2026-05-23 14:49:47,018 [INFO]   05_canny_strong_blur: line_ratio=3.920%, strokes=446
+2026-05-23 14:49:47,027 [INFO]   06_adaptive_thresh: line_ratio=20.071%, strokes=18689
+2026-05-23 14:49:47,032 [INFO]   07_otsu: line_ratio=20.571%, strokes=559
+2026-05-23 14:49:47,039 [INFO]   08_canny_dilate: line_ratio=24.973%, strokes=47
+2026-05-23 14:49:47,039 [INFO] Processing: sdxl_output_20260523_141501_4step.png
+2026-05-23 14:49:47,105 [INFO]   01_canny_low: line_ratio=14.560%, strokes=3591
+2026-05-23 14:49:47,112 [INFO]   02_canny_mid: line_ratio=13.754%, strokes=2944
+2026-05-23 14:49:47,119 [INFO]   03_canny_high: line_ratio=12.379%, strokes=2758
+2026-05-23 14:49:47,125 [INFO]   04_canny_blur_high: line_ratio=6.583%, strokes=1019
+2026-05-23 14:49:47,130 [INFO]   05_canny_strong_blur: line_ratio=2.747%, strokes=304
+2026-05-23 14:49:47,139 [INFO]   06_adaptive_thresh: line_ratio=19.926%, strokes=9996
+2026-05-23 14:49:47,143 [INFO]   07_otsu: line_ratio=18.359%, strokes=1229
+2026-05-23 14:49:47,152 [INFO]   08_canny_dilate: line_ratio=30.537%, strokes=109
+2026-05-23 14:49:47,152 [INFO] Processing: sdxl_output_20260523_141512_1step.png
+2026-05-23 14:49:47,222 [INFO]   01_canny_low: line_ratio=11.416%, strokes=3212
+2026-05-23 14:49:47,228 [INFO]   02_canny_mid: line_ratio=8.416%, strokes=1847
+2026-05-23 14:49:47,233 [INFO]   03_canny_high: line_ratio=7.408%, strokes=1524
+2026-05-23 14:49:47,238 [INFO]   04_canny_blur_high: line_ratio=5.222%, strokes=753
+2026-05-23 14:49:47,242 [INFO]   05_canny_strong_blur: line_ratio=2.919%, strokes=324
+2026-05-23 14:49:47,250 [INFO]   06_adaptive_thresh: line_ratio=16.556%, strokes=11605
+2026-05-23 14:49:47,254 [INFO]   07_otsu: line_ratio=25.899%, strokes=165
+2026-05-23 14:49:47,260 [INFO]   08_canny_dilate: line_ratio=18.492%, strokes=90
+2026-05-23 14:49:47,261 [INFO] Processing: sdxl_output_20260523_141514_2step.png
+2026-05-23 14:49:47,327 [INFO]   01_canny_low: line_ratio=7.435%, strokes=839
+2026-05-23 14:49:47,332 [INFO]   02_canny_mid: line_ratio=7.210%, strokes=625
+2026-05-23 14:49:47,337 [INFO]   03_canny_high: line_ratio=7.047%, strokes=511
+2026-05-23 14:49:47,342 [INFO]   04_canny_blur_high: line_ratio=6.630%, strokes=354
+2026-05-23 14:49:47,347 [INFO]   05_canny_strong_blur: line_ratio=5.770%, strokes=432
+2026-05-23 14:49:47,353 [INFO]   06_adaptive_thresh: line_ratio=16.424%, strokes=9364
+2026-05-23 14:49:47,358 [INFO]   07_otsu: line_ratio=17.227%, strokes=90
+2026-05-23 14:49:47,363 [INFO]   08_canny_dilate: line_ratio=15.435%, strokes=48
+2026-05-23 14:49:47,363 [INFO] Processing: sdxl_output_20260523_141517_4step.png
+2026-05-23 14:49:47,429 [INFO]   01_canny_low: line_ratio=13.738%, strokes=2927
+2026-05-23 14:49:47,436 [INFO]   02_canny_mid: line_ratio=11.355%, strokes=2027
+2026-05-23 14:49:47,442 [INFO]   03_canny_high: line_ratio=8.632%, strokes=1890
+2026-05-23 14:49:47,446 [INFO]   04_canny_blur_high: line_ratio=3.779%, strokes=564
+2026-05-23 14:49:47,450 [INFO]   05_canny_strong_blur: line_ratio=1.458%, strokes=147
+2026-05-23 14:49:47,458 [INFO]   06_adaptive_thresh: line_ratio=16.301%, strokes=10376
+2026-05-23 14:49:47,462 [INFO]   07_otsu: line_ratio=15.710%, strokes=993
+2026-05-23 14:49:47,469 [INFO]   08_canny_dilate: line_ratio=24.884%, strokes=242
+2026-05-23 14:49:47,469 [INFO] Processing: sdxl_output_20260523_141833_1step.png
+2026-05-23 14:49:47,540 [INFO]   01_canny_low: line_ratio=12.909%, strokes=4046
+2026-05-23 14:49:47,547 [INFO]   02_canny_mid: line_ratio=10.426%, strokes=2694
+2026-05-23 14:49:47,553 [INFO]   03_canny_high: line_ratio=8.811%, strokes=2208
+2026-05-23 14:49:47,558 [INFO]   04_canny_blur_high: line_ratio=5.888%, strokes=831
+2026-05-23 14:49:47,563 [INFO]   05_canny_strong_blur: line_ratio=3.670%, strokes=409
+2026-05-23 14:49:47,571 [INFO]   06_adaptive_thresh: line_ratio=17.088%, strokes=10975
+2026-05-23 14:49:47,576 [INFO]   07_otsu: line_ratio=31.885%, strokes=388
+2026-05-23 14:49:47,583 [INFO]   08_canny_dilate: line_ratio=23.119%, strokes=93
+2026-05-23 14:49:47,583 [INFO] Processing: sdxl_output_20260523_141835_2step.png
+2026-05-23 14:49:47,654 [INFO]   01_canny_low: line_ratio=12.136%, strokes=2823
+2026-05-23 14:49:47,661 [INFO]   02_canny_mid: line_ratio=9.717%, strokes=1829
+2026-05-23 14:49:47,666 [INFO]   03_canny_high: line_ratio=7.660%, strokes=1487
+2026-05-23 14:49:47,671 [INFO]   04_canny_blur_high: line_ratio=4.309%, strokes=457
+2026-05-23 14:49:47,675 [INFO]   05_canny_strong_blur: line_ratio=1.951%, strokes=154
+2026-05-23 14:49:47,683 [INFO]   06_adaptive_thresh: line_ratio=14.245%, strokes=15226
+2026-05-23 14:49:47,687 [INFO]   07_otsu: line_ratio=22.554%, strokes=604
+2026-05-23 14:49:47,693 [INFO]   08_canny_dilate: line_ratio=21.480%, strokes=39
+2026-05-23 14:49:47,694 [INFO] Processing: sdxl_output_20260523_141838_4step.png
+2026-05-23 14:49:47,765 [INFO]   01_canny_low: line_ratio=13.967%, strokes=3406
+2026-05-23 14:49:47,772 [INFO]   02_canny_mid: line_ratio=12.454%, strokes=2603
+2026-05-23 14:49:47,778 [INFO]   03_canny_high: line_ratio=10.888%, strokes=2324
+2026-05-23 14:49:47,784 [INFO]   04_canny_blur_high: line_ratio=6.621%, strokes=1007
+2026-05-23 14:49:47,789 [INFO]   05_canny_strong_blur: line_ratio=3.401%, strokes=482
+2026-05-23 14:49:47,798 [INFO]   06_adaptive_thresh: line_ratio=20.126%, strokes=11094
+2026-05-23 14:49:47,803 [INFO]   07_otsu: line_ratio=17.208%, strokes=879
+2026-05-23 14:49:47,810 [INFO]   08_canny_dilate: line_ratio=27.343%, strokes=124
+2026-05-23 14:49:47,811 [INFO] Processing: sdxl_output_20260523_141849_1step.png
+2026-05-23 14:49:47,883 [INFO]   01_canny_low: line_ratio=11.342%, strokes=3444
+2026-05-23 14:49:47,890 [INFO]   02_canny_mid: line_ratio=8.956%, strokes=2012
+2026-05-23 14:49:47,895 [INFO]   03_canny_high: line_ratio=8.016%, strokes=1543
+2026-05-23 14:49:47,901 [INFO]   04_canny_blur_high: line_ratio=5.898%, strokes=659
+2026-05-23 14:49:47,905 [INFO]   05_canny_strong_blur: line_ratio=4.434%, strokes=402
+2026-05-23 14:49:47,913 [INFO]   06_adaptive_thresh: line_ratio=17.807%, strokes=10306
+2026-05-23 14:49:47,918 [INFO]   07_otsu: line_ratio=24.807%, strokes=127
+2026-05-23 14:49:47,924 [INFO]   08_canny_dilate: line_ratio=19.538%, strokes=110
+2026-05-23 14:49:47,924 [INFO] Processing: sdxl_output_20260523_141851_2step.png
+2026-05-23 14:49:47,991 [INFO]   01_canny_low: line_ratio=7.749%, strokes=1634
+2026-05-23 14:49:47,996 [INFO]   02_canny_mid: line_ratio=4.889%, strokes=822
+2026-05-23 14:49:48,000 [INFO]   03_canny_high: line_ratio=2.933%, strokes=643
+2026-05-23 14:49:48,003 [INFO]   04_canny_blur_high: line_ratio=1.359%, strokes=84
+2026-05-23 14:49:48,006 [INFO]   05_canny_strong_blur: line_ratio=0.764%, strokes=40
+2026-05-23 14:49:48,013 [INFO]   06_adaptive_thresh: line_ratio=9.298%, strokes=15974
+2026-05-23 14:49:48,017 [INFO]   07_otsu: line_ratio=23.349%, strokes=403
+2026-05-23 14:49:48,022 [INFO]   08_canny_dilate: line_ratio=10.818%, strokes=42
+2026-05-23 14:49:48,023 [INFO] Processing: sdxl_output_20260523_141854_4step.png
+2026-05-23 14:49:48,095 [INFO]   01_canny_low: line_ratio=13.379%, strokes=2993
+2026-05-23 14:49:48,102 [INFO]   02_canny_mid: line_ratio=12.095%, strokes=2245
+2026-05-23 14:49:48,109 [INFO]   03_canny_high: line_ratio=10.536%, strokes=2020
+2026-05-23 14:49:48,114 [INFO]   04_canny_blur_high: line_ratio=6.359%, strokes=943
+2026-05-23 14:49:48,119 [INFO]   05_canny_strong_blur: line_ratio=3.037%, strokes=370
+2026-05-23 14:49:48,126 [INFO]   06_adaptive_thresh: line_ratio=17.834%, strokes=6048
+2026-05-23 14:49:48,131 [INFO]   07_otsu: line_ratio=17.750%, strokes=891
+2026-05-23 14:49:48,139 [INFO]   08_canny_dilate: line_ratio=26.509%, strokes=208
+2026-05-23 14:49:48,139 [INFO] Processing: sdxl_output_20260523_144702_1step.png
+2026-05-23 14:49:48,210 [INFO]   01_canny_low: line_ratio=10.013%, strokes=3192
+2026-05-23 14:49:48,216 [INFO]   02_canny_mid: line_ratio=8.128%, strokes=2059
+2026-05-23 14:49:48,222 [INFO]   03_canny_high: line_ratio=6.944%, strokes=1677
+2026-05-23 14:49:48,227 [INFO]   04_canny_blur_high: line_ratio=4.539%, strokes=633
+2026-05-23 14:49:48,232 [INFO]   05_canny_strong_blur: line_ratio=2.994%, strokes=307
+2026-05-23 14:49:48,240 [INFO]   06_adaptive_thresh: line_ratio=14.865%, strokes=10511
+2026-05-23 14:49:48,243 [INFO]   07_otsu: line_ratio=25.622%, strokes=189
+2026-05-23 14:49:48,249 [INFO]   08_canny_dilate: line_ratio=17.977%, strokes=85
+2026-05-23 14:49:48,250 [INFO] Processing: sdxl_output_20260523_144704_2step.png
+2026-05-23 14:49:48,318 [INFO]   01_canny_low: line_ratio=11.015%, strokes=2604
+2026-05-23 14:49:48,324 [INFO]   02_canny_mid: line_ratio=8.983%, strokes=1687
+2026-05-23 14:49:48,330 [INFO]   03_canny_high: line_ratio=8.069%, strokes=1324
+2026-05-23 14:49:48,335 [INFO]   04_canny_blur_high: line_ratio=6.117%, strokes=683
+2026-05-23 14:49:48,340 [INFO]   05_canny_strong_blur: line_ratio=3.506%, strokes=327
+2026-05-23 14:49:48,349 [INFO]   06_adaptive_thresh: line_ratio=18.388%, strokes=20835
+2026-05-23 14:49:48,354 [INFO]   07_otsu: line_ratio=17.684%, strokes=469
+2026-05-23 14:49:48,360 [INFO]   08_canny_dilate: line_ratio=19.569%, strokes=98
+2026-05-23 14:49:48,361 [INFO] Processing: sdxl_output_20260523_144707_4step.png
+2026-05-23 14:49:48,431 [INFO]   01_canny_low: line_ratio=12.948%, strokes=3196
+2026-05-23 14:49:48,438 [INFO]   02_canny_mid: line_ratio=11.281%, strokes=2426
+2026-05-23 14:49:48,444 [INFO]   03_canny_high: line_ratio=9.740%, strokes=2119
+2026-05-23 14:49:48,449 [INFO]   04_canny_blur_high: line_ratio=5.329%, strokes=770
+2026-05-23 14:49:48,453 [INFO]   05_canny_strong_blur: line_ratio=2.218%, strokes=258
+2026-05-23 14:49:48,461 [INFO]   06_adaptive_thresh: line_ratio=17.169%, strokes=10037
+2026-05-23 14:49:48,466 [INFO]   07_otsu: line_ratio=16.709%, strokes=1253
+2026-05-23 14:49:48,473 [INFO]   08_canny_dilate: line_ratio=24.862%, strokes=259
+2026-05-23 14:49:48,473 [INFO] Processing: sdxl_output_20260523_144718_1step.png
+2026-05-23 14:49:48,547 [INFO]   01_canny_low: line_ratio=12.420%, strokes=3978
+2026-05-23 14:49:48,553 [INFO]   02_canny_mid: line_ratio=9.219%, strokes=2400
+2026-05-23 14:49:48,559 [INFO]   03_canny_high: line_ratio=7.746%, strokes=1861
+2026-05-23 14:49:48,564 [INFO]   04_canny_blur_high: line_ratio=4.995%, strokes=729
+2026-05-23 14:49:48,569 [INFO]   05_canny_strong_blur: line_ratio=3.430%, strokes=383
+2026-05-23 14:49:48,577 [INFO]   06_adaptive_thresh: line_ratio=17.588%, strokes=11028
+2026-05-23 14:49:48,581 [INFO]   07_otsu: line_ratio=26.429%, strokes=277
+2026-05-23 14:49:48,587 [INFO]   08_canny_dilate: line_ratio=20.393%, strokes=115
+2026-05-23 14:49:48,588 [INFO] Processing: sdxl_output_20260523_144720_2step.png
+2026-05-23 14:49:48,655 [INFO]   01_canny_low: line_ratio=15.375%, strokes=3968
+2026-05-23 14:49:48,662 [INFO]   02_canny_mid: line_ratio=11.968%, strokes=2472
+2026-05-23 14:49:48,668 [INFO]   03_canny_high: line_ratio=8.353%, strokes=2095
+2026-05-23 14:49:48,672 [INFO]   04_canny_blur_high: line_ratio=2.554%, strokes=260
+2026-05-23 14:49:48,676 [INFO]   05_canny_strong_blur: line_ratio=1.111%, strokes=79
+2026-05-23 14:49:48,685 [INFO]   06_adaptive_thresh: line_ratio=19.623%, strokes=23836
+2026-05-23 14:49:48,690 [INFO]   07_otsu: line_ratio=37.284%, strokes=1112
+2026-05-23 14:49:48,696 [INFO]   08_canny_dilate: line_ratio=26.859%, strokes=35
+2026-05-23 14:49:48,697 [INFO] Processing: sdxl_output_20260523_144723_4step.png
+2026-05-23 14:49:48,766 [INFO]   01_canny_low: line_ratio=14.947%, strokes=3168
+2026-05-23 14:49:48,773 [INFO]   02_canny_mid: line_ratio=11.211%, strokes=2060
+2026-05-23 14:49:48,778 [INFO]   03_canny_high: line_ratio=7.569%, strokes=1736
+2026-05-23 14:49:48,782 [INFO]   04_canny_blur_high: line_ratio=3.060%, strokes=486
+2026-05-23 14:49:48,786 [INFO]   05_canny_strong_blur: line_ratio=1.081%, strokes=121
+2026-05-23 14:49:48,794 [INFO]   06_adaptive_thresh: line_ratio=16.064%, strokes=9602
+2026-05-23 14:49:48,798 [INFO]   07_otsu: line_ratio=16.647%, strokes=727
+2026-05-23 14:49:48,805 [INFO]   08_canny_dilate: line_ratio=24.802%, strokes=179
+2026-05-23 14:49:48,806 [INFO] Summary written to: /home/jizaiedev2026/draw_piper/logs/canny_experiment/summary.md
+2026-05-23 14:49:48,806 [INFO] Done.
+2026-05-23 14:49:48,806 [INFO] 
+2026-05-23 14:49:48,806 [INFO] Next: visually compare each canny_experiment/<image>/*.png
+2026-05-23 14:49:48,806 [INFO] Pick the best (method, image) combination and verify it's vectorizable.

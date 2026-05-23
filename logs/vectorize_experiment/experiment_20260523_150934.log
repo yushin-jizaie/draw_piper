@@ -1,0 +1,81 @@
+2026-05-23 15:09:34,560 [INFO] ============================================================
+2026-05-23 15:09:34,560 [INFO] Vectorize prelim experiment
+2026-05-23 15:09:34,560 [INFO] Output: /home/jizaiedev2026/draw_piper/logs/vectorize_experiment
+2026-05-23 15:09:34,560 [INFO] ============================================================
+2026-05-23 15:09:34,560 [INFO] === Processing: 141838_4step_k51 ===
+2026-05-23 15:09:34,560 [INFO]   Input: /home/jizaiedev2026/draw_piper/logs/diff_experiment/sdxl_output_20260523_141838_4step/04_diff_k51.png
+2026-05-23 15:09:34,581 [INFO]   Initial components: 479
+2026-05-23 15:09:34,698 [INFO]   Filter min_pixels=10: kept 452 components
+2026-05-23 15:09:34,774 [INFO]   Filter min_pixels=30: kept 356 components
+2026-05-23 15:09:34,833 [INFO]   Filter min_pixels=50: kept 251 components
+2026-05-23 15:09:34,857 [INFO]   Filter min_pixels=100: kept 91 components
+2026-05-23 15:09:34,864 [INFO]   Filter min_pixels=200: kept 14 components
+2026-05-23 15:09:34,869 [INFO]   After CLOSE: 214 components
+2026-05-23 15:09:35,062 [INFO]   After skeletonize: 214 components
+2026-05-23 15:09:35,089 [INFO]   Polylines eps=1.0: 223 strokes, 4160 points, total_length=47546px
+2026-05-23 15:09:35,104 [INFO]   Polylines eps=2.0: 223 strokes, 2389 points, total_length=46976px
+2026-05-23 15:09:35,117 [INFO]   Polylines eps=3.0: 223 strokes, 1817 points, total_length=46557px
+2026-05-23 15:09:35,127 [INFO]   Polylines eps=5.0: 223 strokes, 1373 points, total_length=45868px
+2026-05-23 15:09:35,143 [INFO]   Final eps=2.0, min_len=3: 223 strokes, 2389 points, total_length=46976px
+2026-05-23 15:09:35,157 [INFO]   Final eps=2.0, min_len=5: 204 strokes, 2329 points, total_length=44685px
+2026-05-23 15:09:35,170 [INFO]   Final eps=2.0, min_len=10: 100 strokes, 1609 points, total_length=31894px
+2026-05-23 15:09:35,177 [INFO]   Final eps=2.0, min_len=20: 21 strokes, 594 points, total_length=14438px
+2026-05-23 15:09:35,177 [INFO] === Processing: 141517_4step_k51 ===
+2026-05-23 15:09:35,177 [INFO]   Input: /home/jizaiedev2026/draw_piper/logs/diff_experiment/sdxl_output_20260523_141517_4step/04_diff_k51.png
+2026-05-23 15:09:35,183 [INFO]   Initial components: 147
+2026-05-23 15:09:35,216 [INFO]   Filter min_pixels=10: kept 142 components
+2026-05-23 15:09:35,244 [INFO]   Filter min_pixels=30: kept 119 components
+2026-05-23 15:09:35,270 [INFO]   Filter min_pixels=50: kept 97 components
+2026-05-23 15:09:35,285 [INFO]   Filter min_pixels=100: kept 49 components
+2026-05-23 15:09:35,291 [INFO]   Filter min_pixels=200: kept 15 components
+2026-05-23 15:09:35,294 [INFO]   After CLOSE: 92 components
+2026-05-23 15:09:35,311 [INFO]   After skeletonize: 92 components
+2026-05-23 15:09:35,322 [INFO]   Polylines eps=1.0: 92 strokes, 1827 points, total_length=24624px
+2026-05-23 15:09:35,330 [INFO]   Polylines eps=2.0: 92 strokes, 980 points, total_length=24415px
+2026-05-23 15:09:35,336 [INFO]   Polylines eps=3.0: 92 strokes, 744 points, total_length=24297px
+2026-05-23 15:09:35,342 [INFO]   Polylines eps=5.0: 92 strokes, 557 points, total_length=24023px
+2026-05-23 15:09:35,349 [INFO]   Final eps=2.0, min_len=3: 92 strokes, 980 points, total_length=24415px
+2026-05-23 15:09:35,356 [INFO]   Final eps=2.0, min_len=5: 85 strokes, 958 points, total_length=23660px
+2026-05-23 15:09:35,362 [INFO]   Final eps=2.0, min_len=10: 39 strokes, 651 points, total_length=16345px
+2026-05-23 15:09:35,366 [INFO]   Final eps=2.0, min_len=20: 7 strokes, 213 points, total_length=6247px
+2026-05-23 15:09:35,366 [INFO] === Processing: 144723_4step_k51 ===
+2026-05-23 15:09:35,366 [INFO]   Input: /home/jizaiedev2026/draw_piper/logs/diff_experiment/sdxl_output_20260523_144723_4step/04_diff_k51.png
+2026-05-23 15:09:35,372 [INFO]   Initial components: 121
+2026-05-23 15:09:35,398 [INFO]   Filter min_pixels=10: kept 119 components
+2026-05-23 15:09:35,422 [INFO]   Filter min_pixels=30: kept 106 components
+2026-05-23 15:09:35,441 [INFO]   Filter min_pixels=50: kept 76 components
+2026-05-23 15:09:35,451 [INFO]   Filter min_pixels=100: kept 39 components
+2026-05-23 15:09:35,456 [INFO]   Filter min_pixels=200: kept 9 components
+2026-05-23 15:09:35,458 [INFO]   After CLOSE: 68 components
+2026-05-23 15:09:35,473 [INFO]   After skeletonize: 68 components
+2026-05-23 15:09:35,482 [INFO]   Polylines eps=1.0: 68 strokes, 1334 points, total_length=17392px
+2026-05-23 15:09:35,488 [INFO]   Polylines eps=2.0: 68 strokes, 731 points, total_length=17228px
+2026-05-23 15:09:35,493 [INFO]   Polylines eps=3.0: 68 strokes, 538 points, total_length=17120px
+2026-05-23 15:09:35,498 [INFO]   Polylines eps=5.0: 68 strokes, 430 points, total_length=17009px
+2026-05-23 15:09:35,505 [INFO]   Final eps=2.0, min_len=3: 68 strokes, 731 points, total_length=17228px
+2026-05-23 15:09:35,512 [INFO]   Final eps=2.0, min_len=5: 60 strokes, 705 points, total_length=16103px
+2026-05-23 15:09:35,518 [INFO]   Final eps=2.0, min_len=10: 26 strokes, 478 points, total_length=10547px
+2026-05-23 15:09:35,522 [INFO]   Final eps=2.0, min_len=20: 8 strokes, 236 points, total_length=5674px
+2026-05-23 15:09:35,522 [INFO] === Processing: 141851_2step_k51 ===
+2026-05-23 15:09:35,522 [INFO]   Input: /home/jizaiedev2026/draw_piper/logs/diff_experiment/sdxl_output_20260523_141851_2step/04_diff_k51.png
+2026-05-23 15:09:35,528 [INFO]   Initial components: 38
+2026-05-23 15:09:35,539 [INFO]   Filter min_pixels=10: kept 38 components
+2026-05-23 15:09:35,549 [INFO]   Filter min_pixels=30: kept 36 components
+2026-05-23 15:09:35,558 [INFO]   Filter min_pixels=50: kept 32 components
+2026-05-23 15:09:35,565 [INFO]   Filter min_pixels=100: kept 23 components
+2026-05-23 15:09:35,570 [INFO]   Filter min_pixels=200: kept 10 components
+2026-05-23 15:09:35,572 [INFO]   After CLOSE: 29 components
+2026-05-23 15:09:35,585 [INFO]   After skeletonize: 29 components
+2026-05-23 15:09:35,591 [INFO]   Polylines eps=1.0: 29 strokes, 705 points, total_length=11326px
+2026-05-23 15:09:35,595 [INFO]   Polylines eps=2.0: 29 strokes, 398 points, total_length=11254px
+2026-05-23 15:09:35,600 [INFO]   Polylines eps=3.0: 29 strokes, 301 points, total_length=11210px
+2026-05-23 15:09:35,604 [INFO]   Polylines eps=5.0: 29 strokes, 224 points, total_length=11142px
+2026-05-23 15:09:35,608 [INFO]   Final eps=2.0, min_len=3: 29 strokes, 398 points, total_length=11254px
+2026-05-23 15:09:35,613 [INFO]   Final eps=2.0, min_len=5: 29 strokes, 398 points, total_length=11254px
+2026-05-23 15:09:35,617 [INFO]   Final eps=2.0, min_len=10: 17 strokes, 314 points, total_length=8941px
+2026-05-23 15:09:35,621 [INFO]   Final eps=2.0, min_len=20: 5 strokes, 165 points, total_length=5465px
+2026-05-23 15:09:35,621 [INFO] Summary written to: /home/jizaiedev2026/draw_piper/logs/vectorize_experiment/summary.md
+2026-05-23 15:09:35,621 [INFO] 
+2026-05-23 15:09:35,621 [INFO] 推奨確認順序:
+2026-05-23 15:09:35,621 [INFO]   各 vectorize_experiment/<label>/06_final_eps2_minlen10.png を比較
+2026-05-23 15:09:35,621 [INFO]   strokes が 30〜150、絵として認識できる線が残ってればOK

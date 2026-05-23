@@ -1,0 +1,68 @@
+2026-05-23 14:14:47,417 [INFO] ============================================================
+2026-05-23 14:14:47,417 [INFO] SDXL Turbo + Lineart ControlNet VRAM Measurement
+2026-05-23 14:14:47,417 [INFO] Log file: /home/jizaiedev2026/draw_piper/logs/sdxl_vram_20260523_141447.log
+2026-05-23 14:14:47,417 [INFO] ============================================================
+2026-05-23 14:14:47,545 [INFO] GPU: NVIDIA RTX 2000 Ada Generation
+2026-05-23 14:14:47,545 [INFO] Total VRAM: 15.57GB
+2026-05-23 14:14:47,545 [INFO] torch: 2.12.0+cu130
+2026-05-23 14:14:47,545 [INFO] [baseline] allocated=0.00GB reserved=0.00GB peak=0.00GB
+2026-05-23 14:14:47,545 [INFO] Importing diffusers...
+2026-05-23 14:14:50,277 [INFO] diffusers: 0.38.0
+2026-05-23 14:14:50,277 [INFO] Loading Lineart ControlNet (SDXL用)...
+2026-05-23 14:14:50,496 [INFO] HTTP Request: HEAD https://huggingface.co/TheMistoAI/MistoLine/resolve/main/config.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:14:50,497 [WARNING] Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+2026-05-23 14:14:50,506 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/TheMistoAI/MistoLine/1d9d0b3d48b295cf70d80a0f839a3055672f8393/config.json "HTTP/1.1 200 OK"
+2026-05-23 14:14:50,726 [INFO] HTTP Request: HEAD https://huggingface.co/TheMistoAI/MistoLine/resolve/1d9d0b3d48b295cf70d80a0f839a3055672f8393/diffusion_pytorch_model.safetensors.index.fp16.json "HTTP/1.1 404 Not Found"
+2026-05-23 14:14:50,895 [INFO] HTTP Request: HEAD https://huggingface.co/TheMistoAI/MistoLine/resolve/1d9d0b3d48b295cf70d80a0f839a3055672f8393/diffusion_pytorch_model.safetensors.fp16.index.json "HTTP/1.1 404 Not Found"
+2026-05-23 14:14:50,963 [INFO] ControlNet loaded in 0.7s
+2026-05-23 14:14:50,964 [INFO] [after controlnet load (cpu)] allocated=0.00GB reserved=0.00GB peak=0.00GB
+2026-05-23 14:14:50,964 [INFO] Loading SDXL Turbo pipeline with ControlNet...
+2026-05-23 14:14:51,184 [INFO] HTTP Request: GET https://huggingface.co/api/models/stabilityai/sdxl-turbo "HTTP/1.1 200 OK"
+2026-05-23 14:14:51,354 [INFO] HTTP Request: HEAD https://huggingface.co/stabilityai/sdxl-turbo/resolve/main/model_index.json "HTTP/1.1 307 Temporary Redirect"
+2026-05-23 14:14:51,362 [INFO] HTTP Request: HEAD https://huggingface.co/api/resolve-cache/models/stabilityai/sdxl-turbo/71153311d3dbb46851df1931d3ca6e939de83304/model_index.json "HTTP/1.1 200 OK"
+2026-05-23 14:14:51,774 [INFO] Pipeline loaded in 0.8s
+2026-05-23 14:14:51,775 [INFO] [after pipeline load (cpu)] allocated=0.00GB reserved=0.00GB peak=0.00GB
+2026-05-23 14:14:51,775 [INFO] Moving pipeline to CUDA...
+2026-05-23 14:14:53,184 [INFO] Moved to CUDA in 1.4s
+2026-05-23 14:14:53,184 [INFO] [after pipeline to(cuda)] allocated=8.96GB reserved=9.24GB peak=8.96GB
+2026-05-23 14:14:53,184 [INFO] Loading test sketch: /home/jizaiedev2026/draw_piper/scripts/test_sketch.jpg
+2026-05-23 14:14:53,197 [INFO] [after inputs prepared] allocated=8.96GB reserved=9.24GB peak=8.96GB
+2026-05-23 14:14:53,198 [INFO] Warmup generation (1 step, discarded)...
+2026-05-23 14:14:55,025 [INFO] Warmup done in 1.83s
+2026-05-23 14:14:55,026 [INFO] [after warmup] allocated=8.97GB reserved=14.56GB peak=12.93GB
+2026-05-23 14:14:55,026 [INFO] --- Inference with 1 step(s) ---
+2026-05-23 14:14:56,489 [INFO] [after inference (1 step)] allocated=8.97GB reserved=14.56GB peak=12.93GB
+2026-05-23 14:14:56,489 [INFO] 1-step: 1.46s
+2026-05-23 14:14:56,802 [INFO] Saved output to /home/jizaiedev2026/draw_piper/logs/sdxl_output_20260523_141456_1step.png
+2026-05-23 14:14:56,802 [INFO] --- Inference with 2 step(s) ---
+2026-05-23 14:14:58,645 [INFO] [after inference (2 step)] allocated=8.97GB reserved=14.56GB peak=12.93GB
+2026-05-23 14:14:58,645 [INFO] 2-step: 1.84s
+2026-05-23 14:14:58,959 [INFO] Saved output to /home/jizaiedev2026/draw_piper/logs/sdxl_output_20260523_141458_2step.png
+2026-05-23 14:14:58,959 [INFO] --- Inference with 4 step(s) ---
+2026-05-23 14:15:01,611 [INFO] [after inference (4 step)] allocated=8.97GB reserved=14.56GB peak=12.94GB
+2026-05-23 14:15:01,611 [INFO] 4-step: 2.65s
+2026-05-23 14:15:01,938 [INFO] Saved output to /home/jizaiedev2026/draw_piper/logs/sdxl_output_20260523_141501_4step.png
+2026-05-23 14:15:01,938 [INFO] Cleanup...
+2026-05-23 14:15:02,331 [INFO] [after cleanup] allocated=0.01GB reserved=0.02GB peak=12.94GB
+2026-05-23 14:15:02,331 [INFO] ============================================================
+2026-05-23 14:15:02,331 [INFO] SUMMARY
+2026-05-23 14:15:02,331 [INFO] ============================================================
+2026-05-23 14:15:02,331 [INFO] Label                                  Alloc     Resv     Peak
+2026-05-23 14:15:02,331 [INFO] baseline                               0.00G    0.00G    0.00G
+2026-05-23 14:15:02,331 [INFO] after controlnet load (cpu)            0.00G    0.00G    0.00G
+2026-05-23 14:15:02,331 [INFO] after pipeline load (cpu)              0.00G    0.00G    0.00G
+2026-05-23 14:15:02,331 [INFO] after pipeline to(cuda)                8.96G    9.24G    8.96G
+2026-05-23 14:15:02,331 [INFO] after inputs prepared                  8.96G    9.24G    8.96G
+2026-05-23 14:15:02,331 [INFO] after warmup                           8.97G   14.56G   12.93G
+2026-05-23 14:15:02,331 [INFO] after cleanup                          0.01G    0.02G   12.94G
+2026-05-23 14:15:02,331 [INFO] 
+2026-05-23 14:15:02,331 [INFO] Inference latency:
+2026-05-23 14:15:02,331 [INFO]   1-step: 1.46s (peak=12.93GB)
+2026-05-23 14:15:02,331 [INFO]   2-step: 1.84s (peak=12.93GB)
+2026-05-23 14:15:02,331 [INFO]   4-step: 2.65s (peak=12.94GB)
+2026-05-23 14:15:02,331 [INFO] 
+2026-05-23 14:15:02,331 [INFO] Done. Compare 'after pipeline to(cuda)' value with VLM measurement
+2026-05-23 14:15:02,331 [INFO]   (VLM was 5.51GB allocated, 5.98GB peak)
+2026-05-23 14:15:02,331 [INFO]   Sum for coexistence estimate:
+2026-05-23 14:15:02,331 [INFO]   VLM(5.98) + SDXL(12.94) = 18.92GB
+2026-05-23 14:15:02,331 [INFO]   16GB budget remaining: -2.92GB
