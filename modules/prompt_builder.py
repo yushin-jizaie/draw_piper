@@ -13,6 +13,8 @@ See: docs/20260522_2330_drawing_system_v05_design.md
 
 from __future__ import annotations
 
+import re
+
 from modules.topic import TopicGuess, UNKNOWN_SUBJECT
 
 
@@ -47,8 +49,14 @@ def build_prompt(guess: TopicGuess, confidence_threshold: float = 0.3) -> str:
 
 
 def _normalize_spaces(s: str) -> str:
-    """連続する空白を1つにまとめる (en が空のとき '  ' ができるので)。"""
-    return " ".join(s.split())
+    """連続する空白を1つにまとめ、カンマ直前の空白も除去する。
+
+    en が空 (UNKNOWN_LOCATION/UNKNOWN_ACTION) のとき
+    "{subject_en}  , ..." のようにカンマ直前に空白が残るため、
+    それを潰してから空白圧縮する。
+    """
+    s = re.sub(r"\s+,", ",", s)   # カンマ前の空白を除去
+    return " ".join(s.split())    # 連続空白を 1 つに
 
 
 # --- スモークテスト ---------------------------------------------------------

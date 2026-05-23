@@ -1,7 +1,7 @@
-"""VLM → prompt_builder → ImageGenerator つなぎこみテスト
+"""VLM → prompt_builder → ImageGenerator → Vectorizer つなぎこみテスト
 
-Step C の最後の未解決事項 「VLM + SDXL Turbo の組み合わせを実機で通す」を、
-段階的ロード/アンロード方式で実行可能にする統合スクリプト。
+Step C/D の確定後、VLM (Qwen2.5-VL-7B) → SDXL Turbo + MistoLine →
+Vectorizer の直列パイプラインを 1 サイクルとして実行する。
 
 設計の選択:
   v0.4 設計書では「同時常駐 + ControlNet CPU offload」が想定されていたが、
@@ -20,7 +20,7 @@ Step C の最後の未解決事項 「VLM + SDXL Turbo の組み合わせを実�
     5. ImageGenerator.load()  → peak ~9GB (warmup後 ~13GB)
     6. ImageGenerator.generate
     7. ImageGenerator.unload()
-    8. [後続: vectorize + 軌道変換]
+    8. Vectorizer.vectorize() (CPU、GPU 不使用)
 
 使い方:
   cd ~/draw_piper
@@ -30,6 +30,8 @@ Step C の最後の未解決事項 「VLM + SDXL Turbo の組み合わせを実�
 出力:
   - 標準出力 + logs/vlm_to_image_YYYYMMDD_HHMMSS.log にトレース
   - logs/vlm_to_image_YYYYMMDD_HHMMSS/cycle_NN/ に各サイクルの中間ファイル
+    (vlm_raw.txt, topic_guess.json, prompt.txt, generated.png,
+     strokes.json, vec_debug/, timing.json)
 """
 
 from __future__ import annotations
@@ -56,6 +58,7 @@ from modules.vlm import VLM  # noqa: E402
 from modules.prompt_builder import build_prompt  # noqa: E402
 from modules.image_gen import ImageGenerator  # noqa: E402
 from modules.topic import TopicGuess  # noqa: E402
+from modules.vectorizer import Vectorizer  # noqa: E402
 
 
 def setup_logging(log_dir: Path) -> tuple[logging.Logger, Path]:
@@ -118,6 +121,7 @@ def run_one_cycle(
     log: logging.Logger,
     vlm: VLM,
     image_gen: ImageGenerator,
+    vectorizer: Vectorizer,
     sdxl_steps: int,
     seed,
 ) -> dict:
@@ -211,6 +215,39 @@ def run_one_cycle(
     timing["image_gen_unload_s"] = time.time() - t0
     timing["snapshots"].append(gpu_mem_snapshot("after image_gen unload", log))
 
+    log.info("---- STAGE 9: Vectorizer (CPU, no GPU load) ----")
+    t0 = time.time()
+    vec_result = vectorizer.vectorize(
+        generated_image=generated,
+        user_image=in_copy,
+        debug_dir=cycle_dir / "vec_debug",
+    )
+    timing["vectorize_s"] = time.time() - t0
+    timing["snapshots"].append(gpu_mem_snapshot("after vectorize", log))
+
+    log.info(f"  strokes        : {vec_result.n_strokes}")
+    log.info(f"  points         : {vec_result.n_points}")
+    log.info(f"  total_length_px: {vec_result.total_length_px:.1f}")
+    log.info(f"  image_shape    : {vec_result.image_shape}")
+
+    # ピクセル単位の strokes を JSON で保存 (mm 変換は Step B キャリブ後)
+    strokes_payload = {
+        "image_shape": list(vec_result.image_shape),
+        "n_strokes": vec_result.n_strokes,
+        "n_points": vec_result.n_points,
+        "total_length_px": vec_result.total_length_px,
+        "strokes": [
+            [[float(x), float(y)] for (x, y) in stroke]
+            for stroke in vec_result.strokes
+        ],
+        "diagnostics": Vectorizer._diagnostics_to_jsonable(vec_result.diagnostics),
+    }
+    (cycle_dir / "strokes.json").write_text(
+        json.dumps(strokes_payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    log.info(f"  saved {cycle_dir / 'strokes.json'}")
+
     (cycle_dir / "timing.json").write_text(
         json.dumps(timing, ensure_ascii=False, indent=2),
         encoding="utf-8",
@@ -221,7 +258,7 @@ def run_one_cycle(
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="VLM + prompt_builder + ImageGenerator 直列パイプライン統合テスト"
+        description="VLM + prompt_builder + ImageGenerator + Vectorizer 直列パイプライン統合テスト"
     )
     parser.add_argument(
         "--sketch",
@@ -238,7 +275,7 @@ def main() -> int:
     log, log_file = setup_logging(args.log_dir)
 
     log.info("=" * 60)
-    log.info("VLM → prompt_builder → ImageGenerator つなぎこみテスト")
+    log.info("VLM → prompt_builder → ImageGenerator → Vectorizer つなぎこみテスト")
     log.info(f"Log: {log_file}")
     log.info("=" * 60)
 
@@ -263,6 +300,7 @@ def main() -> int:
 
     vlm = VLM(verbose=True)
     image_gen = ImageGenerator(verbose=True, num_inference_steps=args.steps)
+    vectorizer = Vectorizer(verbose=True)
 
     run_root = args.log_dir / f"vlm_to_image_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     run_root.mkdir(parents=True, exist_ok=True)
@@ -280,6 +318,7 @@ def main() -> int:
             log=log,
             vlm=vlm,
             image_gen=image_gen,
+            vectorizer=vectorizer,
             sdxl_steps=args.steps,
             seed=args.seed,
         )
@@ -299,6 +338,7 @@ def main() -> int:
             "image_gen_warmup_s",
             "image_gen_generate_s",
             "image_gen_unload_s",
+            "vectorize_s",
         ):
             if k in t:
                 log.info(f"  {k:<24}: {t[k]:.2f} s")
