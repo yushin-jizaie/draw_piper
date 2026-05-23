@@ -12,7 +12,7 @@
 | 項目 | 値 |
 |------|-----|
 | マイルストーン | **M10 — drag-teach キャンバスキャリブレーション実機成功(壁面描画スレッド)** |
-| コミット | `<this commit>` |
+| コミット | `221f0fb` |
 | 戻り方 | `git checkout <this commit>`(または最新 `main`) |
 | 正常の確認 | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X |
 
@@ -99,7 +99,7 @@
               │                 完全に迂回。1 回の電源リセット消費前提で運用
               │           ┗━ 復旧先 ▶ M10
               │
-05-23 18:12   ● M10 drag-teach キャンバスキャリブ実機成功 ★★ 現在地 ★★  [<commit>]
+05-23 18:12   ● M10 drag-teach キャンバスキャリブ実機成功 ★★ 現在地 ★★  [221f0fb]
                      └ MasterSlaveConfig(0xFA) + candump subprocess + URDF FK で
                        31 点記録、平面 RMS 3.82mm、Y[-97,+77] × Z[+157,+464]、
                        centroid X=204.3 Y=-2.8 Z=299.7、normal ≈ -X(垂直壁)。
@@ -124,7 +124,7 @@
 | M7 | 2026-05-22 19:04 | robot.py にパネル座標層を一般化（垂直パネル対応、mock 検証） | `07311e6` | `run_draw_test.py` mock 完走（非破壊）、`Robot(mock=True)` がパネル YAML をロード |
 | M8 | 2026-05-23 16:15 | VLM ↔ ImageGenerator つなぎこみ(段階的スワップ実証) | `41b8221` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各サイクル末で `allocated=0.01GB`(リーク無し)、ピーク 12.93GB |
 | M9 | 2026-05-23 17:10 | フルパス統合 + prompt 整形 (VLM → prompt_builder → ImageGen → Vectorizer) | `f01a91a` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 `cycle_NN/strokes.json` で n_strokes が 180-220、`cycle_NN/vec_debug/06_strokes.png` がロボット線画として認識可能 |
-| M10 | 2026-05-23 18:12 | drag-teach キャンバスキャリブ実機成功(壁面描画スレッド) | `<this commit>` | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X 方向 |
+| M10 | 2026-05-23 18:12 | drag-teach キャンバスキャリブ実機成功(壁面描画スレッド) | `221f0fb` | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X 方向 |
 
 ---
 
