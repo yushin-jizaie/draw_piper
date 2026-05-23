@@ -1,0 +1,9 @@
+diffusers>=0.30.0
+controlnet-aux>=0.0.7
+safetensors
+pillow
+# 以下は VLM 計測時に導入済み（再掲、pip install 時に no-op）:
+# torch
+# torchvision
+# transformers
+# accelerate
