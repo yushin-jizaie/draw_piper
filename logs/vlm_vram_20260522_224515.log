@@ -1,0 +1,32 @@
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Device : NVIDIA RTX 2000 Ada Generation
+Total  : 15.58GB
+Torch  : 2.12.0+cu130
+
+[baseline                ] allocated= 0.00GB  reserved= 0.00GB  peak= 0.00GB
+Fetching 5 files:   0%|          | 0/5 [00:00<?, ?it/s]Fetching 5 files:  20%|██        | 1/5 [02:19<09:16, 139.22s/it]Fetching 5 files:  40%|████      | 2/5 [02:31<03:14, 64.76s/it] Fetching 5 files:  80%|████████  | 4/5 [02:36<00:25, 25.49s/it]Fetching 5 files: 100%|██████████| 5/5 [02:36<00:00, 31.22s/it]
+Loading weights:   0%|          | 0/729 [00:00<?, ?it/s]Loading weights:   0%|          | 1/729 [00:00<01:32,  7.91it/s]Loading weights:   0%|          | 2/729 [00:00<01:23,  8.72it/s]/home/jizaiedev2026/draw_piper/venv/lib/python3.10/site-packages/bitsandbytes/backends/cuda/ops.py:213: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+Loading weights:   2%|▏         | 16/729 [00:00<00:11, 60.99it/s]Loading weights:   5%|▌         | 40/729 [00:00<00:05, 120.27it/s]Loading weights:   9%|▉         | 64/729 [00:00<00:04, 154.78it/s]Loading weights:  12%|█▏        | 88/729 [00:00<00:03, 175.18it/s]Loading weights:  15%|█▌        | 112/729 [00:00<00:03, 187.32it/s]Loading weights:  19%|█▊        | 136/729 [00:00<00:03, 195.46it/s]Loading weights:  22%|██▏       | 160/729 [00:01<00:02, 201.51it/s]Loading weights:  25%|██▌       | 184/729 [00:01<00:02, 205.05it/s]Loading weights:  29%|██▊       | 208/729 [00:01<00:02, 209.08it/s]Loading weights:  32%|███▏      | 231/729 [00:01<00:02, 214.94it/s]Loading weights:  35%|███▍      | 253/729 [00:01<00:02, 210.01it/s]Loading weights:  38%|███▊      | 275/729 [00:01<00:02, 207.62it/s]Loading weights:  41%|████      | 296/729 [00:01<00:02, 204.03it/s]Loading weights:  44%|████▎     | 318/729 [00:01<00:02, 200.48it/s]Loading weights:  54%|█████▍    | 393/729 [00:01<00:00, 354.37it/s]Loading weights:  77%|███████▋  | 563/729 [00:01<00:00, 739.24it/s]Loading weights: 100%|█████████▉| 728/729 [00:02<00:00, 992.83it/s]Loading weights: 100%|██████████| 729/729 [00:02<00:00, 349.33it/s]
+/home/jizaiedev2026/draw_piper/venv/lib/python3.10/site-packages/bitsandbytes/backends/cuda/ops.py:468: FutureWarning: _check_is_size will be removed in a future PyTorch release along with guard_size_oblivious.     Use _check(i >= 0) instead.
+  torch._check_is_size(blocksize)
+
+model load: 166.2s
+[after model load        ] allocated= 5.51GB  reserved= 5.61GB  peak= 5.55GB
+created dummy sketch: scripts/test_sketch.jpg
+[after inputs prepared   ] allocated= 5.52GB  reserved= 5.61GB  peak= 5.55GB
+[after warmup            ] allocated= 5.53GB  reserved= 6.29GB  peak= 5.98GB
+[after inference         ] allocated= 5.53GB  reserved= 6.29GB  peak= 5.98GB
+
+inference: 6.40s  (152 tokens, 23.8 tok/s)
+
+--- model output ---
+このスケッチは、人間の顔の一部を示しています。主な要素は以下の通りです：
+
+1. **主題**: 人間の顔のスケッチ。
+2. **未完成な要素**: 目と鼻が描かれていますが、口や顔の他の部分はまだ描かれていません。
+3. **次に描き足されそうな部分**: 頭部全体、顔の輪郭、そして口や鼻の詳細な部分が追加されると考えられます。
+
+このスケッチは、人間の顔の基本的な構造を示しており、次にその詳細を追加して完成させる予定であることが伺えます。
+--------------------
+[after cleanup           ] allocated= 0.01GB  reserved= 0.02GB  peak= 5.98GB
