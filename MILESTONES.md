@@ -3,7 +3,7 @@
 > **目的**: 詰まった時に「正常な地点」へ素早く戻るための地図。
 > Git は履歴の倉庫、このファイルは *どこが正常か / どこで詰まったか* を一目で見る索引。
 >
-> 最終更新: 2026-05-22
+> 最終更新: 2026-05-23
 
 ---
 
@@ -11,10 +11,10 @@
 
 | 項目 | 値 |
 |------|-----|
-| マイルストーン | **M7 — robot.py パネル座標層を一般化（mock 検証）** |
-| コミット | `07311e6` |
-| 戻り方 | `git checkout 07311e6`（または最新 `main`） |
-| 正常の確認 | `venv/bin/python run_draw_test.py --strokes square` が mock 完走する |
+| マイルストーン | **M8 — VLM ↔ ImageGenerator つなぎこみ(段階的スワップ実証)** |
+| コミット | `41b8221` |
+| 戻り方 | `git checkout 41b8221`(または最新 `main`) |
+| 正常の確認 | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 cycle 末で `allocated=0.01GB` |
 
 ---
 
@@ -65,9 +65,14 @@
               │      └ 空中 30mm 正方形、7 ウェイポイント最大誤差 0.3mm、
               │        閉ループ復帰 0.2mm
               │
-05-22 19:04   ● M7  robot.py パネル座標層を一般化（mock 検証） ★★ 現在地 ★★  [07311e6]
-                     └ PanelFrame + goto_panel/draw_stroke_panel、
-                       垂直アクリル板対応。実ジオメトリは Step B 待ち
+05-22 19:04   ● M7  robot.py パネル座標層を一般化（mock 検証） [07311e6]
+              │      └ PanelFrame + goto_panel/draw_stroke_panel、
+              │        垂直アクリル板対応。実ジオメトリは Step B 待ち
+              │
+05-23 16:15   ● M8  VLM ↔ ImageGenerator つなぎこみ(段階的スワップ実証) ★★ 現在地 ★★  [41b8221]
+                     └ image_gen.py 本実装、test_vlm_to_image.py 統合テスト追加。
+                       3 サイクル安定(定常 ~20s)、ピーク 12.93GB << 15.57GB 予算、
+                       CPU offload / モデル縮小フォールバックは不要と確定
 ```
 
 ---
@@ -86,6 +91,7 @@
 | M5 | 2026-05-22 18:44 | cartesian / EndPoseCtrl 実機検証 PASS（空中 30mm 正方形） | `3a4e4b8` | `venv/bin/python test_cartesian.py move` が `RESULT: PASS` |
 | M6 | 2026-05-22 18:50 | draw_stroke() 実機統合テスト PASS（travel→pen-down→描画→pen-up） | `8b27f8b` | `venv/bin/python test_draw_stroke.py move` が `RESULT: PASS` |
 | M7 | 2026-05-22 19:04 | robot.py にパネル座標層を一般化（垂直パネル対応、mock 検証） | `07311e6` | `run_draw_test.py` mock 完走（非破壊）、`Robot(mock=True)` がパネル YAML をロード |
+| M8 | 2026-05-23 16:15 | VLM ↔ ImageGenerator つなぎこみ(段階的スワップ実証) | `41b8221` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各サイクル末で `allocated=0.01GB`(リーク無し)、ピーク 12.93GB |
 
 ---
 
