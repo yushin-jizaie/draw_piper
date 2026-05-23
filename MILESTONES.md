@@ -3,7 +3,7 @@
 > **目的**: 詰まった時に「正常な地点」へ素早く戻るための地図。
 > Git は履歴の倉庫、このファイルは *どこが正常か / どこで詰まったか* を一目で見る索引。
 >
-> 最終更新: 2026-05-23 18:20
+> 最終更新: 2026-05-23 21:00
 
 ---
 
@@ -11,12 +11,12 @@
 
 | 項目 | 値 |
 |------|-----|
-| マイルストーン | **M10 — drag-teach キャンバスキャリブレーション実機成功(壁面描画スレッド)** |
-| コミット | `221f0fb` |
+| マイルストーン | **M11 — 壁面描画 GUI 統合(1-phase 実機検証済 + 2-phase 実装済・実機未検証)** |
+| コミット | `<this commit>` |
 | 戻り方 | `git checkout <this commit>`(または最新 `main`) |
-| 正常の確認 | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X |
+| 正常の確認 | `~/piper_test/wall_drawing_gui.py` を起動 → GUI が表示、CAN status 反映、`Connect` → `Recover to Ready` → `Tune Contact` で接触深さ調整 → `Draw Square` で四角描画(M10 31 点キャリブのまま draw 可)。2-phase drag-teach は実装済だが実機未検証 |
 
-> 注: 直前の M9 は並走中の **VLM/画像生成スレッド**の正常地点。本セッションは壁面描画スレッドで M10 を追加した。両スレッドは独立に進行しており、戻り先はどちらも `main` で OK。
+> 注: M9 は並走中の **VLM/画像生成スレッド**の正常地点。壁面描画スレッドは M10 → M11 と進行。両スレッドは独立で戻り先はどちらも `main` で OK。
 
 ---
 
@@ -99,11 +99,23 @@
               │                 完全に迂回。1 回の電源リセット消費前提で運用
               │           ┗━ 復旧先 ▶ M10
               │
-05-23 18:12   ● M10 drag-teach キャンバスキャリブ実機成功 ★★ 現在地 ★★  [221f0fb]
-                     └ MasterSlaveConfig(0xFA) + candump subprocess + URDF FK で
-                       31 点記録、平面 RMS 3.82mm、Y[-97,+77] × Z[+157,+464]、
-                       centroid X=204.3 Y=-2.8 Z=299.7、normal ≈ -X(垂直壁)。
-                       保存先 calibration/canvas_calibration.yaml
+05-23 18:12   ● M10 drag-teach キャンバスキャリブ実機成功  [221f0fb]
+              │      └ MasterSlaveConfig(0xFA) + candump subprocess + URDF FK で
+              │        31 点記録、平面 RMS 3.82mm、Y[-97,+77] × Z[+157,+464]、
+              │        centroid X=204.3 Y=-2.8 Z=299.7、normal ≈ -X(垂直壁)。
+              │        保存先 calibration/canvas_calibration.yaml
+              │
+05-23 21:00   ● M11 壁面描画 GUI 統合 ★★ 現在地 ★★  [<this commit>]
+                     └ ~/piper_test/wall_drawing_gui.py (Tkinter)。
+                       Status bar + 4 section: Connection / Drag-Teach (2-phase) /
+                       Tune Contact / Draw Square。
+                       Joint と Draw の speed 分離(default 5/2)、adaptive settle、
+                       pkexec で CAN up、subprocess respawn で Restart GUI、
+                       Center Y/Z + contact_x の起動時自動ロード。
+                       canvas_calibration.yaml schema v2(whiteboard_corners +
+                       plane_extras + computed)。
+                       1-phase drag-teach + 描画は実機検証済、2-phase drag-teach は
+                       コード完成・実機検証は次セッション。
 ```
 
 ---
@@ -125,6 +137,7 @@
 | M8 | 2026-05-23 16:15 | VLM ↔ ImageGenerator つなぎこみ(段階的スワップ実証) | `41b8221` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各サイクル末で `allocated=0.01GB`(リーク無し)、ピーク 12.93GB |
 | M9 | 2026-05-23 17:10 | フルパス統合 + prompt 整形 (VLM → prompt_builder → ImageGen → Vectorizer) | `f01a91a` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 `cycle_NN/strokes.json` で n_strokes が 180-220、`cycle_NN/vec_debug/06_strokes.png` がロボット線画として認識可能 |
 | M10 | 2026-05-23 18:12 | drag-teach キャンバスキャリブ実機成功(壁面描画スレッド) | `221f0fb` | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X 方向 |
+| M11 | 2026-05-23 21:00 | 壁面描画 GUI 統合(Tkinter wrapper、2-phase drag-teach 実装、speed 分離、Restart GUI、pkexec CAN up) | `<this commit>` | `~/piper_test/wall_drawing_gui.py` 起動 → GUI 表示 + CAN status 反映、`Connect → Recover → Tune Contact → Draw Square` で四角描画(M10 キャリブのまま)。2-phase drag-teach は実装済・実機未検証(次セッション) |
 
 ---
 

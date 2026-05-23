@@ -73,3 +73,50 @@ master mode 周りに 3 つの罠を発見:
 - ペン長/接触 X の再プローブ
 
 詳細は `docs/20260523_1820_master_mode_drag_teach_calibration.md` を参照。
+
+---
+
+## 2026-05-23 21:00 — 壁面描画 GUI 統合 (M11)
+
+M10 の drag-teach + draw_square_wall.py をターミナル操作なしで使える Tkinter GUI に統合。`~/piper_test/wall_drawing_gui.py` を新規実装し、本日 7 回の iteration commit で機能を積んだ。
+
+### GUI 構成
+
+- **Status bar**: CAN UP/DOWN / Connected / Master mode / 現在関節 / Restart GUI / Quit GUI
+- **1. Connection**: `CAN up (sudo)` (pkexec で graphical password)、Joint speed (default 5)、Draw speed (default 2)、Connect/Recover/Storage/Disconnect
+- **2. Drag-Teach (2-phase)**: B1 4 隅(TL→TR→BR→BL 順序付き) + B2 平面追加点(≥4、順序不問)
+- **3. Tune Contact**: X offset Spinbox + `Go to Canvas Center` + X ±0.5/±1.0 nudge + Lift Pen
+- **4. Draw Square**: Side + 4 隅 ΔYΔZ + Reset corners + Draw
+
+### canvas_calibration.yaml schema v2
+
+```yaml
+canvas:
+  whiteboard_corners_mm: {tl, tr, br, bl}
+  whiteboard_computed: {center_mm, width_mm, height_mm}
+  plane_extras_mm: [...]
+  plane_fit: {normal, centroid_mm, rms_residual_mm}
+  # 後方互換: center_yz_mm, contact_x_mm
+```
+
+### 主な対処したハマり
+
+1. **単一 speed が裏目** → Joint speed と Draw speed を分離
+2. **MOVE J false alarm** (speed=2 で settle timeout 誤検出) → adaptive settle (`30/speed`) + 「still moving 判定」追加
+3. **Master mode 後の in-process SDK 再接続が壊れる** → subprocess respawn で fresh プロセス起動する `Restart GUI` ボタン追加
+4. **sudo を GUI 化** → pkexec で graphical password prompt
+
+### chat 側との連携(Phase A/B yaml 規約合意)
+
+- `panel_frame.yaml` を panel の単一正本にする(namespaced blocks)
+- `panel:` ブロック = robot 側(canvas_calibration → converter、私の TODO)
+- `phase_a_calibration:` ブロック = camera_px ↔ panel_mm(chat 側 `calibrate_panel.py`)
+- panel UV 規約は **ホワイトボード座標**(0..230, 0..300)、左下原点、+u=base+Y、+v=base+Z
+
+### 検証ステータス
+
+- ✅ GUI 起動、CAN status 表示、Connect/Recover、X tune、Draw Square 実機 1 個成功(M10 31 点キャリブで誤差 <0.5mm)
+- ⚠️ 2-phase drag-teach はコード完成、**実機検証は次セッション**(物理電源リセット + CAN up + Restart GUI から実行)
+- 🔲 canvas_to_panel_frame.py converter、`PanelFrame.in_bounds()` reach check 拡張は未着手(次セッション以降)
+
+詳細は `docs/20260523_2100_wall_drawing_gui_consolidation.md` を参照。
