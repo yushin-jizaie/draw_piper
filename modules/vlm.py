@@ -1,128 +1,81 @@
-"""VLM intent prediction (Qwen2.5-VL-7B-Instruct, NF4 quantization).
+"""VLM intent prediction with topic catalog (v0.5).
 
-Predicts user drawing intent from a captured sketch image, returning a
-structured `IntentPrediction` with subject / missing parts / next likely
-additions.
+Qwen2.5-VL-7B-Instruct (NF4 量子化) を使い、ホワイトボード上のスケッチから
+ユーザの意図を「お題カタログ内の選択肢」として推測する。
 
-Used by the v0.4 turn-based drawing loop. See:
-- docs/20260521_1757_drawing_system_v04_design.md
-- docs/20260522_2250_vlm_vram_measurement.md  (VRAM ~5.5GB, 23.8 tok/s on RTX 2000 Ada)
+ユーザは物理カードを各カテゴリから1枚ずつ引いてお題を決めるが、
+VLM はその選択肢リスト (カタログ) は知っているものの、引かれた具体的な
+お題は知らない。VLM はスケッチを見て、カタログの中から最も近いものを当てる。
+
+VRAM 実測: 5.5GB load / 6.0GB peak / 23.8 tok/s on RTX 2000 Ada
+See: docs/20260522_2250_vlm_vram_measurement.md
+See: docs/20260522_2330_drawing_system_v05_design.md
 """
 
 from __future__ import annotations
 
 import gc
-import re
 import time
-from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 import torch
 from PIL import Image
 
+from modules.topic import (
+    SUBJECTS, LOCATIONS, ACTIONS,
+    TopicGuess,
+    format_choices,
+    parse_vlm_json,
+)
+
 ImageLike = Union[Image.Image, str, Path, np.ndarray]
 
 
-@dataclass
-class IntentPrediction:
-    """Structured user intent extracted by the VLM.
+# --- VLM プロンプト (選択肢付き、JSON 要求) -----------------------------------
 
-    Fields are populated from the model's free-form response via regex parsing.
-    `raw_text` is always preserved for debugging or fallback when parsing fails.
-    """
-    subject: str = ""              # 主題 (e.g. "猫の顔")
-    missing: list[str] = field(default_factory=list)  # 未完成な要素 (e.g. ["右耳", "ひげ"])
-    next_likely: str = ""          # 次に描き足されそうな部分
-    raw_text: str = ""             # モデル生出力 (parse失敗時もこれは入る)
-    infer_time_s: float = 0.0      # 推論時間 (sec)
-    n_tokens: int = 0              # 生成トークン数
+def _build_prompt() -> str:
+    """選択肢付き JSON 要求プロンプトを動的構築。"""
+    return f"""あなたはユーザが何を描こうとしているかを推測するアシスタントです。
 
-    def to_text(self) -> str:
-        """Return a single-line summary for legacy `build_prompt(str)` callers.
+ユーザは「主体」「場所」「動作」のお題カードを各カテゴリから1枚ずつ引いて、
+それを元にホワイトボードに絵を描こうとしています。お題そのものはあなたには
+教えられません。あなたはスケッチを見て、以下の選択肢の中から最も近いものを
+推測してください。
 
-        Falls back to `raw_text` if structured fields are empty.
-        """
-        if self.subject:
-            parts = [f"主題: {self.subject}"]
-            if self.missing:
-                parts.append(f"未完成: {', '.join(self.missing)}")
-            if self.next_likely:
-                parts.append(f"次の追加: {self.next_likely}")
-            return " / ".join(parts)
-        return self.raw_text.strip().replace("\n", " ")
+【主体の選択肢】
+{format_choices(SUBJECTS)}
 
-    def is_parsed(self) -> bool:
-        return bool(self.subject)
+【場所の選択肢】
+{format_choices(LOCATIONS)}
 
+【動作の選択肢】
+{format_choices(ACTIONS)}
 
-# --- デフォルトプロンプト (設計v0.4の意図予測テンプレ) -----------------------
+スケッチが選択肢のどれにも当てはまらないと判断したカテゴリは "不明" としてください。
 
-_DEFAULT_PROMPT = (
-    "この画像はホワイトボードに人が描きかけのスケッチです。"
-    "この人は何を描こうとしていますか？ "
-    "主題、未完成な要素、次に描き足されそうな部分を答えてください。"
-)
+回答は以下の JSON 形式のみで返してください。前後に説明文や ```json などのマークダウンを入れないでください。
 
-# --- 出力パース用の正規表現 -----------------------------------------------
-# モデル出力例 (計測時の実観測):
-#   1. **主題**: 人間の顔のスケッチ。
-#   2. **未完成な要素**: 目と鼻が描かれていますが、口や顔の他の部分はまだ描かれていません。
-#   3. **次に描き足されそうな部分**: 頭部全体、顔の輪郭、そして口や鼻の詳細な部分が追加されると考えられます。
-#
-# 番号 / 太字記号 / コロンの全角半角ゆらぎを許容。
-_RE_SUBJECT = re.compile(
-    r"(?:^|\n)\s*(?:\d+[.\)]\s*)?\**\s*主題\s*\**\s*[:：]\s*(.+?)(?=\n|$)",
-    re.MULTILINE,
-)
-_RE_MISSING = re.compile(
-    r"(?:^|\n)\s*(?:\d+[.\)]\s*)?\**\s*未完成(?:な要素|要素)?\s*\**\s*[:：]\s*(.+?)(?=\n|$)",
-    re.MULTILINE,
-)
-_RE_NEXT = re.compile(
-    r"(?:^|\n)\s*(?:\d+[.\)]\s*)?\**\s*次に描き足されそうな部分\s*\**\s*[:：]\s*(.+?)(?=\n|$)",
-    re.MULTILINE,
-)
-
-
-def _split_missing(text: str) -> list[str]:
-    """Split a free-form '未完成' description into individual items.
-
-    Heuristic: split on common Japanese list separators, then clean.
-    """
-    # 「目、鼻、口」「右耳・左耳」「頭と胴」のような区切りを許容
-    candidates = re.split(r"[、,\u3001・,]|\s+と\s+|\s+及び\s+|\s+や\s+", text)
-    return [c.strip().rstrip("。．.") for c in candidates if c.strip()]
-
-
-def _parse_response(text: str) -> tuple[str, list[str], str]:
-    """Parse the model's free-form response into (subject, missing, next_likely)."""
-    subject = ""
-    missing: list[str] = []
-    next_likely = ""
-
-    if m := _RE_SUBJECT.search(text):
-        subject = m.group(1).strip().rstrip("。．.")
-    if m := _RE_MISSING.search(text):
-        missing = _split_missing(m.group(1).strip().rstrip("。．."))
-    if m := _RE_NEXT.search(text):
-        next_likely = m.group(1).strip().rstrip("。．.")
-
-    return subject, missing, next_likely
+{{
+  "subject_ja": "<選択肢の中から1つ、または '不明'>",
+  "location_ja": "<選択肢の中から1つ、または '不明'>",
+  "action_ja": "<選択肢の中から1つ、または '不明'>",
+  "missing_elements": ["<まだ描かれていない要素を日本語で短く列挙>"],
+  "confidence": <0.0 から 1.0 の数値。ほぼ白紙なら 0.1 程度、明確に判別できれば 0.8+>
+}}
+"""
 
 
 # --- 画像入力の正規化 -------------------------------------------------------
 
 def _normalize_image(image: ImageLike) -> Image.Image:
-    """Normalize various image inputs into a PIL.Image (RGB)."""
+    """様々な画像入力形式を PIL.Image (RGB) に正規化。"""
     if isinstance(image, Image.Image):
         return image.convert("RGB") if image.mode != "RGB" else image
     if isinstance(image, (str, Path)):
         return Image.open(image).convert("RGB")
     if isinstance(image, np.ndarray):
-        # OpenCV はデフォルトBGRなので注意。呼び出し側でRGB変換済みの想定。
-        # チャンネル数だけ吸収。
         if image.ndim == 2:
             return Image.fromarray(image).convert("RGB")
         if image.ndim == 3 and image.shape[2] in (3, 4):
@@ -134,10 +87,7 @@ def _normalize_image(image: ImageLike) -> Image.Image:
 # --- VLM 本体 ---------------------------------------------------------------
 
 class VLM:
-    """Qwen2.5-VL-7B based intent predictor.
-
-    Heavy resources (the model and processor) are loaded on first `load()` call
-    or implicitly on `predict_intent()`. Call `unload()` to free VRAM.
+    """Qwen2.5-VL-7B based topic guesser.
 
     Memory budget (measured 2026-05-22 on RTX 2000 Ada):
       - model load:    ~5.5GB
@@ -152,32 +102,27 @@ class VLM:
         model_id: str = DEFAULT_MODEL_ID,
         device: str = "cuda:0",
         max_new_tokens: int = 256,
-        prompt_text: str = _DEFAULT_PROMPT,
-        quantization: str = "nf4",  # "nf4" | "fp16" | None
+        quantization: str = "nf4",
         verbose: bool = False,
     ):
         self.model_id = model_id
         self.device = device
         self.max_new_tokens = max_new_tokens
-        self.prompt_text = prompt_text
         self.quantization = quantization
         self.verbose = verbose
 
         self._model = None
         self._processor = None
-
-    # --- ライフサイクル -----------------------------------------------------
+        self._prompt_text = _build_prompt()
 
     @property
     def is_loaded(self) -> bool:
         return self._model is not None
 
     def load(self) -> None:
-        """Load model and processor onto GPU. Idempotent."""
         if self.is_loaded:
             return
 
-        # transformers / bnb は import コストが大きいので遅延 import
         from transformers import (
             Qwen2_5_VLForConditionalGeneration,
             AutoProcessor,
@@ -210,7 +155,6 @@ class VLM:
             print(f"[vlm] loaded in {time.time() - t0:.1f}s")
 
     def unload(self) -> None:
-        """Release VRAM. Safe to call multiple times."""
         if not self.is_loaded:
             return
         del self._model
@@ -228,10 +172,8 @@ class VLM:
     def __exit__(self, *exc) -> None:
         self.unload()
 
-    # --- 推論 --------------------------------------------------------------
-
-    def predict_intent(self, image: ImageLike) -> IntentPrediction:
-        """Predict the user's drawing intent from a captured image."""
+    def predict_intent(self, image: ImageLike) -> TopicGuess:
+        """スケッチ画像から TopicGuess を返す。例外は投げない。"""
         if not self.is_loaded:
             self.load()
 
@@ -244,7 +186,7 @@ class VLM:
                 "role": "user",
                 "content": [
                     {"type": "image", "image": pil_image},
-                    {"type": "text", "text": self.prompt_text},
+                    {"type": "text", "text": self._prompt_text},
                 ],
             }
         ]
@@ -261,13 +203,15 @@ class VLM:
             return_tensors="pt",
         ).to(self.device)
 
-        torch.cuda.synchronize() if torch.cuda.is_available() else None
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         t0 = time.time()
         with torch.inference_mode():
             output_ids = self._model.generate(
                 **inputs, max_new_tokens=self.max_new_tokens, do_sample=False
             )
-        torch.cuda.synchronize() if torch.cuda.is_available() else None
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
         infer_time = time.time() - t0
 
         generated = output_ids[:, inputs.input_ids.shape[1]:]
@@ -276,21 +220,24 @@ class VLM:
             generated, skip_special_tokens=True
         )[0]
 
-        subject, missing, next_likely = _parse_response(raw_text)
+        subject, location, action, missing, confidence = parse_vlm_json(raw_text)
 
-        result = IntentPrediction(
+        result = TopicGuess(
             subject=subject,
-            missing=missing,
-            next_likely=next_likely,
+            location=location,
+            action=action,
+            missing_elements=missing,
+            confidence=confidence,
             raw_text=raw_text,
             infer_time_s=infer_time,
             n_tokens=n_tokens,
         )
         if self.verbose:
-            parsed_ok = "OK" if result.is_parsed() else "PARSE_FAIL"
+            status = "OK" if result.has_known_subject() else "UNKNOWN"
             print(
                 f"[vlm] inferred in {infer_time:.2f}s "
-                f"({n_tokens} tok, {n_tokens / infer_time:.1f} tok/s) [{parsed_ok}]"
+                f"({n_tokens} tok, {n_tokens / infer_time:.1f} tok/s) "
+                f"[{status}, conf={confidence:.2f}]"
             )
         return result
 
@@ -298,7 +245,7 @@ class VLM:
 # --- スモークテスト ---------------------------------------------------------
 
 def _make_dummy_sketch(path: Path) -> None:
-    """Create a simple face-like sketch for offline testing."""
+    """簡単な顔っぽいスケッチをダミー入力として生成。"""
     from PIL import ImageDraw
     img = Image.new("RGB", (1024, 768), (245, 245, 245))
     d = ImageDraw.Draw(img)
@@ -316,16 +263,19 @@ if __name__ == "__main__":
         print(f"[vlm] created dummy sketch: {test_image}")
 
     with VLM(verbose=True) as vlm:
-        prediction = vlm.predict_intent(test_image)
+        guess = vlm.predict_intent(test_image)
 
-        print("\n=== IntentPrediction ===")
-        print(f"  parsed       : {prediction.is_parsed()}")
-        print(f"  subject      : {prediction.subject!r}")
-        print(f"  missing      : {prediction.missing!r}")
-        print(f"  next_likely  : {prediction.next_likely!r}")
-        print(f"  n_tokens     : {prediction.n_tokens}")
-        print(f"  infer_time_s : {prediction.infer_time_s:.2f}")
-        print("\n=== to_text() (legacy compat) ===")
-        print(f"  {prediction.to_text()}")
-        print("\n=== raw_text ===")
-        print(prediction.raw_text)
+        print("\n=== TopicGuess ===")
+        print(f"  subject       : {guess.subject.ja} ({guess.subject.en})")
+        print(f"  location      : {guess.location.ja} ({guess.location.en})")
+        print(f"  action        : {guess.action.ja} ({guess.action.en})")
+        print(f"  missing       : {guess.missing_elements}")
+        print(f"  confidence    : {guess.confidence:.2f}")
+        print(f"  is_certain    : {guess.is_certain()}")
+        print(f"  has_known     : {guess.has_known_subject()}")
+        print(f"  n_tokens      : {guess.n_tokens}")
+        print(f"  infer_time_s  : {guess.infer_time_s:.2f}")
+        print(f"\n=== to_text ===")
+        print(f"  {guess.to_text()}")
+        print(f"\n=== raw_text ===")
+        print(guess.raw_text)
