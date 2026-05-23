@@ -12,7 +12,7 @@
 | 項目 | 値 |
 |------|-----|
 | マイルストーン | **M11 — 壁面描画 GUI 統合(1-phase 実機検証済 + 2-phase 実装済・実機未検証)** |
-| コミット | `<this commit>` |
+| コミット | `f43e8e4` |
 | 戻り方 | `git checkout <this commit>`(または最新 `main`) |
 | 正常の確認 | `~/piper_test/wall_drawing_gui.py` を起動 → GUI が表示、CAN status 反映、`Connect` → `Recover to Ready` → `Tune Contact` で接触深さ調整 → `Draw Square` で四角描画(M10 31 点キャリブのまま draw 可)。2-phase drag-teach は実装済だが実機未検証 |
 
@@ -137,7 +137,7 @@
 | M8 | 2026-05-23 16:15 | VLM ↔ ImageGenerator つなぎこみ(段階的スワップ実証) | `41b8221` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各サイクル末で `allocated=0.01GB`(リーク無し)、ピーク 12.93GB |
 | M9 | 2026-05-23 17:10 | フルパス統合 + prompt 整形 (VLM → prompt_builder → ImageGen → Vectorizer) | `f01a91a` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 `cycle_NN/strokes.json` で n_strokes が 180-220、`cycle_NN/vec_debug/06_strokes.png` がロボット線画として認識可能 |
 | M10 | 2026-05-23 18:12 | drag-teach キャンバスキャリブ実機成功(壁面描画スレッド) | `221f0fb` | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X 方向 |
-| M11 | 2026-05-23 21:00 | 壁面描画 GUI 統合(Tkinter wrapper、2-phase drag-teach 実装、speed 分離、Restart GUI、pkexec CAN up) | `<this commit>` | `~/piper_test/wall_drawing_gui.py` 起動 → GUI 表示 + CAN status 反映、`Connect → Recover → Tune Contact → Draw Square` で四角描画(M10 キャリブのまま)。2-phase drag-teach は実装済・実機未検証(次セッション) |
+| M11 | 2026-05-23 21:00 | 壁面描画 GUI 統合(Tkinter wrapper、2-phase drag-teach 実装、speed 分離、Restart GUI、pkexec CAN up) | `f43e8e4` | `~/piper_test/wall_drawing_gui.py` 起動 → GUI 表示 + CAN status 反映、`Connect → Recover → Tune Contact → Draw Square` で四角描画(M10 キャリブのまま)。2-phase drag-teach は実装済・実機未検証(次セッション) |
 
 ---
 
