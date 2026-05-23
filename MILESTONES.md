@@ -3,7 +3,7 @@
 > **目的**: 詰まった時に「正常な地点」へ素早く戻るための地図。
 > Git は履歴の倉庫、このファイルは *どこが正常か / どこで詰まったか* を一目で見る索引。
 >
-> 最終更新: 2026-05-23 17:10
+> 最終更新: 2026-05-23 18:20
 
 ---
 
@@ -11,10 +11,12 @@
 
 | 項目 | 値 |
 |------|-----|
-| マイルストーン | **M9 — フルパス統合(VLM → ImageGen → Vectorizer)+ prompt 整形** |
-| コミット | `f01a91a` |
-| 戻り方 | `git checkout <コミット>`(または最新 `main`) |
-| 正常の確認 | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 cycle 末で `allocated=0.01GB`、`cycle_NN/strokes.json` と `cycle_NN/vec_debug/06_strokes.png` が生成され n_strokes が 180-220 |
+| マイルストーン | **M10 — drag-teach キャンバスキャリブレーション実機成功(壁面描画スレッド)** |
+| コミット | `<this commit>` |
+| 戻り方 | `git checkout <this commit>`(または最新 `main`) |
+| 正常の確認 | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X |
+
+> 注: 直前の M9 は並走中の **VLM/画像生成スレッド**の正常地点。本セッションは壁面描画スレッドで M10 を追加した。両スレッドは独立に進行しており、戻り先はどちらも `main` で OK。
 
 ---
 
@@ -74,12 +76,34 @@
               │        3 サイクル安定(定常 ~20s)、ピーク 12.93GB << 15.57GB 予算、
               │        CPU offload / モデル縮小フォールバックは不要と確定
               │
-05-23 17:10   ● M9  フルパス統合 + prompt 整形 ★★ 現在地 ★★  [f01a91a]
-                     └ prompt_builder.py のカンマ前スペース修正、
-                       test_vlm_to_image.py に STAGE 9 (Vectorizer) 追加。
-                       3 サイクル安定(定常 ~19.7s、+vectorize 0.15-0.17s)、
-                       strokes 数 187-207 (CV ~5%)、cycle_NN/strokes.json と
-                       vec_debug/06_strokes.png まで生成
+05-23 17:10   ● M9  フルパス統合 + prompt 整形  [f01a91a]
+              │      └ prompt_builder.py のカンマ前スペース修正、
+              │        test_vlm_to_image.py に STAGE 9 (Vectorizer) 追加。
+              │        3 サイクル安定(定常 ~19.7s、+vectorize 0.15-0.17s)、
+              │        strokes 数 187-207 (CV ~5%)、cycle_NN/strokes.json と
+              │        vec_debug/06_strokes.png まで生成
+              │
+              ├──►  ✗ N4  master mode で SDK feedback が読めない
+              │           ① test_master_mode.py: 0xFA で hand-movable は OK
+              │              だが GetArmJointMsgs は frozen、0xFC では復帰不可
+              │           ② diagnose_master_broadcast.py(candump): 0x155-7
+              │              は 27Hz broadcast されている。ただし**アームを
+              │              手で動かしている間だけ**送出される
+              │           ③ debug_master_sdk.py: SDK の bus.recv() が
+              │              master mode 中に 10s で 1 frame しか拾わない。
+              │              同プロセス内の python-can Bus も同様に starve。
+              │              candump(別プロセス)のみ正常受信
+              │           対処: drag_teach_calibrate.py v4 で candump を
+              │                 subprocess 起動 → stdout を正規表現 + struct
+              │                 で parse → 関節 mdeg を取得。SDK の読みは
+              │                 完全に迂回。1 回の電源リセット消費前提で運用
+              │           ┗━ 復旧先 ▶ M10
+              │
+05-23 18:12   ● M10 drag-teach キャンバスキャリブ実機成功 ★★ 現在地 ★★  [<commit>]
+                     └ MasterSlaveConfig(0xFA) + candump subprocess + URDF FK で
+                       31 点記録、平面 RMS 3.82mm、Y[-97,+77] × Z[+157,+464]、
+                       centroid X=204.3 Y=-2.8 Z=299.7、normal ≈ -X(垂直壁)。
+                       保存先 calibration/canvas_calibration.yaml
 ```
 
 ---
@@ -100,6 +124,7 @@
 | M7 | 2026-05-22 19:04 | robot.py にパネル座標層を一般化（垂直パネル対応、mock 検証） | `07311e6` | `run_draw_test.py` mock 完走（非破壊）、`Robot(mock=True)` がパネル YAML をロード |
 | M8 | 2026-05-23 16:15 | VLM ↔ ImageGenerator つなぎこみ(段階的スワップ実証) | `41b8221` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各サイクル末で `allocated=0.01GB`(リーク無し)、ピーク 12.93GB |
 | M9 | 2026-05-23 17:10 | フルパス統合 + prompt 整形 (VLM → prompt_builder → ImageGen → Vectorizer) | `f01a91a` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 `cycle_NN/strokes.json` で n_strokes が 180-220、`cycle_NN/vec_debug/06_strokes.png` がロボット線画として認識可能 |
+| M10 | 2026-05-23 18:12 | drag-teach キャンバスキャリブ実機成功(壁面描画スレッド) | `<this commit>` | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X 方向 |
 
 ---
 
@@ -110,6 +135,7 @@
 | N1 | 2026-05-21 | `GetArmJointMsgs` / `GetArmEndPoseMsgs` が全て 0 | V1.8 ファームが feedback を `0x2A*` → `0x3A*` にシフト、SDK 0.6.1 未対応 | `modules/piper_feedback.py` で `0x3A*` を別 socketcan 読み（workaround）。後に master mode 解除で `0x2A*` が復活し fallback 扱いに | `docs/20260521_2000_piper_feedback_issue_debug.md` |
 | N2 | 2026-05-22 13:00–17:00 | JointCtrl 指令で実機が動かない（音はする） | ① master mode 残留で外部指令を拒否 ② Config Init 未送信 | `MasterSlaveConfig(0xFC,0,0,0)` + 電源完全リセット（AC+USB 抜いて 30 秒）+ Config Init（`ArmParamEnquiryAndConfig(0x01,0x02,0,0,0x02)`） | `docs/20260522_1700_piper_jointctrl_solved.md` |
 | N3 | 再発性 | CAN TX がサイレント失敗、コマンドが届かない | USB-CAN 物理層の不調 | `ip -details -statistics link show can0` でエラーカウンタを確認 → USB-CAN アダプタを抜き差し | `docs/20260522_1700_piper_jointctrl_solved.md`（教訓 5） |
+| N4 | 2026-05-23 17:00 | master mode 中、SDK の `GetArmJointMsgs` / `GetArmJointCtrl` が 0/stale。in-process の `python-can` Bus も同様に starve | 同一プロセス内の socketcan ソケットが master mode 中に受信不能化(原因不明だが再現性あり)。加えて 0x155-0x157 はアームが動いている時だけ broadcast される | `candump -ta can0` を subprocess 起動 → stdout を parse して 0x155-7 を decode。`MasterSlaveConfig(0xFC)` 後は電源リセット必須 | `docs/20260523_1820_master_mode_drag_teach_calibration.md` |
 
 ---
 
