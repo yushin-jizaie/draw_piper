@@ -12,7 +12,7 @@
 | 項目 | 値 |
 |------|-----|
 | マイルストーン | **M9 — フルパス統合(VLM → ImageGen → Vectorizer)+ prompt 整形** |
-| コミット | `8f804db` |
+| コミット | `f01a91a` |
 | 戻り方 | `git checkout <コミット>`(または最新 `main`) |
 | 正常の確認 | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 cycle 末で `allocated=0.01GB`、`cycle_NN/strokes.json` と `cycle_NN/vec_debug/06_strokes.png` が生成され n_strokes が 180-220 |
 
@@ -74,7 +74,7 @@
               │        3 サイクル安定(定常 ~20s)、ピーク 12.93GB << 15.57GB 予算、
               │        CPU offload / モデル縮小フォールバックは不要と確定
               │
-05-23 17:10   ● M9  フルパス統合 + prompt 整形 ★★ 現在地 ★★  [8f804db]
+05-23 17:10   ● M9  フルパス統合 + prompt 整形 ★★ 現在地 ★★  [f01a91a]
                      └ prompt_builder.py のカンマ前スペース修正、
                        test_vlm_to_image.py に STAGE 9 (Vectorizer) 追加。
                        3 サイクル安定(定常 ~19.7s、+vectorize 0.15-0.17s)、
@@ -99,7 +99,7 @@
 | M6 | 2026-05-22 18:50 | draw_stroke() 実機統合テスト PASS（travel→pen-down→描画→pen-up） | `8b27f8b` | `venv/bin/python test_draw_stroke.py move` が `RESULT: PASS` |
 | M7 | 2026-05-22 19:04 | robot.py にパネル座標層を一般化（垂直パネル対応、mock 検証） | `07311e6` | `run_draw_test.py` mock 完走（非破壊）、`Robot(mock=True)` がパネル YAML をロード |
 | M8 | 2026-05-23 16:15 | VLM ↔ ImageGenerator つなぎこみ(段階的スワップ実証) | `41b8221` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各サイクル末で `allocated=0.01GB`(リーク無し)、ピーク 12.93GB |
-| M9 | 2026-05-23 17:10 | フルパス統合 + prompt 整形 (VLM → prompt_builder → ImageGen → Vectorizer) | `8f804db` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 `cycle_NN/strokes.json` で n_strokes が 180-220、`cycle_NN/vec_debug/06_strokes.png` がロボット線画として認識可能 |
+| M9 | 2026-05-23 17:10 | フルパス統合 + prompt 整形 (VLM → prompt_builder → ImageGen → Vectorizer) | `f01a91a` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 `cycle_NN/strokes.json` で n_strokes が 180-220、`cycle_NN/vec_debug/06_strokes.png` がロボット線画として認識可能 |
 
 ---
 
