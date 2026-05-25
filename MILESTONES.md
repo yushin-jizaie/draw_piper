@@ -12,8 +12,8 @@
 | 項目 | 値 |
 |------|-----|
 | マイルストーン | **M12 — canvas_calibration yaml schema v3 (5-phase 設計) IO + GUI 配線完了・dry-run 検証 PASS・実機未検証** |
-| コミット | `<this commit>` |
-| 戻り方 | `git checkout <this commit>`(または最新 `main`) |
+| コミット | `c24438c` |
+| 戻り方 | `git checkout c24438c`(または最新 `main`) |
 | 正常の確認 | `~/draw_piper/venv/bin/python ~/piper_test/test_canvas_calibration_io.py` で 50 checks PASS、`~/draw_piper/venv/bin/python ~/piper_test/test_step2_v3_save.py` で 33 checks PASS。GUI 起動 → `_load_calib_defaults` が disk 上 v1 yaml (M10) を読んで center_y/z + contact_x を反映。M11 同等の操作フロー(B1 4 corners + B2 plane extras + Save)で **v3 形式 yaml を書き出す**(traces.surface に legacy extras を入れる Step 2 transitional 仕様)。実機 drag-teach は M11 同様未検証(Step 4 で B2 自動サンプリングが入った後にまとめて検証予定) |
 
 > 注: M9 は並走中の **VLM/画像生成スレッド**の正常地点。壁面描画スレッドは M10 → M11 と進行。両スレッドは独立で戻り先はどちらも `main` で OK。
@@ -117,7 +117,7 @@
               │        1-phase drag-teach + 描画は実機検証済、2-phase drag-teach は
               │        コード完成・実機検証は次セッション。
               │
-05-25 15:17   ● M12 canvas キャリブ v3 IO + GUI 配線 ★★ 現在地 ★★  [<this commit>]
+05-25 15:17   ● M12 canvas キャリブ v3 IO + GUI 配線 ★★ 現在地 ★★  [c24438c]
                      └ ~/piper_test/canvas_calibration_io.py 新規(280 行)。
                        v1 (M10 raw) / v2 (M11 GUI) / v3 (5-phase 設計) yaml 全対応の
                        reader + v3 専用 writer。50 checks PASS。
@@ -155,7 +155,7 @@
 | M9 | 2026-05-23 17:10 | フルパス統合 + prompt 整形 (VLM → prompt_builder → ImageGen → Vectorizer) | `f01a91a` | `venv/bin/python scripts/test_vlm_to_image.py --steps 4 --cycles 3` が 3 サイクル完走、各 `cycle_NN/strokes.json` で n_strokes が 180-220、`cycle_NN/vec_debug/06_strokes.png` がロボット線画として認識可能 |
 | M10 | 2026-05-23 18:12 | drag-teach キャンバスキャリブ実機成功(壁面描画スレッド) | `221f0fb` | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X 方向 |
 | M11 | 2026-05-23 21:00 | 壁面描画 GUI 統合(Tkinter wrapper、2-phase drag-teach 実装、speed 分離、Restart GUI、pkexec CAN up) | `f43e8e4` | `~/piper_test/wall_drawing_gui.py` 起動 → GUI 表示 + CAN status 反映、`Connect → Recover → Tune Contact → Draw Square` で四角描画(M10 キャリブのまま)。2-phase drag-teach は実装済・実機未検証(次セッション) |
-| M12 | 2026-05-25 15:17 | canvas_calibration yaml schema v3 (5-phase 設計) IO モジュール + GUI 配線(read/write_v3、_load_calib_defaults、_capture_point、_fit_and_save) | `<this commit>` | `~/draw_piper/venv/bin/python ~/piper_test/test_canvas_calibration_io.py` で 50 checks PASS、`~/draw_piper/venv/bin/python ~/piper_test/test_step2_v3_save.py` で 33 checks PASS。GUI 起動時 `_load_calib_defaults` が v1/v2/v3 を自動検出してロード。実機 drag-teach は M11 同様未検証で Step 4 (B2 自動サンプリング実装後) にまとめて検証予定 |
+| M12 | 2026-05-25 15:17 | canvas_calibration yaml schema v3 (5-phase 設計) IO モジュール + GUI 配線(read/write_v3、_load_calib_defaults、_capture_point、_fit_and_save) | `c24438c` | `~/draw_piper/venv/bin/python ~/piper_test/test_canvas_calibration_io.py` で 50 checks PASS、`~/draw_piper/venv/bin/python ~/piper_test/test_step2_v3_save.py` で 33 checks PASS。GUI 起動時 `_load_calib_defaults` が v1/v2/v3 を自動検出してロード。実機 drag-teach は M11 同様未検証で Step 4 (B2 自動サンプリング実装後) にまとめて検証予定 |
 
 ---
 
