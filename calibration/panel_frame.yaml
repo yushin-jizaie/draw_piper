@@ -1,31 +1,36 @@
 panel:
-  calibrated: false
+  calibrated: true
   origin_mm:
-  - 350.0
-  - -150.0
-  - 100.0
+  - 213.36
+  - 54.98
+  - 199.03
   u_axis:
-  - 0.0
-  - 1.0
-  - 0.0
+  - -0.0081
+  - -0.9979
+  - 0.0636
   v_axis:
-  - 0.0
-  - 0.0
-  - 1.0
+  - -0.0463
+  - 0.0212
+  - 0.9987
   normal:
-  - -1.0
-  - 0.0
-  - 0.0
+  - -0.9989
+  - 0.0051
+  - -0.0465
   pen_orientation_deg:
-  - 0.0
+  - 180.0
   - 0.0
   - 0.0
   size_mm:
-  - 300.0
-  - 200.0
+  - 119.97
+  - 242.6
   w_contact_mm: 0.0
   w_clear_mm: 25.0
   ready_pose_deg: null
+  _diagnostics:
+    captured_width_mm: 119.97
+    captured_height_mm: 242.6
+    u_axis_dot_v_axis: 0.0427
+    non_perpendicular_err_deg: 2.45
 phase_a_calibration:
   calibrated: true
   calibrated_at: '2026-05-23T20:47:54+09:00'

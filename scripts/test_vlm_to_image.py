@@ -13,7 +13,8 @@ Vectorizer の直列パイプラインを 1 サイクルとして実行する。
   ターン制 (2分サイクル) の v0.4/v0.5 では VLM 推論と SDXL 推論が
   並列ではなく直列に走るため、段階的ロード/アンロードを採用する:
 
-    1. capture (median 合成, 2s)
+    0. (--use-camera 時) Camera.capture_median() で median 合成キャプチャ
+    1. (--sketch 時) input_sketch を cycle_dir にコピー
     2. VLM.load()        → peak ~6GB
     3. VLM.predict_intent
     4. VLM.unload()       → 0GB に戻ることを確認
@@ -25,13 +26,18 @@ Vectorizer の直列パイプラインを 1 サイクルとして実行する。
 使い方:
   cd ~/draw_piper
   source venv/bin/activate
+
+  # 既存: 固定スケッチを入力
   python scripts/test_vlm_to_image.py [--sketch path/to/sketch.jpg] [--steps 4]
+
+  # 新規: 実カメラの median 合成を入力
+  python scripts/test_vlm_to_image.py --use-camera [--cycles 3]
 
 出力:
   - 標準出力 + logs/vlm_to_image_YYYYMMDD_HHMMSS.log にトレース
   - logs/vlm_to_image_YYYYMMDD_HHMMSS/cycle_NN/ に各サイクルの中間ファイル
-    (vlm_raw.txt, topic_guess.json, prompt.txt, generated.png,
-     strokes.json, vec_debug/, timing.json)
+    (captured.png (use-camera 時のみ), vlm_raw.txt, topic_guess.json,
+     prompt.txt, generated.png, strokes.json, vec_debug/, timing.json)
 """
 
 from __future__ import annotations
@@ -47,6 +53,7 @@ from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
+import cv2
 import torch
 from PIL import Image
 
@@ -59,6 +66,7 @@ from modules.prompt_builder import build_prompt  # noqa: E402
 from modules.image_gen import ImageGenerator  # noqa: E402
 from modules.topic import TopicGuess  # noqa: E402
 from modules.vectorizer import Vectorizer  # noqa: E402
+from modules.camera import Camera  # noqa: E402
 
 
 def setup_logging(log_dir: Path) -> tuple[logging.Logger, Path]:
@@ -270,6 +278,35 @@ def main() -> int:
     parser.add_argument("--cycles", type=int, default=1, help="サイクル数")
     parser.add_argument("--seed", type=int, default=None, help="SDXL のシード")
     parser.add_argument("--log-dir", type=Path, default=ROOT / "logs", help="ログ出力ディレクトリ")
+    # ----- camera 関連 -----
+    parser.add_argument(
+        "--use-camera", action="store_true",
+        help="Camera.capture_median() の出力を入力にする。--sketch は無視される",
+    )
+    parser.add_argument(
+        "--camera-device", type=int, default=0,
+        help="cv2.VideoCapture の device id (デフォルト: 0)",
+    )
+    parser.add_argument(
+        "--camera-width", type=int, default=1280,
+        help="カメラキャプチャ幅 (デフォルト: 1280)",
+    )
+    parser.add_argument(
+        "--camera-height", type=int, default=720,
+        help="カメラキャプチャ高さ (デフォルト: 720)",
+    )
+    parser.add_argument(
+        "--camera-n-frames", type=int, default=10,
+        help="median 合成のフレーム数 (デフォルト: 10)",
+    )
+    parser.add_argument(
+        "--camera-interval", type=float, default=0.2,
+        help="median 合成のフレーム間隔 (秒、デフォルト: 0.2)",
+    )
+    parser.add_argument(
+        "--camera-countdown", type=int, default=3,
+        help="--use-camera 時、各サイクルのキャプチャ前カウントダウン秒数 (0 で無効)",
+    )
     args = parser.parse_args()
 
     log, log_file = setup_logging(args.log_dir)
@@ -286,14 +323,25 @@ def main() -> int:
     log.info(f"GPU            : {torch.cuda.get_device_name(0)}")
     log.info(f"Total VRAM     : {torch.cuda.get_device_properties(0).total_memory / 1024**3:.2f}GB")
     log.info(f"torch          : {torch.__version__}")
-    log.info(f"sketch         : {args.sketch}")
+    log.info(f"use_camera     : {args.use_camera}")
+    if args.use_camera:
+        log.info(f"camera         : device={args.camera_device} "
+                 f"{args.camera_width}x{args.camera_height} "
+                 f"n_frames={args.camera_n_frames} "
+                 f"interval={args.camera_interval}s "
+                 f"countdown={args.camera_countdown}s")
+    else:
+        log.info(f"sketch         : {args.sketch}")
     log.info(f"sdxl steps     : {args.steps}")
     log.info(f"cycles         : {args.cycles}")
     log.info(f"seed           : {args.seed}")
 
-    if not args.sketch.exists():
-        log.error(f"sketch not found: {args.sketch}")
-        return 1
+    if not args.use_camera:
+        if not args.sketch.exists():
+            log.error(f"sketch not found: {args.sketch}")
+            return 1
+    else:
+        log.info("--use-camera: skipping sketch file check")
 
     reset_peak()
     gpu_mem_snapshot("baseline", log)
@@ -302,27 +350,83 @@ def main() -> int:
     image_gen = ImageGenerator(verbose=True, num_inference_steps=args.steps)
     vectorizer = Vectorizer(verbose=True)
 
+    camera = None
+    if args.use_camera:
+        log.info(
+            "initializing camera (device=%d, %dx%d)",
+            args.camera_device, args.camera_width, args.camera_height,
+        )
+        camera = Camera(
+            device_id=args.camera_device,
+            width=args.camera_width,
+            height=args.camera_height,
+            verbose=True,
+        )
+        camera.open()
+
     run_root = args.log_dir / f"vlm_to_image_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     run_root.mkdir(parents=True, exist_ok=True)
 
     all_timings: list = []
-    for i in range(args.cycles):
-        log.info("")
-        log.info("#" * 60)
-        log.info(f"# CYCLE {i + 1} / {args.cycles}")
-        log.info("#" * 60)
-        cycle_dir = run_root / f"cycle_{i + 1:02d}"
-        timing = run_one_cycle(
-            sketch_path=args.sketch,
-            cycle_dir=cycle_dir,
-            log=log,
-            vlm=vlm,
-            image_gen=image_gen,
-            vectorizer=vectorizer,
-            sdxl_steps=args.steps,
-            seed=args.seed,
-        )
-        all_timings.append(timing)
+    try:
+        for i in range(args.cycles):
+            log.info("")
+            log.info("#" * 60)
+            log.info(f"# CYCLE {i + 1} / {args.cycles}")
+            log.info("#" * 60)
+            cycle_dir = run_root / f"cycle_{i + 1:02d}"
+            cycle_dir.mkdir(parents=True, exist_ok=True)
+
+            capture_elapsed = None
+            if args.use_camera:
+                assert camera is not None
+                # countdown (各サイクルごとにユーザに撮影開始タイミングを知らせる)
+                if args.camera_countdown > 0:
+                    log.info(
+                        "STAGE 0: capture countdown %d seconds...",
+                        args.camera_countdown,
+                    )
+                    for s in range(args.camera_countdown, 0, -1):
+                        log.info("  %d...", s)
+                        time.sleep(1)
+
+                log.info(
+                    "---- STAGE 0: Camera median capture (%d frames @ %.2fs) ----",
+                    args.camera_n_frames, args.camera_interval,
+                )
+                t_cap = time.time()
+                captured = camera.capture_median(
+                    n_frames=args.camera_n_frames,
+                    interval_s=args.camera_interval,
+                )
+                capture_elapsed = time.time() - t_cap
+
+                captured_path = cycle_dir / "captured.png"
+                cv2.imwrite(str(captured_path), captured)
+                log.info(
+                    "  saved %s shape=%s elapsed=%.2fs",
+                    captured_path, captured.shape, capture_elapsed,
+                )
+                sketch_path_for_cycle = captured_path
+            else:
+                sketch_path_for_cycle = args.sketch
+
+            timing = run_one_cycle(
+                sketch_path=sketch_path_for_cycle,
+                cycle_dir=cycle_dir,
+                log=log,
+                vlm=vlm,
+                image_gen=image_gen,
+                vectorizer=vectorizer,
+                sdxl_steps=args.steps,
+                seed=args.seed,
+            )
+            if capture_elapsed is not None:
+                timing["camera_capture_s"] = capture_elapsed
+            all_timings.append(timing)
+    finally:
+        if camera is not None:
+            camera.close()
 
     log.info("")
     log.info("=" * 60)
@@ -331,6 +435,7 @@ def main() -> int:
     for i, t in enumerate(all_timings, 1):
         log.info(f"--- cycle {i} ---")
         for k in (
+            "camera_capture_s",
             "vlm_load_s",
             "vlm_predict_s",
             "vlm_unload_s",
