@@ -25,7 +25,13 @@ panel:
   - 242.6
   w_contact_mm: 0.0
   w_clear_mm: 25.0
-  ready_pose_deg: null
+  ready_pose_deg:
+  - 7.158
+  - 0.416
+  - -26.456
+  - -3.12
+  - 8.016
+  - 0.839
   _diagnostics:
     captured_width_mm: 119.97
     captured_height_mm: 242.6
