@@ -14,3 +14,12 @@ Claude Code は以下のタイミングで **MILESTONES.md の更新を能動的
 
 毎コミットで提案する必要はない。判断基準は **「後で戻りたくなる節目か?」**。
 更新フォーマットは `MILESTONES.md` 末尾の「使い方 / メンテナンス」に従う。
+
+## Git 運用ルール
+
+- `git diff` の全件解析はスキップ。 `git status --short` で対象把握 → 直接 stage
+- コミットメッセージは 1 行 subject + 必要時のみ短い body
+- ユーザがメッセージ込みコマンドを渡したらそのまま実行(吟味しない)
+- pre-commit hook 失敗は 1 回だけ修正試行、 ダメなら原因報告して止まる
+
+詳細メモ: `docs/claude-code-commit-speedup.md`
