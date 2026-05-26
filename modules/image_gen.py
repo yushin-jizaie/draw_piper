@@ -58,6 +58,71 @@ DEFAULT_NEGATIVE_PROMPT = (
 DEFAULT_RESOLUTION = 1024
 
 
+# ----- モデルプリセット (画風比較用) ---------------------------------------
+#
+# 各プリセットは ImageGenerator.from_preset(name) で読める。
+# 追加・調整は MODEL_PRESETS dict を編集するだけ。
+#
+# 注意:
+#   - controlnet は SDXL 系で共通利用 (MistoLine) を想定
+#   - num_inference_steps / guidance_scale は base モデルの推奨に合わせる
+#     SDXL Turbo 系: 1-4 step, CFG 0
+#     通常 SDXL / Animagine: 20-30 step, CFG 5-7
+#   - variant=None なら HF からのデフォルト (fp32 weights) を取りに行く
+#     → fp16 variant が無いモデル (Animagine 等) はこちらを使う
+
+MODEL_PRESETS: dict[str, dict] = {
+    # 現状のベースライン (写実寄り)
+    "sdxl_turbo_mistoline": {
+        "base_model_id": "stabilityai/sdxl-turbo",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 4,
+        "guidance_scale": 0.0,
+        "controlnet_conditioning_scale": 1.0,
+        "style_hint": (
+            # prompt_builder と組み合わせる用の追加スタイル指示。 caller が
+            # 既存 prompt の前後に挿す。 不要なら "" にする。
+            "line art, black ink on white, simple clean lines, "
+            "minimal detail, no shading, white background"
+        ),
+    },
+    # アニメ線画ベース (cagliostrolab/animagine-xl-3.1)
+    # 線が太く clean、 影が少なめ。 ストローク描画と相性◎
+    "animagine_xl_31_mistoline": {
+        "base_model_id": "cagliostrolab/animagine-xl-3.1",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": None,    # Animagine は fp16 variant なし
+        "num_inference_steps": 28,
+        "guidance_scale": 7.0,
+        "controlnet_conditioning_scale": 0.8,
+        "style_hint": (
+            # Animagine 推奨の quality タグ + 線画指示
+            "masterpiece, best quality, monochrome lineart, "
+            "thick clean lines, no shading, white background, "
+            "simple composition"
+        ),
+    },
+    # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
+    # 4-step 推論で SDXL Turbo より画質高め。 比較用
+    "sdxl_lightning_4step_mistoline": {
+        "base_model_id": "ByteDance/SDXL-Lightning",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": None,
+        "num_inference_steps": 4,
+        "guidance_scale": 1.0,
+        "controlnet_conditioning_scale": 1.0,
+        "style_hint": (
+            "line art, clean black lines on white background, "
+            "no shading, simple"
+        ),
+        # NOTE: SDXL-Lightning は通常 unet weights を別 repo から差し替える
+        # 必要がある (4step 等の variant) — Step C 実装の段階では未対応。
+        # 動作確認は安定版 (sdxl-base + Lightning LoRA) でやり直す可能性あり
+    },
+}
+
+
 # ----- imagegen_config.yaml 読み書き (GUI からの編集用) -----------------
 
 from pathlib import Path as _Path
@@ -182,6 +247,8 @@ class ImageGenerator:
         controlnet_conditioning_scale: float = DEFAULT_CONTROLNET_SCALE,
         negative_prompt: str = DEFAULT_NEGATIVE_PROMPT,
         resolution: int = DEFAULT_RESOLUTION,
+        variant: Optional[str] = "fp16",
+        style_hint: str = "",
         verbose: bool = False,
     ):
         self.base_model_id = base_model_id
@@ -193,10 +260,27 @@ class ImageGenerator:
         self.controlnet_conditioning_scale = controlnet_conditioning_scale
         self.negative_prompt = negative_prompt
         self.resolution = resolution
+        # HF variant ("fp16" / "fp32" / None)。 Animagine 等 fp16 variant
+        # 無いモデルは None。 ControlNet 側にも同じ variant を試す。
+        self.variant = variant
+        # caller (prompt_builder 等) が prompt に追加するスタイル指示
+        self.style_hint = style_hint
         self.verbose = verbose
 
         self._pipe = None
         self._controlnet = None
+
+    @classmethod
+    def from_preset(cls, name: str, **overrides) -> "ImageGenerator":
+        """Build an ImageGenerator from MODEL_PRESETS[name]. overrides は
+        プリセットの個別フィールドを上書きする (verbose 等を渡す用)。
+        """
+        if name not in MODEL_PRESETS:
+            raise KeyError(
+                f"unknown preset '{name}'. available: {list(MODEL_PRESETS)}")
+        cfg = dict(MODEL_PRESETS[name])
+        cfg.update(overrides)
+        return cls(**cfg)
 
     @property
     def is_loaded(self) -> bool:
@@ -214,24 +298,53 @@ class ImageGenerator:
         if self.verbose:
             print(f"[image_gen] loading {self.controlnet_id} ...")
         t0 = time.time()
-        self._controlnet = ControlNetModel.from_pretrained(
-            self.controlnet_id,
-            torch_dtype=self.torch_dtype,
-            variant="fp16",
-        )
+        cn_kwargs = {"torch_dtype": self.torch_dtype}
+        if self.variant:
+            cn_kwargs["variant"] = self.variant
+        try:
+            self._controlnet = ControlNetModel.from_pretrained(
+                self.controlnet_id, **cn_kwargs,
+            )
+        except (OSError, ValueError) as e:
+            # variant not available -> retry without variant
+            if self.variant and "variant" in cn_kwargs:
+                if self.verbose:
+                    print(f"[image_gen] controlnet variant={self.variant} "
+                          f"not found, retrying without variant: {e}")
+                cn_kwargs.pop("variant", None)
+                self._controlnet = ControlNetModel.from_pretrained(
+                    self.controlnet_id, **cn_kwargs,
+                )
+            else:
+                raise
         if self.verbose:
             print(f"[image_gen] controlnet loaded in {time.time() - t0:.1f}s")
 
         if self.verbose:
             print(f"[image_gen] loading {self.base_model_id} ...")
         t0 = time.time()
-        self._pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
-            self.base_model_id,
-            controlnet=self._controlnet,
-            torch_dtype=self.torch_dtype,
-            variant="fp16",
-            use_safetensors=True,
-        )
+        base_kwargs = {
+            "controlnet": self._controlnet,
+            "torch_dtype": self.torch_dtype,
+            "use_safetensors": True,
+        }
+        if self.variant:
+            base_kwargs["variant"] = self.variant
+        try:
+            self._pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+                self.base_model_id, **base_kwargs,
+            )
+        except (OSError, ValueError) as e:
+            if self.variant and "variant" in base_kwargs:
+                if self.verbose:
+                    print(f"[image_gen] base variant={self.variant} not "
+                          f"found, retrying without variant: {e}")
+                base_kwargs.pop("variant", None)
+                self._pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+                    self.base_model_id, **base_kwargs,
+                )
+            else:
+                raise
         if self.verbose:
             print(f"[image_gen] pipeline loaded in {time.time() - t0:.1f}s")
 
