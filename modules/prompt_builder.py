@@ -18,15 +18,23 @@ import re
 from modules.topic import TopicGuess, UNKNOWN_SUBJECT
 
 
+# 2026-05-27: 「中央クリーンな絵 + 周辺スクラッチ noise」 の生成画像が
+# 多発する問題への対処。 旧版は "line art, minimal detail" が SDXL に
+# 「全体を線で埋める」 と解釈されて背景にスクラッチを足してた。
+# 新版は: 単一線描を明示 + 純白背景に分離 + ノイズ系を negative で抑制。
+
 _BASE_TEMPLATE = (
-    "{subject_en} {action_en} {location_en}, "
-    "line art, black ink on white, simple, clean lines, "
-    "minimal detail, no shading, white background"
+    "a simple line drawing of {subject_en} {action_en} {location_en}, "
+    "single continuous black line on plain white background, "
+    "clean smooth strokes, minimalist illustration, "
+    "isolated subject, no background, no texture, no shading, "
+    "centered composition"
 )
 
 _FALLBACK_TEMPLATE = (
-    "simple abstract line drawing, "
-    "black ink on white, clean lines, minimal detail, white background"
+    "a simple line drawing on plain white background, "
+    "single continuous black line, clean smooth strokes, "
+    "minimalist illustration, no texture, no shading"
 )
 
 

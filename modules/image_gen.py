@@ -42,7 +42,16 @@ DEFAULT_CONTROLNET = "TheMistoAI/MistoLine"
 DEFAULT_NUM_INFERENCE_STEPS = 4
 DEFAULT_GUIDANCE_SCALE = 0.0
 DEFAULT_CONTROLNET_SCALE = 0.8
-DEFAULT_NEGATIVE_PROMPT = "color, shading, photo, photorealistic, complex background"
+# 2026-05-27: 「中央クリーンな絵 + 周辺スクラッチ noise」 への対処として
+# noise / hatching / scribble 系を強化。
+DEFAULT_NEGATIVE_PROMPT = (
+    "color, shading, photo, photorealistic, complex background, "
+    "scribble, sketchy, crosshatch, hatching, pencil texture, "
+    "scratch marks, noise, multiple overlapping lines, "
+    "duplicate strokes, dirty background, paper grain, "
+    "fabric texture, smudge, blurry, watermark, signature, "
+    "text, frame, border"
+)
 DEFAULT_RESOLUTION = 1024
 
 
