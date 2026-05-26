@@ -36,6 +36,18 @@ SUBJECTS: list[TopicEntry] = [
     TopicEntry("鳥", "bird"),
     TopicEntry("ロボット", "robot"),
     TopicEntry("龍", "dragon"),
+    # 2026-05-27 拡張: 子供のラクガキでよく出る対象を追加。 旧 5 種類だけ
+    # だと スマイリーフェイス等 が VLM の消去法で 「ロボット」 になる
+    # 問題への対処。
+    TopicEntry("顔", "face"),
+    TopicEntry("人", "person"),
+    TopicEntry("家", "house"),
+    TopicEntry("車", "car"),
+    TopicEntry("花", "flower"),
+    TopicEntry("木", "tree"),
+    TopicEntry("魚", "fish"),
+    TopicEntry("太陽", "sun"),
+    TopicEntry("星", "star"),
 ]
 
 LOCATIONS: list[TopicEntry] = [

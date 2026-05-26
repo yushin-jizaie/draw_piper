@@ -348,7 +348,15 @@ def main() -> int:
 
     vlm = VLM(verbose=True)
     image_gen = ImageGenerator(verbose=True, num_inference_steps=args.steps)
-    vectorizer = Vectorizer(verbose=True)
+    # vectorizer の binarize 設定を yaml から読み込み (パイプライン GUI の
+    # 「閾値キャリブ」 で保存される ~/draw_piper/calibration/vectorizer_config.yaml)
+    from modules.vectorizer import load_binarize_config
+    bin_cfg = load_binarize_config()
+    log.info(
+        "vectorizer.binarize : method=%s block=%d c=%d fixed=%d",
+        bin_cfg["binarize_method"], bin_cfg["adaptive_block_size"],
+        bin_cfg["adaptive_c"], bin_cfg["fixed_threshold"])
+    vectorizer = Vectorizer(verbose=True, **bin_cfg)
 
     camera = None
     if args.use_camera:

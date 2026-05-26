@@ -61,6 +61,70 @@ DEFAULT_MIN_LENGTH = 10
 log = logging.getLogger(__name__)
 
 
+# ----- Binarize 設定 yaml -------------------------------------------------
+
+DEFAULT_BINARIZE_CONFIG_PATH = (
+    Path(__file__).resolve().parent.parent
+    / "calibration" / "vectorizer_config.yaml"
+)
+
+
+def load_binarize_config(path: Optional[Path] = None) -> dict:
+    """yaml から binarize 設定を読み込む。 戻り値は Vectorizer.__init__
+    に **kwargs で渡せる dict (binarize_method / adaptive_block_size /
+    adaptive_c / fixed_threshold)。 ファイル無し / 読み込み失敗時は
+    既定値 (adaptive, 51, 10, 128) を返す。
+    """
+    cfg_path = Path(path) if path else DEFAULT_BINARIZE_CONFIG_PATH
+    defaults = {
+        "binarize_method": "adaptive",
+        "adaptive_block_size": 51,
+        "adaptive_c": 10,
+        "fixed_threshold": 128,
+    }
+    if not cfg_path.exists():
+        return defaults
+    try:
+        import yaml as _yaml
+        with open(cfg_path) as f:
+            data = _yaml.safe_load(f) or {}
+    except Exception:
+        return defaults
+    bz = data.get("binarize") or {}
+    out = dict(defaults)
+    if "method" in bz:
+        out["binarize_method"] = str(bz["method"])
+    if "adaptive_block_size" in bz:
+        out["adaptive_block_size"] = int(bz["adaptive_block_size"])
+    if "adaptive_c" in bz:
+        out["adaptive_c"] = int(bz["adaptive_c"])
+    if "fixed_threshold" in bz:
+        out["fixed_threshold"] = int(bz["fixed_threshold"])
+    return out
+
+
+def save_binarize_config(method: str,
+                          adaptive_block_size: int,
+                          adaptive_c: int,
+                          fixed_threshold: int,
+                          path: Optional[Path] = None) -> Path:
+    """binarize 設定を yaml に保存。 戻り値は実際の保存先 path。"""
+    cfg_path = Path(path) if path else DEFAULT_BINARIZE_CONFIG_PATH
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    import yaml as _yaml
+    data = {
+        "binarize": {
+            "method": method,
+            "adaptive_block_size": int(adaptive_block_size),
+            "adaptive_c": int(adaptive_c),
+            "fixed_threshold": int(fixed_threshold),
+        }
+    }
+    with open(cfg_path, "w") as f:
+        _yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
+    return cfg_path
+
+
 # ----- 補助関数 ------------------------------------------------------------
 
 def _normalize_image_gray(image: ImageLike) -> np.ndarray:
@@ -142,15 +206,41 @@ def _canny_strong_blur(
     return edges
 
 
-def _binarize_user(user_gray: np.ndarray) -> np.ndarray:
-    """ユーザの絵 (median 合成キャプチャ) を二値化。
-
+def _binarize_user(user_gray: np.ndarray,
+                    method: str = "adaptive",
+                    adaptive_block_size: int = 51,
+                    adaptive_c: int = 10,
+                    fixed_threshold: int = 128) -> np.ndarray:
+    """ユーザの絵 (median 合成キャプチャ / 単発撮影) を二値化。
     線=255 のマスクを返す (差分計算で「除外エリア」として使う)。
-    ユーザの絵は黒線が単純なので Otsu で十分。
+
+    method:
+      "otsu"     : 旧版互換。 全体 1 閾値 Otsu (照明グラデに弱い)
+      "adaptive" : cv2.adaptiveThreshold (局所平均、 既定)。
+                   照明不均一・vignetting に強い。 block_size は奇数。
+      "fixed"    : 固定閾値 (キャリブで使う絶対値指定)
     """
-    _, binary = cv2.threshold(
-        user_gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
-    )
+    if method == "otsu":
+        _, binary = cv2.threshold(
+            user_gray, 0, 255,
+            cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        return binary
+    if method == "fixed":
+        _, binary = cv2.threshold(
+            user_gray, int(fixed_threshold), 255,
+            cv2.THRESH_BINARY_INV)
+        return binary
+    # adaptive (既定)
+    block = int(adaptive_block_size)
+    if block < 3:
+        block = 3
+    if block % 2 == 0:
+        block += 1
+    binary = cv2.adaptiveThreshold(
+        user_gray, 255,
+        cv2.ADAPTIVE_THRESH_MEAN_C,
+        cv2.THRESH_BINARY_INV,
+        block, int(adaptive_c))
     return binary
 
 
@@ -267,6 +357,10 @@ class Vectorizer:
         close_ksize: int = DEFAULT_CLOSE_KSIZE,
         approx_epsilon: float = DEFAULT_APPROX_EPSILON,
         min_length: int = DEFAULT_MIN_LENGTH,
+        binarize_method: str = "adaptive",
+        adaptive_block_size: int = 51,
+        adaptive_c: int = 10,
+        fixed_threshold: int = 128,
         verbose: bool = False,
     ):
         self.canny_blur_ksize = canny_blur_ksize
@@ -278,6 +372,10 @@ class Vectorizer:
         self.close_ksize = close_ksize
         self.approx_epsilon = approx_epsilon
         self.min_length = min_length
+        self.binarize_method = binarize_method
+        self.adaptive_block_size = adaptive_block_size
+        self.adaptive_c = adaptive_c
+        self.fixed_threshold = fixed_threshold
         self.verbose = verbose
 
     # ------ パブリック API --------------------------------------------------
@@ -353,7 +451,12 @@ class Vectorizer:
 
         # ステップ 2: 差分検出 (user_image があるとき)
         if user_gray is not None:
-            user_mask = _binarize_user(user_gray)
+            user_mask = _binarize_user(
+                user_gray,
+                method=self.binarize_method,
+                adaptive_block_size=self.adaptive_block_size,
+                adaptive_c=self.adaptive_c,
+                fixed_threshold=self.fixed_threshold)
             current_mask = _compute_diff(
                 gen_mask, user_mask, self.diff_dilate_ksize
             )

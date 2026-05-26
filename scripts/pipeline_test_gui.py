@@ -239,6 +239,10 @@ class PipelineTestGUI:
             command=self.on_view_topic, width=18,
             state=tk.DISABLED)
         self.btn_view_topic.pack(side=tk.LEFT, padx=2)
+        ttk.Button(btn_row,
+            text="🔧 二値化キャリブ",
+            command=self.on_binarize_calib, width=18
+        ).pack(side=tk.RIGHT, padx=2)
         # ステージプレビュー画像参照保持
         self._stage_gen_imgtk = None
         # cycle dir 監視用
@@ -806,6 +810,26 @@ class PipelineTestGUI:
 
     # ---------- ユーティリティ ----------
 
+    def on_binarize_calib(self):
+        """ユーザ画像を選んで OTSU / Adaptive / Fixed をリアルタイム比較。
+        確定時に calibration/vectorizer_config.yaml に保存。
+        """
+        # 起点となる画像: 直前 cycle の 00_user_input.png か、 ファイル選択
+        default_img = None
+        if self.last_cycle_dir:
+            cand = self.last_cycle_dir / "vec_debug" / "00_user_input.png"
+            if cand.exists():
+                default_img = cand
+        if default_img is None and self.selected_sketch_path:
+            default_img = self.selected_sketch_path
+        if default_img is None:
+            messagebox.showerror("画像なし",
+                "二値化キャリブ用の画像がありません。 \n"
+                "・ パイプライン実行後に試す (00_user_input.png 使用)\n"
+                "・ または ① でファイル選択/撮影")
+            return
+        BinarizeCalibWindow(self, default_img)
+
     def open_output_folder(self):
         target = self.last_cycle_dir or LOGS_DIR
         try:
@@ -832,6 +856,211 @@ class PipelineTestGUI:
             self.log_text.see(tk.END)
         except Exception:
             print(line, end="")
+
+
+class BinarizeCalibWindow:
+    """二値化パラメータをライブプレビューしながらキャリブする Toplevel。
+
+    左に元画像、 右に二値化結果。 method ラジオ + slider で調整。
+    「保存」 で calibration/vectorizer_config.yaml に書き出し。
+    """
+
+    def __init__(self, parent_gui: "PipelineTestGUI", image_path: Path):
+        self.parent = parent_gui
+        self.image_path = image_path
+        # PIL / cv2 import
+        from modules.vectorizer import (
+            load_binarize_config, save_binarize_config, _binarize_user)
+        import numpy as np
+        self._binarize_user = _binarize_user
+        self._save_cfg = save_binarize_config
+        self._np = np
+        cfg = load_binarize_config()
+        # 画像読み込み (グレースケール)
+        if cv2 is None:
+            messagebox.showerror("cv2 不要", "cv2 が import できません")
+            return
+        gray = cv2.imread(str(image_path), cv2.IMREAD_GRAYSCALE)
+        if gray is None:
+            messagebox.showerror("読込失敗", f"画像読込失敗:\n{image_path}")
+            return
+        self.gray = gray
+        # Tk vars
+        self.var_method = tk.StringVar(value=cfg["binarize_method"])
+        self.var_block = tk.IntVar(value=cfg["adaptive_block_size"])
+        self.var_c = tk.IntVar(value=cfg["adaptive_c"])
+        self.var_fixed = tk.IntVar(value=cfg["fixed_threshold"])
+        # Window
+        self.win = tk.Toplevel(parent_gui.root)
+        self.win.title("二値化キャリブ")
+        self.win.geometry("1100x600")
+        self._build_ui()
+        self._update_preview()
+
+    def _build_ui(self):
+        # 上部: 元画像 + 二値化結果 (2 並び)
+        top = ttk.Frame(self.win)
+        top.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        orig_box = ttk.LabelFrame(top, text="元画像 (グレースケール)",
+                                    padding=4)
+        orig_box.grid(row=0, column=0, sticky="nwes", padx=4)
+        self.canvas_orig = tk.Canvas(orig_box, width=480, height=480,
+                                       bg="#222", highlightthickness=0)
+        self.canvas_orig.pack()
+        bin_box = ttk.LabelFrame(top, text="二値化結果 (黒線=ink)",
+                                   padding=4)
+        bin_box.grid(row=0, column=1, sticky="nwes", padx=4)
+        self.canvas_bin = tk.Canvas(bin_box, width=480, height=480,
+                                      bg="#222", highlightthickness=0)
+        self.canvas_bin.pack()
+        top.grid_columnconfigure(0, weight=1, uniform="col")
+        top.grid_columnconfigure(1, weight=1, uniform="col")
+
+        # 中段: method ラジオ + パラメータ
+        ctrl = ttk.LabelFrame(self.win, text="パラメータ", padding=8)
+        ctrl.pack(fill=tk.X, padx=8, pady=(0, 8))
+        # method
+        m_row = ttk.Frame(ctrl)
+        m_row.pack(fill=tk.X)
+        ttk.Label(m_row, text="手法:",
+                  font=("Monaco", 10, "bold")
+                  ).pack(side=tk.LEFT, padx=4)
+        for v, txt in [
+            ("adaptive", "Adaptive (局所、 推奨)"),
+            ("otsu", "Otsu (全体 1 閾値、 旧版互換)"),
+            ("fixed", "Fixed (絶対値指定)"),
+        ]:
+            ttk.Radiobutton(m_row, text=txt, value=v,
+                variable=self.var_method,
+                command=self._update_preview
+            ).pack(side=tk.LEFT, padx=8)
+        # adaptive params
+        ap_row = ttk.Frame(ctrl)
+        ap_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(ap_row, text="ブロックサイズ (奇数):"
+                  ).pack(side=tk.LEFT, padx=4)
+        tk.Scale(ap_row, from_=3, to=151, orient=tk.HORIZONTAL,
+            variable=self.var_block, length=200, resolution=2,
+            command=lambda _v: self._update_preview()
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Label(ap_row, text="  オフセット C:"
+                  ).pack(side=tk.LEFT, padx=(12, 4))
+        tk.Scale(ap_row, from_=-20, to=40, orient=tk.HORIZONTAL,
+            variable=self.var_c, length=200,
+            command=lambda _v: self._update_preview()
+        ).pack(side=tk.LEFT, padx=4)
+        # fixed param
+        fx_row = ttk.Frame(ctrl)
+        fx_row.pack(fill=tk.X, pady=(6, 0))
+        ttk.Label(fx_row, text="Fixed 閾値:"
+                  ).pack(side=tk.LEFT, padx=4)
+        tk.Scale(fx_row, from_=0, to=255, orient=tk.HORIZONTAL,
+            variable=self.var_fixed, length=300,
+            command=lambda _v: self._update_preview()
+        ).pack(side=tk.LEFT, padx=4)
+
+        # 下段: 状態 + 保存ボタン
+        st_row = ttk.Frame(self.win)
+        st_row.pack(fill=tk.X, padx=8, pady=(0, 8))
+        self.lbl_state = ttk.Label(st_row,
+            text="(プレビュー反映待ち)",
+            font=("Monaco", 9), foreground="#555")
+        self.lbl_state.pack(side=tk.LEFT, padx=4)
+        ttk.Button(st_row, text="別の画像を選択",
+            command=self._reselect_image, width=18
+        ).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(st_row, text="❌ キャンセル",
+            command=self.win.destroy, width=14
+        ).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(st_row, text="💾 yaml に保存",
+            command=self._save, width=18
+        ).pack(side=tk.RIGHT, padx=2)
+
+        # 画像参照保持
+        self._tk_orig = None
+        self._tk_bin = None
+
+    def _reselect_image(self):
+        path = filedialog.askopenfilename(
+            title="二値化キャリブ用画像を選択",
+            filetypes=[("画像", "*.png *.jpg *.jpeg"), ("All", "*.*")],
+            initialdir=str(self.image_path.parent) if self.image_path
+                         else str(LOGS_DIR))
+        if not path:
+            return
+        gray = cv2.imread(path, cv2.IMREAD_GRAYSCALE)
+        if gray is None:
+            messagebox.showerror("読込失敗", path)
+            return
+        self.image_path = Path(path)
+        self.gray = gray
+        self._update_preview()
+
+    def _update_preview(self):
+        if Image is None or ImageTk is None:
+            return
+        # 元画像
+        pil_orig = Image.fromarray(self.gray)
+        self._tk_orig = self._fit_canvas_image(pil_orig, self.canvas_orig)
+        # 二値化結果
+        method = self.var_method.get()
+        block = int(self.var_block.get())
+        c = int(self.var_c.get())
+        fixed = int(self.var_fixed.get())
+        try:
+            mask = self._binarize_user(
+                self.gray, method=method,
+                adaptive_block_size=block, adaptive_c=c,
+                fixed_threshold=fixed)
+        except Exception as e:
+            self.lbl_state.config(text=f"binarize 失敗: {e}",
+                                   foreground="red")
+            return
+        # 白地黒線で表示 (mask は ink=255 なので反転)
+        bin_disp = 255 - mask
+        pil_bin = Image.fromarray(bin_disp)
+        self._tk_bin = self._fit_canvas_image(pil_bin, self.canvas_bin)
+        # 状態 (ink ピクセル率)
+        ink_ratio = float((mask == 255).mean())
+        self.lbl_state.config(
+            text=(f"method={method}  block={block}  c={c}  fixed={fixed}"
+                   f"  ink 率={ink_ratio:.1%}  画像={self.image_path.name}"),
+            foreground="black")
+
+    def _fit_canvas_image(self, pil_img, canvas):
+        cw = canvas.winfo_width() or 480
+        ch = canvas.winfo_height() or 480
+        iw, ih = pil_img.size
+        scale = min(cw / iw, ch / ih)
+        nw, nh = max(1, int(iw * scale)), max(1, int(ih * scale))
+        resized = pil_img.resize((nw, nh), Image.LANCZOS)
+        photo = ImageTk.PhotoImage(resized)
+        canvas.delete("all")
+        canvas.create_image(cw // 2, ch // 2,
+            image=photo, anchor=tk.CENTER)
+        return photo
+
+    def _save(self):
+        method = self.var_method.get()
+        block = int(self.var_block.get())
+        c = int(self.var_c.get())
+        fixed = int(self.var_fixed.get())
+        try:
+            saved_path = self._save_cfg(
+                method=method,
+                adaptive_block_size=block,
+                adaptive_c=c,
+                fixed_threshold=fixed)
+        except Exception as e:
+            messagebox.showerror("保存失敗", str(e))
+            return
+        messagebox.showinfo("保存完了",
+            f"{saved_path} に保存しました。\n"
+            "次回のパイプライン実行時から反映されます。")
+        self.parent.log(
+            f"vectorizer_config.yaml 保存: method={method} "
+            f"block={block} c={c}")
+        self.win.destroy()
 
 
 def main():
