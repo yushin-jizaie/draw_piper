@@ -1215,14 +1215,17 @@ class ImageGenCalibWindow:
         self.parent = parent_gui
         from modules.image_gen import (
             load_imagegen_config, save_imagegen_config,
-            DEFAULT_NEGATIVE_PROMPT)
+            DEFAULT_NEGATIVE_PROMPT, MODEL_PRESETS)
         from modules.prompt_builder import _BASE_TEMPLATE, _FALLBACK_TEMPLATE
         self._save_cfg = save_imagegen_config
+        self._model_presets = MODEL_PRESETS
         cfg = load_imagegen_config()
         # 既定テンプレートが None なら組込みを表示
         base = cfg.get("base_template") or _BASE_TEMPLATE
         fallback = cfg.get("fallback_template") or _FALLBACK_TEMPLATE
         # Vars
+        # preset 選択 (空文字 = preset なし = 既定 SDXL Turbo + MistoLine)
+        self.var_preset = tk.StringVar(value=cfg.get("preset") or "")
         self.var_steps = tk.IntVar(value=cfg["num_inference_steps"])
         self.var_guidance = tk.DoubleVar(value=cfg["guidance_scale"])
         self.var_cn = tk.DoubleVar(
@@ -1235,13 +1238,37 @@ class ImageGenCalibWindow:
         # Window
         self.win = tk.Toplevel(parent_gui.root)
         self.win.title("SDXL / プロンプト 設定")
-        self.win.geometry("800x720")
+        self.win.geometry("820x780")
         self._build_ui(base, fallback, str(cfg["negative_prompt"]))
 
     def _build_ui(self, base, fallback, neg):
+        # モデル preset (base + controlnet + LoRA を一括切替)
+        preset_box = ttk.LabelFrame(self.win,
+            text="モデル preset (base + ControlNet + LoRA)", padding=8)
+        preset_box.pack(fill=tk.X, padx=8, pady=(8, 4))
+        pr_row = ttk.Frame(preset_box)
+        pr_row.pack(fill=tk.X)
+        ttk.Label(pr_row, text="preset:").pack(side=tk.LEFT, padx=4)
+        preset_values = [""] + list(self._model_presets.keys())
+        self.cmb_preset = ttk.Combobox(pr_row,
+            textvariable=self.var_preset, values=preset_values,
+            width=36, state="readonly")
+        self.cmb_preset.pack(side=tk.LEFT, padx=4)
+        self.cmb_preset.bind("<<ComboboxSelected>>", self._on_preset_changed)
+        ttk.Label(pr_row,
+            text="(空 = 既定 / SDXL Turbo + MistoLine)",
+            font=("Monaco", 9), foreground="#777"
+        ).pack(side=tk.LEFT, padx=4)
+        # preset 詳細表示 (選んだ瞬間に下に出る)
+        self.lbl_preset_info = ttk.Label(preset_box,
+            text="", font=("Monaco", 9), foreground="#555",
+            justify=tk.LEFT, wraplength=780)
+        self.lbl_preset_info.pack(fill=tk.X, padx=4, pady=(4, 0), anchor=tk.W)
+        self._update_preset_info_label()
+
         # SDXL 数値パラメータ
         num_box = ttk.LabelFrame(self.win,
-            text="SDXL 数値パラメータ", padding=8)
+            text="SDXL 数値パラメータ (preset 選択時もここで上書き可)", padding=8)
         num_box.pack(fill=tk.X, padx=8, pady=(8, 4))
         r1 = ttk.Frame(num_box)
         r1.pack(fill=tk.X)
@@ -1346,6 +1373,37 @@ class ImageGenCalibWindow:
             txt.delete("1.0", tk.END)
             txt.insert("1.0", content)
 
+    def _on_preset_changed(self, _event=None):
+        """preset 切替時、 数値パラメータをその preset の推奨値に
+        プリフィル (ユーザが上書き変更していた値はリセットされる)。"""
+        name = self.var_preset.get().strip()
+        if name and name in self._model_presets:
+            cfg = self._model_presets[name]
+            self.var_steps.set(int(cfg["num_inference_steps"]))
+            self.var_guidance.set(float(cfg["guidance_scale"]))
+            self.var_cn.set(float(cfg["controlnet_conditioning_scale"]))
+        self._update_preset_info_label()
+
+    def _update_preset_info_label(self):
+        name = self.var_preset.get().strip()
+        if not name:
+            self.lbl_preset_info.config(
+                text="(preset 未選択 — 既定の SDXL Turbo + MistoLine を使う)")
+            return
+        if name not in self._model_presets:
+            self.lbl_preset_info.config(text=f"⚠️  unknown preset: {name}")
+            return
+        cfg = self._model_presets[name]
+        lora = cfg.get("lora_path") or "(none)"
+        lora_scale = cfg.get("lora_scale", "—")
+        text = (
+            f"base: {cfg['base_model_id']}\n"
+            f"controlnet: {cfg['controlnet_id']}  (variant={cfg.get('variant')})\n"
+            f"LoRA: {lora}  scale={lora_scale}\n"
+            f"style_hint: {cfg.get('style_hint', '(none)')}"
+        )
+        self.lbl_preset_info.config(text=text)
+
     def _save(self):
         base = self.txt_base.get("1.0", "end").strip()
         fallback = self.txt_fallback.get("1.0", "end").strip()
@@ -1355,6 +1413,7 @@ class ImageGenCalibWindow:
         base_for_yaml = None if base == self._builtin_base.strip() else base
         fb_for_yaml = None if fallback == self._builtin_fallback.strip() \
                       else fallback
+        preset = self.var_preset.get().strip() or None
         try:
             saved_path = self._save_cfg(
                 num_inference_steps=int(self.var_steps.get()),
@@ -1363,7 +1422,8 @@ class ImageGenCalibWindow:
                 negative_prompt=neg,
                 base_template=base_for_yaml,
                 fallback_template=fb_for_yaml,
-                confidence_threshold=float(self.var_conf.get()))
+                confidence_threshold=float(self.var_conf.get()),
+                preset=preset)
         except Exception as e:
             messagebox.showerror("保存失敗", str(e))
             return
@@ -1371,8 +1431,8 @@ class ImageGenCalibWindow:
             f"{saved_path} に保存。\n"
             "次回パイプライン実行時から反映されます。")
         self.parent.log(
-            f"imagegen_config.yaml 保存: steps={self.var_steps.get()} "
-            f"cn={self.var_cn.get():.2f}")
+            f"imagegen_config.yaml 保存: preset={preset or '(none)'} "
+            f"steps={self.var_steps.get()} cn={self.var_cn.get():.2f}")
         self.win.destroy()
 
 

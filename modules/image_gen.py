@@ -160,6 +160,7 @@ def load_imagegen_config(path: Optional[_Path] = None) -> dict:
     """
     cfg_path = _Path(path) if path else DEFAULT_IMAGEGEN_CONFIG_PATH
     defaults = {
+        "preset": None,    # None = preset を使わず numeric だけで構築
         "num_inference_steps": DEFAULT_NUM_INFERENCE_STEPS,
         "guidance_scale": DEFAULT_GUIDANCE_SCALE,
         "controlnet_conditioning_scale": DEFAULT_CONTROLNET_SCALE,
@@ -179,6 +180,9 @@ def load_imagegen_config(path: Optional[_Path] = None) -> dict:
     ig = data.get("imagegen") or {}
     pr = data.get("prompt") or {}
     out = dict(defaults)
+    if "preset" in ig:
+        v = ig["preset"]
+        out["preset"] = str(v) if v else None
     for k in ("num_inference_steps", "guidance_scale",
               "controlnet_conditioning_scale", "negative_prompt"):
         if k in ig:
@@ -203,6 +207,7 @@ def save_imagegen_config(
     base_template: Optional[str] = None,
     fallback_template: Optional[str] = None,
     confidence_threshold: float = 0.3,
+    preset: Optional[str] = None,
     path: Optional[_Path] = None,
 ) -> _Path:
     """imagegen_config.yaml に書き出し。"""
@@ -211,6 +216,7 @@ def save_imagegen_config(
     import yaml as _yaml
     data = {
         "imagegen": {
+            "preset": preset or "",
             "num_inference_steps": int(num_inference_steps),
             "guidance_scale": float(guidance_scale),
             "controlnet_conditioning_scale": float(controlnet_conditioning_scale),
@@ -226,6 +232,30 @@ def save_imagegen_config(
         _yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True,
                           default_flow_style=False)
     return cfg_path
+
+
+def build_image_generator_from_config(cfg: dict, *, verbose: bool = True) -> "ImageGenerator":
+    """imagegen_config から ImageGenerator を組み立てる。
+    preset が指定されていれば from_preset() で base + controlnet + LoRA を取り、
+    numeric (steps / guidance / cn_scale) と negative_prompt は yaml の値で
+    上書きする。
+    """
+    preset = cfg.get("preset")
+    overrides = {
+        "verbose": verbose,
+        "num_inference_steps": int(cfg["num_inference_steps"]),
+        "guidance_scale": float(cfg["guidance_scale"]),
+        "controlnet_conditioning_scale": float(
+            cfg["controlnet_conditioning_scale"]),
+        "negative_prompt": str(cfg["negative_prompt"]),
+    }
+    if preset and preset in MODEL_PRESETS:
+        return ImageGenerator.from_preset(preset, **overrides)
+    if preset:
+        # 不明な preset 名 — 警告して既定にフォールバック
+        print(f"[image_gen] WARN: unknown preset '{preset}', "
+              f"falling back to default. available: {list(MODEL_PRESETS)}")
+    return ImageGenerator(**overrides)
 
 
 def _normalize_image(image: ImageLike, size: Optional[int] = None) -> Image.Image:
