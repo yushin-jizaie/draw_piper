@@ -63,7 +63,6 @@ class PipelineTestGUI:
         self.pipeline_proc: subprocess.Popen | None = None
         self.input_mode_var = tk.StringVar(value="file")
         self.var_camera_device = tk.IntVar(value=0)
-        self.var_camera_n_frames = tk.IntVar(value=10)
         self.var_sdxl_steps = tk.IntVar(value=4)
         self.var_seed = tk.StringVar(value="")  # 空 = 自動
 
@@ -120,19 +119,14 @@ class PipelineTestGUI:
                                                               padx=(0, 4))
         tk.Spinbox(self.camera_frame, from_=0, to=9, width=3,
             textvariable=self.var_camera_device
-        ).pack(side=tk.LEFT, padx=2)
-        ttk.Label(self.camera_frame, text="フレーム数 (median):"
-                  ).pack(side=tk.LEFT, padx=(10, 4))
-        tk.Spinbox(self.camera_frame, from_=1, to=30, width=3,
-            textvariable=self.var_camera_n_frames
-        ).pack(side=tk.LEFT, padx=2)
+        ).pack(side=tk.LEFT, padx=(2, 10))
         self.btn_cam_open = ttk.Button(self.camera_frame,
             text="カメラ起動",
             command=self.on_camera_open, width=12)
-        self.btn_cam_open.pack(side=tk.LEFT, padx=(10, 2))
+        self.btn_cam_open.pack(side=tk.LEFT, padx=2)
         self.btn_cam_capture = ttk.Button(self.camera_frame,
-            text="撮影 (median)",
-            command=self.on_camera_capture, width=14)
+            text="撮影",
+            command=self.on_camera_capture, width=10)
         self.btn_cam_capture.pack(side=tk.LEFT, padx=2)
         self.btn_cam_close = ttk.Button(self.camera_frame,
             text="カメラ閉じる",
@@ -315,16 +309,16 @@ class PipelineTestGUI:
     def on_camera_capture(self):
         if self.camera is None:
             return
-        n_frames = int(self.var_camera_n_frames.get())
-        self.log(f"撮影中 (median {n_frames} frames) ...")
-        # 別スレッドで重い median 合成
+        self.log("撮影中 ...")
+        # 別スレッドで撮影
         threading.Thread(target=self._do_camera_capture,
-                         args=(n_frames,), daemon=True).start()
+                         daemon=True).start()
 
-    def _do_camera_capture(self, n_frames):
+    def _do_camera_capture(self):
+        # カメラがアーム先端搭載で撮影時は arm 停止のため、 旧 median
+        # (動体除去) は不要。 single frame capture で十分。
         try:
-            captured_bgr = self.camera.capture_median(n_frames=n_frames,
-                                                       interval_s=0.2)
+            captured_bgr = self.camera.capture_single()
         except Exception as e:
             self.log(f"撮影失敗: {e}")
             return
