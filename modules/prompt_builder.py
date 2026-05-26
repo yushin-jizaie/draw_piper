@@ -41,18 +41,25 @@ _FALLBACK_TEMPLATE = (
 )
 
 
-def build_prompt(guess: TopicGuess, confidence_threshold: float = 0.3) -> str:
+def build_prompt(guess: TopicGuess, confidence_threshold: float = 0.3,
+                  base_template: str = None,
+                  fallback_template: str = None) -> str:
     """TopicGuess を SDXL Turbo 用の英語プロンプトに変換。
 
     confidence が閾値以下、または subject が UNKNOWN の場合は
     中立的なフォールバックプロンプトを返す。
-    """
-    if guess.confidence < confidence_threshold:
-        return _FALLBACK_TEMPLATE
-    if guess.subject is UNKNOWN_SUBJECT:
-        return _FALLBACK_TEMPLATE
 
-    return _normalize_spaces(_BASE_TEMPLATE.format(
+    base_template / fallback_template を渡すと、 組込み既定を上書き
+    可能 (GUI からのプロンプト編集用)。 None の時は組込み既定。
+    """
+    base = base_template if base_template else _BASE_TEMPLATE
+    fallback = fallback_template if fallback_template else _FALLBACK_TEMPLATE
+    if guess.confidence < confidence_threshold:
+        return _normalize_spaces(fallback)
+    if guess.subject is UNKNOWN_SUBJECT:
+        return _normalize_spaces(fallback)
+
+    return _normalize_spaces(base.format(
         subject_en=guess.subject.en,
         action_en=guess.action.en,
         location_en=guess.location.en,

@@ -132,6 +132,9 @@ def run_one_cycle(
     vectorizer: Vectorizer,
     sdxl_steps: int,
     seed,
+    prompt_base_template: str = None,
+    prompt_fallback_template: str = None,
+    prompt_confidence_threshold: float = 0.3,
 ) -> dict:
     cycle_dir.mkdir(parents=True, exist_ok=True)
     timing: dict = {"cycle_dir": str(cycle_dir), "snapshots": []}
@@ -180,7 +183,11 @@ def run_one_cycle(
     timing["snapshots"].append(gpu_mem_snapshot("after vlm unload", log))
 
     log.info("---- STAGE 4: prompt_builder ----")
-    prompt = build_prompt(guess)
+    prompt = build_prompt(
+        guess,
+        confidence_threshold=prompt_confidence_threshold,
+        base_template=prompt_base_template,
+        fallback_template=prompt_fallback_template)
     log.info(f"  prompt: {prompt}")
     (cycle_dir / "prompt.txt").write_text(prompt, encoding="utf-8")
     timing["prompt"] = prompt
@@ -274,7 +281,8 @@ def main() -> int:
         default=ROOT / "scripts" / "test_sketch.jpg",
         help="入力スケッチ画像。デフォルトは scripts/test_sketch.jpg",
     )
-    parser.add_argument("--steps", type=int, default=4, help="SDXL の num_inference_steps")
+    parser.add_argument("--steps", type=int, default=None,
+                         help="SDXL の num_inference_steps (省略時 imagegen_config.yaml の値)")
     parser.add_argument("--cycles", type=int, default=1, help="サイクル数")
     parser.add_argument("--seed", type=int, default=None, help="SDXL のシード")
     parser.add_argument("--log-dir", type=Path, default=ROOT / "logs", help="ログ出力ディレクトリ")
@@ -347,7 +355,23 @@ def main() -> int:
     gpu_mem_snapshot("baseline", log)
 
     vlm = VLM(verbose=True)
-    image_gen = ImageGenerator(verbose=True, num_inference_steps=args.steps)
+    # imagegen + prompt 設定を yaml から読み込み (GUI で編集可能)
+    from modules.image_gen import load_imagegen_config
+    ig_cfg = load_imagegen_config()
+    log.info(
+        "imagegen config: steps=%d guidance=%.2f cn=%.2f",
+        ig_cfg["num_inference_steps"], ig_cfg["guidance_scale"],
+        ig_cfg["controlnet_conditioning_scale"])
+    # --steps が指定されていれば yaml を上書き
+    steps_eff = args.steps if args.steps is not None else \
+                int(ig_cfg["num_inference_steps"])
+    image_gen = ImageGenerator(
+        verbose=True,
+        num_inference_steps=steps_eff,
+        guidance_scale=float(ig_cfg["guidance_scale"]),
+        controlnet_conditioning_scale=float(
+            ig_cfg["controlnet_conditioning_scale"]),
+        negative_prompt=str(ig_cfg["negative_prompt"]))
     # vectorizer の binarize 設定を yaml から読み込み (パイプライン GUI の
     # 「閾値キャリブ」 で保存される ~/draw_piper/calibration/vectorizer_config.yaml)
     from modules.vectorizer import load_binarize_config
@@ -426,8 +450,12 @@ def main() -> int:
                 vlm=vlm,
                 image_gen=image_gen,
                 vectorizer=vectorizer,
-                sdxl_steps=args.steps,
+                sdxl_steps=steps_eff,
                 seed=args.seed,
+                prompt_base_template=ig_cfg.get("base_template"),
+                prompt_fallback_template=ig_cfg.get("fallback_template"),
+                prompt_confidence_threshold=float(
+                    ig_cfg.get("confidence_threshold", 0.3)),
             )
             if capture_elapsed is not None:
                 timing["camera_capture_s"] = capture_elapsed

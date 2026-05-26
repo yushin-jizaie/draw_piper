@@ -261,6 +261,10 @@ class PipelineTestGUI:
             text="🔧 二値化キャリブ",
             command=self.on_binarize_calib, width=18
         ).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(btn_row,
+            text="🎨 SDXL/プロンプト設定",
+            command=self.on_imagegen_calib, width=22
+        ).pack(side=tk.RIGHT, padx=2)
         # ステージプレビュー画像参照保持
         self._stage_gen_imgtk = None
         # cycle dir 監視用
@@ -888,6 +892,10 @@ class PipelineTestGUI:
 
     # ---------- ユーティリティ ----------
 
+    def on_imagegen_calib(self):
+        """SDXL + プロンプト設定 popup を開く。"""
+        ImageGenCalibWindow(self)
+
     def on_binarize_calib(self):
         """ユーザ画像を選んで OTSU / Adaptive / Fixed をリアルタイム比較。
         確定時に calibration/vectorizer_config.yaml に保存。
@@ -1176,6 +1184,176 @@ class BinarizeCalibWindow:
             f"vectorizer_config.yaml 保存: method={method} "
             f"block={block} c={c} | min_pixels={min_pix} "
             f"min_length={min_len} eps={eps}")
+        self.win.destroy()
+
+
+class ImageGenCalibWindow:
+    """SDXL + プロンプト設定を編集する Toplevel ウィンドウ。
+    imagegen_config.yaml に保存。 次回パイプライン実行から反映。
+    """
+
+    def __init__(self, parent_gui: "PipelineTestGUI"):
+        self.parent = parent_gui
+        from modules.image_gen import (
+            load_imagegen_config, save_imagegen_config,
+            DEFAULT_NEGATIVE_PROMPT)
+        from modules.prompt_builder import _BASE_TEMPLATE, _FALLBACK_TEMPLATE
+        self._save_cfg = save_imagegen_config
+        cfg = load_imagegen_config()
+        # 既定テンプレートが None なら組込みを表示
+        base = cfg.get("base_template") or _BASE_TEMPLATE
+        fallback = cfg.get("fallback_template") or _FALLBACK_TEMPLATE
+        # Vars
+        self.var_steps = tk.IntVar(value=cfg["num_inference_steps"])
+        self.var_guidance = tk.DoubleVar(value=cfg["guidance_scale"])
+        self.var_cn = tk.DoubleVar(
+            value=cfg["controlnet_conditioning_scale"])
+        self.var_conf = tk.DoubleVar(value=cfg["confidence_threshold"])
+        # 組込み defaults (リセット用)
+        self._builtin_base = _BASE_TEMPLATE
+        self._builtin_fallback = _FALLBACK_TEMPLATE
+        self._builtin_neg = DEFAULT_NEGATIVE_PROMPT
+        # Window
+        self.win = tk.Toplevel(parent_gui.root)
+        self.win.title("SDXL / プロンプト 設定")
+        self.win.geometry("800x720")
+        self._build_ui(base, fallback, str(cfg["negative_prompt"]))
+
+    def _build_ui(self, base, fallback, neg):
+        # SDXL 数値パラメータ
+        num_box = ttk.LabelFrame(self.win,
+            text="SDXL 数値パラメータ", padding=8)
+        num_box.pack(fill=tk.X, padx=8, pady=(8, 4))
+        r1 = ttk.Frame(num_box)
+        r1.pack(fill=tk.X)
+        ttk.Label(r1, text="num_inference_steps:"
+                  ).pack(side=tk.LEFT, padx=4)
+        tk.Spinbox(r1, from_=1, to=30, width=4,
+            textvariable=self.var_steps
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(r1,
+            text="  (Turbo は 1-4 が標準、 多いほど clean、 少ないほど 速い)"
+            , font=("Monaco", 9), foreground="#777"
+        ).pack(side=tk.LEFT, padx=4)
+        r2 = ttk.Frame(num_box)
+        r2.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(r2, text="guidance_scale:").pack(side=tk.LEFT, padx=4)
+        tk.Scale(r2, from_=0.0, to=15.0, orient=tk.HORIZONTAL,
+            variable=self.var_guidance, length=300, resolution=0.1
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Label(r2,
+            text="(Turbo は 0.0、 通常 SDXL は 5-7。 大きいほどプロンプト遵守)"
+            , font=("Monaco", 9), foreground="#777"
+        ).pack(side=tk.LEFT, padx=4)
+        r3 = ttk.Frame(num_box)
+        r3.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(r3, text="controlnet_conditioning_scale:"
+                  ).pack(side=tk.LEFT, padx=4)
+        tk.Scale(r3, from_=0.0, to=2.0, orient=tk.HORIZONTAL,
+            variable=self.var_cn, length=300, resolution=0.05
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Label(r3,
+            text="(1.0 = 入力線厳守、 低=自由、 高=固定)"
+            , font=("Monaco", 9), foreground="#777"
+        ).pack(side=tk.LEFT, padx=4)
+
+        # プロンプト
+        pr_box = ttk.LabelFrame(self.win,
+            text="プロンプトテンプレート (英語、 "
+                 "{subject_en} {action_en} {location_en} を含める)",
+            padding=8)
+        pr_box.pack(fill=tk.BOTH, expand=True, padx=8, pady=4)
+        ttk.Label(pr_box,
+            text="メイン (高信頼度時):"
+        ).pack(anchor=tk.W)
+        self.txt_base = tk.Text(pr_box, height=4, font=("Monaco", 9),
+            wrap=tk.WORD)
+        self.txt_base.pack(fill=tk.X, pady=(2, 6))
+        self.txt_base.insert("1.0", base)
+        ttk.Label(pr_box,
+            text="フォールバック (低信頼度 / 不明時):"
+        ).pack(anchor=tk.W)
+        self.txt_fallback = tk.Text(pr_box, height=3, font=("Monaco", 9),
+            wrap=tk.WORD)
+        self.txt_fallback.pack(fill=tk.X, pady=(2, 6))
+        self.txt_fallback.insert("1.0", fallback)
+        ttk.Label(pr_box,
+            text="Negative プロンプト (noise / scribble / 等の抑制):"
+        ).pack(anchor=tk.W)
+        self.txt_neg = tk.Text(pr_box, height=3, font=("Monaco", 9),
+            wrap=tk.WORD)
+        self.txt_neg.pack(fill=tk.X, pady=(2, 6))
+        self.txt_neg.insert("1.0", neg)
+        # confidence threshold
+        conf_row = ttk.Frame(pr_box)
+        conf_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(conf_row,
+            text="confidence_threshold (これ未満は fallback):"
+        ).pack(side=tk.LEFT, padx=4)
+        tk.Scale(conf_row, from_=0.0, to=1.0, orient=tk.HORIZONTAL,
+            variable=self.var_conf, length=200, resolution=0.05
+        ).pack(side=tk.LEFT, padx=4)
+
+        # ボタン行
+        b_row = ttk.Frame(self.win)
+        b_row.pack(fill=tk.X, padx=8, pady=(0, 8))
+        ttk.Button(b_row, text="🔄 組込み既定値に戻す",
+            command=self._reset_to_builtin, width=22
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Button(b_row, text="❌ キャンセル",
+            command=self.win.destroy, width=14
+        ).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(b_row, text="💾 yaml に保存",
+            command=self._save, width=18
+        ).pack(side=tk.RIGHT, padx=2)
+
+    def _reset_to_builtin(self):
+        if not messagebox.askyesno("既定値リセット",
+                "プロンプト / negative / 数値パラメータを 組込み既定値に "
+                "戻しますか?\n(保存は別途 「💾 yaml に保存」 で)"):
+            return
+        from modules.image_gen import (
+            DEFAULT_NUM_INFERENCE_STEPS, DEFAULT_GUIDANCE_SCALE,
+            DEFAULT_CONTROLNET_SCALE, DEFAULT_NEGATIVE_PROMPT)
+        self.var_steps.set(DEFAULT_NUM_INFERENCE_STEPS)
+        self.var_guidance.set(DEFAULT_GUIDANCE_SCALE)
+        self.var_cn.set(DEFAULT_CONTROLNET_SCALE)
+        self.var_conf.set(0.3)
+        for txt, content in [
+            (self.txt_base, self._builtin_base),
+            (self.txt_fallback, self._builtin_fallback),
+            (self.txt_neg, self._builtin_neg),
+        ]:
+            txt.delete("1.0", tk.END)
+            txt.insert("1.0", content)
+
+    def _save(self):
+        base = self.txt_base.get("1.0", "end").strip()
+        fallback = self.txt_fallback.get("1.0", "end").strip()
+        neg = self.txt_neg.get("1.0", "end").strip()
+        # 組込み既定と一致するなら None で保存 (将来既定が更新された
+        # 時にも追従)
+        base_for_yaml = None if base == self._builtin_base.strip() else base
+        fb_for_yaml = None if fallback == self._builtin_fallback.strip() \
+                      else fallback
+        try:
+            saved_path = self._save_cfg(
+                num_inference_steps=int(self.var_steps.get()),
+                guidance_scale=float(self.var_guidance.get()),
+                controlnet_conditioning_scale=float(self.var_cn.get()),
+                negative_prompt=neg,
+                base_template=base_for_yaml,
+                fallback_template=fb_for_yaml,
+                confidence_threshold=float(self.var_conf.get()))
+        except Exception as e:
+            messagebox.showerror("保存失敗", str(e))
+            return
+        messagebox.showinfo("保存完了",
+            f"{saved_path} に保存。\n"
+            "次回パイプライン実行時から反映されます。")
+        self.parent.log(
+            f"imagegen_config.yaml 保存: steps={self.var_steps.get()} "
+            f"cn={self.var_cn.get():.2f}")
         self.win.destroy()
 
 

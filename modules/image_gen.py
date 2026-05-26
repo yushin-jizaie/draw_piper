@@ -58,6 +58,91 @@ DEFAULT_NEGATIVE_PROMPT = (
 DEFAULT_RESOLUTION = 1024
 
 
+# ----- imagegen_config.yaml 読み書き (GUI からの編集用) -----------------
+
+from pathlib import Path as _Path
+
+DEFAULT_IMAGEGEN_CONFIG_PATH = (
+    _Path(__file__).resolve().parent.parent
+    / "calibration" / "imagegen_config.yaml"
+)
+
+
+def load_imagegen_config(path: Optional[_Path] = None) -> dict:
+    """imagegen_config.yaml から SDXL + prompt 設定を読み込む。
+    戻り値は ImageGenerator.__init__ / VLM / prompt_builder に渡せる dict。
+    ファイル無し / 失敗時は組込み既定値。
+    """
+    cfg_path = _Path(path) if path else DEFAULT_IMAGEGEN_CONFIG_PATH
+    defaults = {
+        "num_inference_steps": DEFAULT_NUM_INFERENCE_STEPS,
+        "guidance_scale": DEFAULT_GUIDANCE_SCALE,
+        "controlnet_conditioning_scale": DEFAULT_CONTROLNET_SCALE,
+        "negative_prompt": DEFAULT_NEGATIVE_PROMPT,
+        "base_template": None,    # None = prompt_builder の既定を使う
+        "fallback_template": None,
+        "confidence_threshold": 0.3,
+    }
+    if not cfg_path.exists():
+        return defaults
+    try:
+        import yaml as _yaml
+        with open(cfg_path) as f:
+            data = _yaml.safe_load(f) or {}
+    except Exception:
+        return defaults
+    ig = data.get("imagegen") or {}
+    pr = data.get("prompt") or {}
+    out = dict(defaults)
+    for k in ("num_inference_steps", "guidance_scale",
+              "controlnet_conditioning_scale", "negative_prompt"):
+        if k in ig:
+            out[k] = ig[k]
+    if "base_template" in pr:
+        out["base_template"] = pr["base_template"] or None
+    if "fallback_template" in pr:
+        out["fallback_template"] = pr["fallback_template"] or None
+    if "confidence_threshold" in pr:
+        try:
+            out["confidence_threshold"] = float(pr["confidence_threshold"])
+        except Exception:
+            pass
+    return out
+
+
+def save_imagegen_config(
+    num_inference_steps: int,
+    guidance_scale: float,
+    controlnet_conditioning_scale: float,
+    negative_prompt: str,
+    base_template: Optional[str] = None,
+    fallback_template: Optional[str] = None,
+    confidence_threshold: float = 0.3,
+    path: Optional[_Path] = None,
+) -> _Path:
+    """imagegen_config.yaml に書き出し。"""
+    cfg_path = _Path(path) if path else DEFAULT_IMAGEGEN_CONFIG_PATH
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    import yaml as _yaml
+    data = {
+        "imagegen": {
+            "num_inference_steps": int(num_inference_steps),
+            "guidance_scale": float(guidance_scale),
+            "controlnet_conditioning_scale": float(controlnet_conditioning_scale),
+            "negative_prompt": str(negative_prompt),
+        },
+        "prompt": {
+            "base_template": base_template or "",
+            "fallback_template": fallback_template or "",
+            "confidence_threshold": float(confidence_threshold),
+        },
+    }
+    with open(cfg_path, "w") as f:
+        _yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True,
+                          default_flow_style=False)
+    return cfg_path
+
+
 def _normalize_image(image: ImageLike, size: Optional[int] = None) -> Image.Image:
     if isinstance(image, Image.Image):
         img = image.convert("RGB") if image.mode != "RGB" else image
