@@ -336,8 +336,20 @@ class PipelineTestGUI:
         """PIL.Image を canvas のサイズに fit させて表示。 photo 参照を返す。"""
         if ImageTk is None:
             return None
-        cw = canvas.winfo_width() or 170
-        ch = canvas.winfo_height() or 170
+        # winfo_width が 1 (= まだ表示されていない、 ジオメトリ未確定) の
+        # 場合は要求された width を使う
+        cw = canvas.winfo_width()
+        ch = canvas.winfo_height()
+        if cw < 50:
+            try:
+                cw = int(canvas.cget("width"))
+            except Exception:
+                cw = 170
+        if ch < 50:
+            try:
+                ch = int(canvas.cget("height"))
+            except Exception:
+                ch = 170
         iw, ih = pil_img.size
         scale = min(cw / iw, ch / ih, 1.0)
         nw, nh = max(1, int(iw * scale)), max(1, int(ih * scale))
@@ -709,14 +721,21 @@ class PipelineTestGUI:
         self.txt_prompt.config(state=tk.DISABLED)
 
     def _update_stage_generated(self, gen_path: Path):
+        self.log(f"  プレビュー: 生成画像 検出 {gen_path}")
         if Image is None or ImageTk is None:
+            self.log("    PIL/ImageTk 未 import、 表示できず")
             return
         try:
             img = Image.open(gen_path).convert("RGB")
-        except Exception:
+        except Exception as e:
+            self.log(f"    生成画像 読込失敗: {e}")
             return
-        self._img_gen = self._fit_to_canvas(img, self.canvas_gen)
-        self.btn_view_gen.config(state=tk.NORMAL)
+        try:
+            self._img_gen = self._fit_to_canvas(img, self.canvas_gen)
+            self.btn_view_gen.config(state=tk.NORMAL)
+            self.log(f"    生成画像 表示 (size={img.size})")
+        except Exception as e:
+            self.log(f"    canvas 描画失敗: {e}")
 
     def _update_stage_userbinary(self, ub_path: Path):
         if Image is None or ImageTk is None:

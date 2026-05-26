@@ -27,7 +27,9 @@ _BASE_TEMPLATE = (
     "a simple line drawing of {subject_en} {action_en} {location_en}, "
     "single continuous black line on plain white background, "
     "clean smooth strokes, minimalist illustration, "
-    "no background, no texture, no shading"
+    "no background, no texture, no shading, "
+    "preserve original line positions and scale exactly, "
+    "do not redraw existing lines, only add minimal new details"
 )
 # 「centered composition」 / 「isolated subject」 は 2026-05-27 に削除。
 # これらが SDXL に 「フレーム中央に再配置」 を促し、 ユーザ入力 (顔等)
