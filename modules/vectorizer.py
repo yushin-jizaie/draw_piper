@@ -52,10 +52,13 @@ DEFAULT_CANNY_BLUR_SIGMA = 3.0
 DEFAULT_CANNY_THRESH_LOW = 50
 DEFAULT_CANNY_THRESH_HIGH = 150
 DEFAULT_DIFF_DILATE_KSIZE = 21
-DEFAULT_MIN_PIXELS = 50
+# 2026-05-27: 細部 (顔の目・口・鼻 等) が大量に削除される問題への対処。
+# min_pixels 50 → 20、 min_length 10 → 5、 approx_epsilon 2.0 → 1.0
+# で短い曲線を保持しやすく。 旧値は vectorizer_config.yaml で上書き可。
+DEFAULT_MIN_PIXELS = 20
 DEFAULT_CLOSE_KSIZE = 3
-DEFAULT_APPROX_EPSILON = 2.0
-DEFAULT_MIN_LENGTH = 10
+DEFAULT_APPROX_EPSILON = 1.0
+DEFAULT_MIN_LENGTH = 5
 
 
 log = logging.getLogger(__name__)
@@ -70,10 +73,9 @@ DEFAULT_BINARIZE_CONFIG_PATH = (
 
 
 def load_binarize_config(path: Optional[Path] = None) -> dict:
-    """yaml から binarize 設定を読み込む。 戻り値は Vectorizer.__init__
-    に **kwargs で渡せる dict (binarize_method / adaptive_block_size /
-    adaptive_c / fixed_threshold)。 ファイル無し / 読み込み失敗時は
-    既定値 (adaptive, 51, 10, 128) を返す。
+    """yaml から binarize + filter 設定を読み込む。 戻り値は
+    Vectorizer.__init__ に **kwargs で渡せる dict。 ファイル無し /
+    読み込み失敗時は 既定値を返す。
     """
     cfg_path = Path(path) if path else DEFAULT_BINARIZE_CONFIG_PATH
     defaults = {
@@ -81,6 +83,12 @@ def load_binarize_config(path: Optional[Path] = None) -> dict:
         "adaptive_block_size": 51,
         "adaptive_c": 10,
         "fixed_threshold": 128,
+        # filter 系 (低くすると細部が残る)
+        "min_pixels": DEFAULT_MIN_PIXELS,
+        "min_length": DEFAULT_MIN_LENGTH,
+        "approx_epsilon": DEFAULT_APPROX_EPSILON,
+        "close_ksize": DEFAULT_CLOSE_KSIZE,
+        "diff_dilate_ksize": DEFAULT_DIFF_DILATE_KSIZE,
     }
     if not cfg_path.exists():
         return defaults
@@ -91,6 +99,7 @@ def load_binarize_config(path: Optional[Path] = None) -> dict:
     except Exception:
         return defaults
     bz = data.get("binarize") or {}
+    fl = data.get("filter") or {}
     out = dict(defaults)
     if "method" in bz:
         out["binarize_method"] = str(bz["method"])
@@ -100,6 +109,16 @@ def load_binarize_config(path: Optional[Path] = None) -> dict:
         out["adaptive_c"] = int(bz["adaptive_c"])
     if "fixed_threshold" in bz:
         out["fixed_threshold"] = int(bz["fixed_threshold"])
+    if "min_pixels" in fl:
+        out["min_pixels"] = int(fl["min_pixels"])
+    if "min_length" in fl:
+        out["min_length"] = int(fl["min_length"])
+    if "approx_epsilon" in fl:
+        out["approx_epsilon"] = float(fl["approx_epsilon"])
+    if "close_ksize" in fl:
+        out["close_ksize"] = int(fl["close_ksize"])
+    if "diff_dilate_ksize" in fl:
+        out["diff_dilate_ksize"] = int(fl["diff_dilate_ksize"])
     return out
 
 
@@ -107,11 +126,39 @@ def save_binarize_config(method: str,
                           adaptive_block_size: int,
                           adaptive_c: int,
                           fixed_threshold: int,
-                          path: Optional[Path] = None) -> Path:
-    """binarize 設定を yaml に保存。 戻り値は実際の保存先 path。"""
+                          path: Optional[Path] = None,
+                          min_pixels: Optional[int] = None,
+                          min_length: Optional[int] = None,
+                          approx_epsilon: Optional[float] = None,
+                          close_ksize: Optional[int] = None,
+                          diff_dilate_ksize: Optional[int] = None,
+                          ) -> Path:
+    """binarize + filter 設定を yaml に保存。
+    filter 系 (min_pixels 等) は None のとき既存値を保持。
+    """
     cfg_path = Path(path) if path else DEFAULT_BINARIZE_CONFIG_PATH
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     import yaml as _yaml
+    # 既存読み込み (filter 部分の保持用)
+    existing = {}
+    if cfg_path.exists():
+        try:
+            with open(cfg_path) as f:
+                existing = _yaml.safe_load(f) or {}
+        except Exception:
+            existing = {}
+    old_filter = existing.get("filter") or {}
+    new_filter = dict(old_filter)
+    if min_pixels is not None:
+        new_filter["min_pixels"] = int(min_pixels)
+    if min_length is not None:
+        new_filter["min_length"] = int(min_length)
+    if approx_epsilon is not None:
+        new_filter["approx_epsilon"] = float(approx_epsilon)
+    if close_ksize is not None:
+        new_filter["close_ksize"] = int(close_ksize)
+    if diff_dilate_ksize is not None:
+        new_filter["diff_dilate_ksize"] = int(diff_dilate_ksize)
     data = {
         "binarize": {
             "method": method,
@@ -120,6 +167,8 @@ def save_binarize_config(method: str,
             "fixed_threshold": int(fixed_threshold),
         }
     }
+    if new_filter:
+        data["filter"] = new_filter
     with open(cfg_path, "w") as f:
         _yaml.safe_dump(data, f, sort_keys=False, allow_unicode=True)
     return cfg_path

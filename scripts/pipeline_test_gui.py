@@ -890,6 +890,10 @@ class BinarizeCalibWindow:
         self.var_block = tk.IntVar(value=cfg["adaptive_block_size"])
         self.var_c = tk.IntVar(value=cfg["adaptive_c"])
         self.var_fixed = tk.IntVar(value=cfg["fixed_threshold"])
+        # filter 系 (Vectorizer の細部保持/削除に直結)
+        self.var_min_pixels = tk.IntVar(value=cfg["min_pixels"])
+        self.var_min_length = tk.IntVar(value=cfg["min_length"])
+        self.var_epsilon = tk.DoubleVar(value=cfg["approx_epsilon"])
         # Window
         self.win = tk.Toplevel(parent_gui.root)
         self.win.title("二値化キャリブ")
@@ -957,6 +961,30 @@ class BinarizeCalibWindow:
         tk.Scale(fx_row, from_=0, to=255, orient=tk.HORIZONTAL,
             variable=self.var_fixed, length=300,
             command=lambda _v: self._update_preview()
+        ).pack(side=tk.LEFT, padx=4)
+        # Filter 系 (ベクトル化での細部削除に直結。 数値小 = 細部残る)
+        ttk.Separator(ctrl, orient=tk.HORIZONTAL).pack(
+            fill=tk.X, pady=(10, 4))
+        ttk.Label(ctrl,
+            text="Filter (Vectorize 後段、 小さくすると細部が残る、 "
+                 "大きくするとストローク本数減って描画速い):",
+            font=("Monaco", 9, "bold")).pack(anchor=tk.W, padx=4)
+        f_row = ttk.Frame(ctrl)
+        f_row.pack(fill=tk.X, pady=(2, 0))
+        ttk.Label(f_row, text="min_pixels (連結成分 最小 px):"
+                  ).pack(side=tk.LEFT, padx=4)
+        tk.Scale(f_row, from_=5, to=100, orient=tk.HORIZONTAL,
+            variable=self.var_min_pixels, length=160
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Label(f_row, text="  min_length (ポリライン 最短 点数):"
+                  ).pack(side=tk.LEFT, padx=(8, 4))
+        tk.Scale(f_row, from_=2, to=30, orient=tk.HORIZONTAL,
+            variable=self.var_min_length, length=160
+        ).pack(side=tk.LEFT, padx=4)
+        ttk.Label(f_row, text="  approx_epsilon (折線簡略化):"
+                  ).pack(side=tk.LEFT, padx=(8, 4))
+        tk.Scale(f_row, from_=0.5, to=5.0, orient=tk.HORIZONTAL,
+            variable=self.var_epsilon, length=140, resolution=0.1
         ).pack(side=tk.LEFT, padx=4)
 
         # 下段: 状態 + 保存ボタン
@@ -1045,21 +1073,31 @@ class BinarizeCalibWindow:
         block = int(self.var_block.get())
         c = int(self.var_c.get())
         fixed = int(self.var_fixed.get())
+        min_pix = int(self.var_min_pixels.get())
+        min_len = int(self.var_min_length.get())
+        eps = float(self.var_epsilon.get())
         try:
             saved_path = self._save_cfg(
                 method=method,
                 adaptive_block_size=block,
                 adaptive_c=c,
-                fixed_threshold=fixed)
+                fixed_threshold=fixed,
+                min_pixels=min_pix,
+                min_length=min_len,
+                approx_epsilon=eps)
         except Exception as e:
             messagebox.showerror("保存失敗", str(e))
             return
         messagebox.showinfo("保存完了",
-            f"{saved_path} に保存しました。\n"
-            "次回のパイプライン実行時から反映されます。")
+            f"{saved_path} に保存しました。\n\n"
+            f"binarize: method={method} block={block} c={c}\n"
+            f"filter: min_pixels={min_pix} min_length={min_len} "
+            f"epsilon={eps}\n\n"
+            "次回パイプライン実行時から反映されます。")
         self.parent.log(
             f"vectorizer_config.yaml 保存: method={method} "
-            f"block={block} c={c}")
+            f"block={block} c={c} | min_pixels={min_pix} "
+            f"min_length={min_len} eps={eps}")
         self.win.destroy()
 
 
