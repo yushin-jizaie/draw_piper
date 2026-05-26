@@ -470,6 +470,10 @@ class PipelineTestGUI:
         # pre-run snapshot: 今 run より前に存在した cycle_dir を集合化
         self._pre_run_cycles = set(
             str(p) for p in LOGS_DIR.glob("vlm_to_image_*/cycle_*"))
+        # last_cycle_dir もクリア (前回 path の残り表示を防止)
+        self.last_cycle_dir = None
+        self.lbl_last_cycle.config(
+            text="(新規 cycle_dir 待機中...)", foreground="#555")
         self.lbl_vlm.config(text="(待機中...)", fg="#555")
         self.txt_prompt.config(state=tk.NORMAL)
         self.txt_prompt.delete("1.0", tk.END)
@@ -624,10 +628,9 @@ class PipelineTestGUI:
         """
         if not getattr(self, "_stage_polling", False):
             return
-        # 今 run の cycle_dir を探す: pre-run snapshot に無いものを優先
+        # 今 run の cycle_dir を探す: pre-run snapshot に無いもの (新規) のみ。
+        # fallback で前 run の dir を読むと前回画像が表示されるので使わない。
         latest = self._find_latest_cycle_after_pre_snapshot()
-        if latest is None:
-            latest = self._find_latest_cycle()  # fallback (起動直後)
         if latest is not None:
             try:
                 if str(latest) != self.lbl_last_cycle.cget("text"):
