@@ -167,29 +167,82 @@ class PipelineTestGUI:
             state=tk.DISABLED)
         self.btn_abort.pack(side=tk.LEFT, padx=2)
 
-        # ③ 結果
-        result_frame = ttk.LabelFrame(self.root,
-            text="③ 最新結果", padding=6)
-        result_frame.pack(fill=tk.X, padx=6, pady=4)
-        self.lbl_last_cycle = ttk.Label(result_frame,
+        # ③ ステージ プレビュー (パイプライン実行中に逐次更新)
+        stage_frame = ttk.LabelFrame(self.root,
+            text="③ ステージ プレビュー (実行中 逐次更新)", padding=6)
+        stage_frame.pack(fill=tk.X, padx=6, pady=4)
+        # cycle path 行
+        cycle_row = ttk.Frame(stage_frame)
+        cycle_row.pack(fill=tk.X, pady=(0, 4))
+        self.lbl_last_cycle = ttk.Label(cycle_row,
             text="(まだ実行されていません)",
             font=("Monaco", 9), foreground="#555")
         self.lbl_last_cycle.pack(side=tk.LEFT, padx=4,
                                   fill=tk.X, expand=True)
-        self.btn_view_gen = ttk.Button(result_frame, text="生成画像を表示",
-            command=self.on_view_generated, width=16,
+        # 4 段 + 操作ボタン
+        stages_grid = ttk.Frame(stage_frame)
+        stages_grid.pack(fill=tk.X)
+        # Stage 1: VLM 結果
+        vlm_box = ttk.LabelFrame(stages_grid,
+            text="① VLM 結果", padding=4)
+        vlm_box.grid(row=0, column=0, sticky="nwe", padx=2)
+        self.lbl_vlm = tk.Label(vlm_box,
+            text="(未実行)", font=("Monaco", 9),
+            justify=tk.LEFT, anchor="nw", width=24,
+            wraplength=180, fg="#555")
+        self.lbl_vlm.pack(fill=tk.BOTH, expand=True)
+        # Stage 2: SDXL プロンプト
+        pr_box = ttk.LabelFrame(stages_grid,
+            text="② SDXL プロンプト", padding=4)
+        pr_box.grid(row=0, column=1, sticky="nwe", padx=2)
+        self.txt_prompt = tk.Text(pr_box, height=4, width=30,
+            font=("Monaco", 9), wrap=tk.WORD,
+            bg="#f8f8f8", fg="#333")
+        self.txt_prompt.pack(fill=tk.BOTH, expand=True)
+        self.txt_prompt.insert("1.0", "(未実行)")
+        self.txt_prompt.config(state=tk.DISABLED)
+        # Stage 3: 生成画像 thumb
+        gen_box = ttk.LabelFrame(stages_grid,
+            text="③ 生成画像", padding=4)
+        gen_box.grid(row=0, column=2, sticky="nwe", padx=2)
+        self.canvas_gen = tk.Canvas(gen_box, width=140, height=140,
+            bg="#222", highlightthickness=0)
+        self.canvas_gen.pack()
+        self.canvas_gen.create_text(70, 70, text="(未実行)",
+            fill="#888", font=("Monaco", 9))
+        # Stage 4: Strokes
+        st_box = ttk.LabelFrame(stages_grid,
+            text="④ Strokes", padding=4)
+        st_box.grid(row=0, column=3, sticky="nwe", padx=2)
+        self.lbl_strokes_stat = tk.Label(st_box,
+            text="(未実行)", font=("Monaco", 9),
+            justify=tk.LEFT, anchor="nw", width=18,
+            wraplength=140, fg="#555")
+        self.lbl_strokes_stat.pack(fill=tk.BOTH, expand=True)
+        # 各列を均等に
+        for c in range(4):
+            stages_grid.grid_columnconfigure(c, weight=1, uniform="stage")
+        # 操作ボタン行
+        btn_row = ttk.Frame(stage_frame)
+        btn_row.pack(fill=tk.X, pady=(4, 0))
+        self.btn_view_gen = ttk.Button(btn_row, text="生成画像を拡大",
+            command=self.on_view_generated, width=18,
             state=tk.DISABLED)
         self.btn_view_gen.pack(side=tk.LEFT, padx=2)
-        self.btn_view_strokes = ttk.Button(result_frame,
-            text="strokes プレビュー",
-            command=self.on_view_strokes, width=18,
+        self.btn_view_strokes = ttk.Button(btn_row,
+            text="strokes プレビュー (大)",
+            command=self.on_view_strokes, width=22,
             state=tk.DISABLED)
         self.btn_view_strokes.pack(side=tk.LEFT, padx=2)
-        self.btn_view_topic = ttk.Button(result_frame,
-            text="VLM 結果表示",
-            command=self.on_view_topic, width=14,
+        self.btn_view_topic = ttk.Button(btn_row,
+            text="VLM 結果 JSON",
+            command=self.on_view_topic, width=18,
             state=tk.DISABLED)
         self.btn_view_topic.pack(side=tk.LEFT, padx=2)
+        # ステージプレビュー画像参照保持
+        self._stage_gen_imgtk = None
+        # cycle dir 監視用
+        self._stage_seen = set()
 
         # ログ
         log_frame = ttk.LabelFrame(self.root,
@@ -387,11 +440,28 @@ class PipelineTestGUI:
         self.btn_run.config(state=tk.DISABLED)
         self.btn_abort.config(state=tk.NORMAL)
         self._set_status("実行中 (VLM 起動)...", "blue")
+        # ステージプレビュー リセット
+        self._stage_seen = set()
+        self.lbl_vlm.config(text="(待機中...)", fg="#555")
+        self.txt_prompt.config(state=tk.NORMAL)
+        self.txt_prompt.delete("1.0", tk.END)
+        self.txt_prompt.insert("1.0", "(待機中...)")
+        self.txt_prompt.config(state=tk.DISABLED)
+        self.canvas_gen.delete("all")
+        self.canvas_gen.create_text(70, 70, text="(待機中...)",
+            fill="#888", font=("Monaco", 9))
+        self.lbl_strokes_stat.config(text="(待機中...)", fg="#555")
+        self.btn_view_gen.config(state=tk.DISABLED)
+        self.btn_view_strokes.config(state=tk.DISABLED)
+        self.btn_view_topic.config(state=tk.DISABLED)
         self.pipeline_thread = threading.Thread(
             target=self._do_run_pipeline,
             args=(self.selected_sketch_path, steps, seed_arg),
             daemon=True)
         self.pipeline_thread.start()
+        # cycle_dir 監視ループも起動
+        self._stage_polling = True
+        self.root.after(500, self._poll_stage_files)
 
     def _do_run_pipeline(self, sketch_path: Path, steps: int,
                          seed_arg: list[str]):
@@ -471,7 +541,131 @@ class PipelineTestGUI:
             self.btn_run.config(state=tk.NORMAL))
         self.root.after(0, lambda:
             self.btn_abort.config(state=tk.DISABLED))
+        # ステージ監視停止 (もう一度 cycle_dir を一括チェックして取り残し
+        # 防止 → その後 stop)
+        self._stage_polling = False
+        self.root.after(0, lambda: self._final_stage_sweep())
         self.pipeline_proc = None
+
+    def _final_stage_sweep(self):
+        """パイプライン終了直後に未取得のステージファイルを最後に拾う。"""
+        latest = self._find_latest_cycle()
+        if latest is None:
+            return
+        for name, updater in [
+            ("topic_guess", lambda: self._update_stage_vlm(latest / "topic_guess.json")),
+            ("prompt", lambda: self._update_stage_prompt(latest / "prompt.txt")),
+            ("generated", lambda: self._update_stage_generated(latest / "generated.png")),
+            ("strokes", lambda: self._update_stage_strokes(latest / "strokes.json")),
+        ]:
+            if name in self._stage_seen:
+                continue
+            f = latest / {
+                "topic_guess": "topic_guess.json",
+                "prompt": "prompt.txt",
+                "generated": "generated.png",
+                "strokes": "strokes.json",
+            }[name]
+            if f.exists():
+                self._stage_seen.add(name)
+                updater()
+
+    def _poll_stage_files(self):
+        """パイプライン実行中に最新の cycle_dir を監視して、 各ステージの
+        出力ファイル (topic_guess.json / prompt.txt / generated.png /
+        strokes.json) が生成されたら UI を更新する。
+        """
+        if not getattr(self, "_stage_polling", False):
+            return
+        # 最新の cycle_dir を探す (パイプライン起動直後はまだ無い)
+        latest = self._find_latest_cycle()
+        if latest is not None:
+            # 表示更新
+            try:
+                if str(latest) != self.lbl_last_cycle.cget("text"):
+                    self.lbl_last_cycle.config(
+                        text=str(latest), foreground="black")
+            except Exception:
+                pass
+            # 各ファイル
+            tg = latest / "topic_guess.json"
+            if "topic_guess" not in self._stage_seen and tg.exists():
+                self._stage_seen.add("topic_guess")
+                self._update_stage_vlm(tg)
+            pr = latest / "prompt.txt"
+            if "prompt" not in self._stage_seen and pr.exists():
+                self._stage_seen.add("prompt")
+                self._update_stage_prompt(pr)
+            gen = latest / "generated.png"
+            if "generated" not in self._stage_seen and gen.exists():
+                self._stage_seen.add("generated")
+                self._update_stage_generated(gen)
+            sj = latest / "strokes.json"
+            if "strokes" not in self._stage_seen and sj.exists():
+                self._stage_seen.add("strokes")
+                self._update_stage_strokes(sj)
+        if self._stage_polling:
+            self.root.after(500, self._poll_stage_files)
+
+    def _update_stage_vlm(self, topic_path: Path):
+        try:
+            d = json.loads(topic_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            self.lbl_vlm.config(text=f"読込失敗:\n{e}", fg="red")
+            return
+        sub = d.get("subject") or {}
+        loc = d.get("location") or {}
+        act = d.get("action") or {}
+        conf = d.get("confidence", 0.0)
+        txt = (f"subject: {sub.get('ja', '?')} ({sub.get('en', '?')})\n"
+                f"location: {loc.get('ja', '?')}\n"
+                f"action: {act.get('ja', '?')}\n"
+                f"confidence: {conf:.2f}")
+        self.lbl_vlm.config(text=txt, fg="black")
+        self.btn_view_topic.config(state=tk.NORMAL)
+        self._set_status(f"VLM 完了 → {sub.get('ja', '?')}", "blue")
+
+    def _update_stage_prompt(self, prompt_path: Path):
+        try:
+            text = prompt_path.read_text(encoding="utf-8")
+        except Exception as e:
+            text = f"読込失敗: {e}"
+        self.txt_prompt.config(state=tk.NORMAL)
+        self.txt_prompt.delete("1.0", tk.END)
+        self.txt_prompt.insert("1.0", text)
+        self.txt_prompt.config(state=tk.DISABLED)
+
+    def _update_stage_generated(self, gen_path: Path):
+        if Image is None or ImageTk is None:
+            return
+        try:
+            img = Image.open(gen_path).convert("RGB")
+        except Exception as e:
+            return
+        # 140x140 サムネイル
+        img.thumbnail((140, 140), Image.LANCZOS)
+        self._stage_gen_imgtk = ImageTk.PhotoImage(img)
+        self.canvas_gen.delete("all")
+        self.canvas_gen.create_image(70, 70,
+            image=self._stage_gen_imgtk, anchor=tk.CENTER)
+        self.btn_view_gen.config(state=tk.NORMAL)
+
+    def _update_stage_strokes(self, strokes_path: Path):
+        try:
+            d = json.loads(strokes_path.read_text(encoding="utf-8"))
+        except Exception as e:
+            self.lbl_strokes_stat.config(text=f"読込失敗:\n{e}",
+                                          fg="red")
+            return
+        strokes = d.get("strokes") or []
+        n_pts = sum(len(s) for s in strokes)
+        meta = d.get("meta") or {}
+        coord = meta.get("coordinate_system", "px")
+        txt = (f"{len(strokes)} 本\n"
+                f"{n_pts} 点\n"
+                f"coord: {coord}")
+        self.lbl_strokes_stat.config(text=txt, fg="black")
+        self.btn_view_strokes.config(state=tk.NORMAL)
 
     def on_abort_pipeline(self):
         if self.pipeline_proc is None:
