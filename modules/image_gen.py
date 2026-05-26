@@ -103,6 +103,26 @@ MODEL_PRESETS: dict[str, dict] = {
             "simple composition"
         ),
     },
+    # 松本大洋風 LoRA (Animagine ベース + 自前学習 LoRA)
+    # 学習: scripts/train_style_lora.py (training/matsumoto_taiyo/ の画像から)
+    # LoRA 未学習時は preset 選択で FileNotFoundError → 先に学習する
+    "matsumoto_taiyo_animagine": {
+        "base_model_id": "cagliostrolab/animagine-xl-3.1",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": None,
+        "num_inference_steps": 30,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.75,
+        # trigger word は学習時に caption へ挿入したものを使う
+        "style_hint": (
+            "mt_taiyo_style, rough ink lineart, expressive faces, "
+            "loose dynamic strokes, monochrome, white background, "
+            "no shading"
+        ),
+        # 学習結果。 path は project_root 相対 (相対パスは load() 時解決)
+        "lora_path": "training/lora/matsumoto_taiyo.safetensors",
+        "lora_scale": 0.85,
+    },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
     "sdxl_lightning_4step_mistoline": {
@@ -249,6 +269,8 @@ class ImageGenerator:
         resolution: int = DEFAULT_RESOLUTION,
         variant: Optional[str] = "fp16",
         style_hint: str = "",
+        lora_path: Optional[str] = None,
+        lora_scale: float = 1.0,
         verbose: bool = False,
     ):
         self.base_model_id = base_model_id
@@ -265,6 +287,10 @@ class ImageGenerator:
         self.variant = variant
         # caller (prompt_builder 等) が prompt に追加するスタイル指示
         self.style_hint = style_hint
+        # LoRA weights を base に焼き込まずに ロード (推論時に lora_scale で混合)。
+        # 相対パスは project_root 起点で解決される (load() で resolve)。
+        self.lora_path = lora_path
+        self.lora_scale = float(lora_scale)
         self.verbose = verbose
 
         self._pipe = None
@@ -355,6 +381,26 @@ class ImageGenerator:
         if self.verbose:
             print(f"[image_gen] moved to {self.device} in {time.time() - t0:.1f}s")
 
+        # LoRA load (optional)
+        if self.lora_path:
+            lora_path = Path(self.lora_path)
+            if not lora_path.is_absolute():
+                # resolve relative to project_root (parent of modules/)
+                lora_path = (
+                    Path(__file__).resolve().parent.parent / lora_path
+                )
+            if not lora_path.exists():
+                raise FileNotFoundError(
+                    f"LoRA weights not found: {lora_path}. "
+                    f"Train via scripts/train_style_lora.py first."
+                )
+            if self.verbose:
+                print(f"[image_gen] loading LoRA {lora_path} (scale={self.lora_scale}) ...")
+            t0 = time.time()
+            self._pipe.load_lora_weights(str(lora_path))
+            if self.verbose:
+                print(f"[image_gen] LoRA loaded in {time.time() - t0:.1f}s")
+
     def unload(self) -> None:
         if not self.is_loaded:
             return
@@ -421,16 +467,21 @@ class ImageGenerator:
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         t0 = time.time()
+        # LoRA を有効にする場合は cross_attention_kwargs で scale を渡す
+        # (load_lora_weights だけでは fuse されないので、 推論毎に指定が必要)
+        pipe_kwargs = {
+            "prompt": prompt,
+            "negative_prompt": neg,
+            "image": pil_guide,
+            "num_inference_steps": steps,
+            "guidance_scale": gs,
+            "controlnet_conditioning_scale": cn,
+            "generator": generator,
+        }
+        if self.lora_path:
+            pipe_kwargs["cross_attention_kwargs"] = {"scale": self.lora_scale}
         with torch.no_grad():
-            out = self._pipe(
-                prompt=prompt,
-                negative_prompt=neg,
-                image=pil_guide,
-                num_inference_steps=steps,
-                guidance_scale=gs,
-                controlnet_conditioning_scale=cn,
-                generator=generator,
-            ).images[0]
+            out = self._pipe(**pipe_kwargs).images[0]
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         elapsed = time.time() - t0
