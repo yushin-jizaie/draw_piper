@@ -41,7 +41,10 @@ DEFAULT_CONTROLNET = "TheMistoAI/MistoLine"
 
 DEFAULT_NUM_INFERENCE_STEPS = 4
 DEFAULT_GUIDANCE_SCALE = 0.0
-DEFAULT_CONTROLNET_SCALE = 0.8
+# 2026-05-27: 0.8 → 1.0 に。 ユーザ入力 (顔の輪郭・目・口) の位置を
+# 厳格に保持し、 生成画像が re-position するのを防ぐ。 既存パーツが
+# ずれず、 追加要素 (髪・体) だけ周囲に生えるように。
+DEFAULT_CONTROLNET_SCALE = 1.0
 # 2026-05-27: 「中央クリーンな絵 + 周辺スクラッチ noise」 への対処として
 # noise / hatching / scribble 系を強化。
 DEFAULT_NEGATIVE_PROMPT = (

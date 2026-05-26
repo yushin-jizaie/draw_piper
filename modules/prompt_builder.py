@@ -27,9 +27,12 @@ _BASE_TEMPLATE = (
     "a simple line drawing of {subject_en} {action_en} {location_en}, "
     "single continuous black line on plain white background, "
     "clean smooth strokes, minimalist illustration, "
-    "isolated subject, no background, no texture, no shading, "
-    "centered composition"
+    "no background, no texture, no shading"
 )
+# 「centered composition」 / 「isolated subject」 は 2026-05-27 に削除。
+# これらが SDXL に 「フレーム中央に再配置」 を促し、 ユーザ入力 (顔等)
+# の位置と生成画像のパーツ位置がズレる原因だった。 ControlNet
+# conditioning_scale を 1.0 に上げて入力位置を厳守させる。
 
 _FALLBACK_TEMPLATE = (
     "a simple line drawing on plain white background, "
