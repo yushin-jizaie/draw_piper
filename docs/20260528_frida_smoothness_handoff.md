@@ -31,6 +31,8 @@
 | `scripts/preflight_check.py` | 実機描画前の dry-run チェック (in_bounds / TSP / 推定 timing) |
 | `scripts/bench_robot_timing.py` | naive vs arcs vs smooth の **実機 A/B/C timing 比較** |
 | `scripts/gui_frida_draw.py` | **Tkinter GUI** (画像/scene → preflight → preview → 描画) 独立小 GUI |
+| `_patches/wall_drawing_gui_full_dev_frida_smooth.patch` | **wall_drawing_gui 統合 patch** (~160 行)、 既存 GUI に `✨ Frida Smooth` ボタン追加 |
+| `_patches/wall_drawing_gui_full_dev.patched.py` | stroke_picker + frida_smooth 両適用済の完全版 |
 | `docs/20260528_0030_frida_smoothness_design.md` | 設計ドキュメント |
 | `docs/20260528_frida_smoothness_handoff.md` | 本ファイル |
 
