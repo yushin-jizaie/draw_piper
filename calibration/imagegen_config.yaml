@@ -1,0 +1,10 @@
+imagegen:
+  preset: illustrious_v2_inpaint
+  num_inference_steps: 28
+  guidance_scale: 6.5
+  controlnet_conditioning_scale: 0.85
+
+prompt:
+  base_template: null
+  fallback_template: null
+  confidence_threshold: 0.3
