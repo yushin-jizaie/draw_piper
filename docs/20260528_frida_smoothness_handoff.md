@@ -30,6 +30,7 @@
 | `scripts/test_draw_strokes_smooth.py` | **実機テスト用** (face_lite / scattered / zigzag 3 シーン) |
 | `scripts/preflight_check.py` | 実機描画前の dry-run チェック (in_bounds / TSP / 推定 timing) |
 | `scripts/bench_robot_timing.py` | naive vs arcs vs smooth の **実機 A/B/C timing 比較** |
+| `scripts/gui_frida_draw.py` | **Tkinter GUI** (画像/scene → preflight → preview → 描画) 独立小 GUI |
 | `docs/20260528_0030_frida_smoothness_design.md` | 設計ドキュメント |
 | `docs/20260528_frida_smoothness_handoff.md` | 本ファイル |
 
