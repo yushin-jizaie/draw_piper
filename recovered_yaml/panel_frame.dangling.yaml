@@ -1,0 +1,85 @@
+panel:
+  calibrated: true
+  origin_mm:
+  - 183.69
+  - 45.09
+  - 261.52
+  u_axis:
+  - 0.0949
+  - -0.9715
+  - -0.2173
+  v_axis:
+  - -0.0618
+  - 0.0482
+  - 0.9969
+  normal:
+  - -0.9948
+  - -0.0842
+  - -0.0576
+  pen_orientation_deg:
+  - 180.0
+  - 0.0
+  - 0.0
+  size_mm:
+  - 96.62
+  - 181.38
+  w_contact_mm: 0.0
+  w_clear_mm: 25.0
+  ready_pose_deg:
+  - 1.446
+  - 0.079
+  - -18.262
+  - 5.576
+  - 3.182
+  - 4.669
+  _diagnostics:
+    captured_width_mm: 96.62
+    captured_height_mm: 181.38
+    u_axis_dot_v_axis: -0.2693
+    non_perpendicular_err_deg: 15.62
+phase_a_calibration:
+  calibrated: true
+  calibrated_at: '2026-05-23T20:47:54+09:00'
+  camera_rotation_deg: 0
+  camera_image_size:
+  - 1280
+  - 720
+  panel_image_size:
+  - 1024
+  - 1024
+  panel_size_mm:
+  - 230.0
+  - 300.0
+  correspondences:
+  - camera_px:
+    - 544.0
+    - 176.0
+    panel_mm:
+    - 0.0
+    - 300.0
+    label: tl
+  - camera_px:
+    - 854.0
+    - 179.0
+    panel_mm:
+    - 230.0
+    - 300.0
+    label: tr
+  - camera_px:
+    - 899.0
+    - 572.0
+    panel_mm:
+    - 230.0
+    - 0.0
+    label: br
+  - camera_px:
+    - 544.0
+    - 665.0
+    panel_mm:
+    - 0.0
+    - 0.0
+    label: bl
+  reproj_error_px:
+    mean: 2.5448835416261414e-13
+    max: 3.295812531539522e-13
+  method: manual_4pt_click

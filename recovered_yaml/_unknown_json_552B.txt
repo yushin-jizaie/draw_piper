@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(timeout 5 venv/bin/python -c ' *)",
+      "Bash(grep -n \"_build_circle_points\\\\|_build_triangle\\\\|btn_circle\\\\|btn_triangle\\\\|_do_draw_closed_path\" /home/jizaiedev2026/piper_test/wall_drawing_gui_full_dev.py | head -10)",
+      "Read(//home/jizaiedev2026/piper_test/**)",
+      "Bash(python3 -m py_compile wall_drawing_gui_full_dev.py)",
+      "Bash(git -C /home/jizaiedev2026/piper_test status --short)"
+    ],
+    "additionalDirectories": [
+      "/home/jizaiedev2026/piper_test"
+    ]
+  }
+}

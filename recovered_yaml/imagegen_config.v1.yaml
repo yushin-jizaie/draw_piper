@@ -1,0 +1,28 @@
+imagegen:
+  preset: matsumoto_taiyo_animagine
+  num_inference_steps: 30
+  guidance_scale: 6.5
+  controlnet_conditioning_scale: 0.75
+  negative_prompt: color, shading, photo, photorealistic, complex background, scribble,
+    sketchy, crosshatch, hatching, pencil texture, scratch marks, noise, multiple
+    overlapping lines, duplicate strokes, dirty background, paper grain, fabric texture,
+    smudge, blurry, watermark, signature, text, frame, border
+prompt:
+  base_template: "Analyze this reference drawing and describe its visual style in\
+    \ \nprecise terms suitable for an image generation model. Focus on:\n- Medium\
+    \ and tool (e.g. blue marker on paper)\n- Line characteristics (weight, color,\
+    \ texture)\n\na simple line drawing of {subject_en} {action_en} {location_en},\
+    \ single continuous black line on plain white background, clean smooth strokes,\
+    \ minimalist illustration, no background, no texture, no shading, preserve original\
+    \ line positions and scale exactly, do not redraw existing lines, only add minimal\
+    \ new details、生成画像サイズを入力画像サイズに合わせる\n- Use of fill/shading (or lack thereof)\n\
+    - Construction method (e.g. simple geometric shapes joined together)\n- Level\
+    \ of detail and abstraction\n- Background treatment\n- Overall aesthetic (e.g.\
+    \ childlike, naive, minimalist)\n\nThen, generate a prompt to draw [NEW SUBJECT]\
+    \ in this exact same style.\nKeep the style description verbatim; only swap the\
+    \ subject.a simple line drawing of {subject_en} {action_en} {location_en}, single\
+    \ continuous black line on plain white background, clean smooth strokes, minimalist\
+    \ illustration, no background, no texture, preserve original line positions and\
+    \ scale exactly, do not redraw existing lines, only add minimal new details、生成画像サイズを入力画像サイズに合わせる"
+  fallback_template: ''
+  confidence_threshold: 0.0
