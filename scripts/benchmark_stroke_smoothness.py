@@ -157,6 +157,7 @@ def simulate_strategy_naive(
         "speed_max_pct": max(speeds) if speeds else speed_draw,
         "speed_mean_pct": sum(speeds) / len(speeds) if speeds else speed_draw,
         "n_arcs": 0,
+        "jerk": jerk_proxy(speeds),
     }
 
 
@@ -212,6 +213,7 @@ def simulate_strategy_arcs(
         "speed_min_pct": min(speeds) if speeds else speed_draw,
         "speed_max_pct": max(speeds) if speeds else speed_draw,
         "speed_mean_pct": sum(speeds) / len(speeds) if speeds else speed_draw,
+        "jerk": jerk_proxy(speeds),
     }
 
 
@@ -227,6 +229,7 @@ def simulate_strategy_smooth(
     speed_max: int = 50,
     curvature_break: float = 0.1,
     curvature_steep: float = 0.5,
+    curvature_straight: float = 0.02,
     step_mm: float = 2.0,
     smooth_lambda: float = 0.0,
     reorder: bool = True,
@@ -257,6 +260,7 @@ def simulate_strategy_smooth(
     travel_path = 0.0
     speeds: List[int] = []
     z_movements: List[float] = []
+    triplets_per_stroke: List[List[tuple]] = []   # for curvature histogram
 
     cur = strokes_o[0][0] if strokes_o else (0.0, 0.0)
     for si, s in enumerate(strokes_o):
@@ -274,11 +278,13 @@ def simulate_strategy_smooth(
                 speeds.append(speed_base)
         else:
             triplets = polyline_to_arc_triplets(pts)
+            triplets_per_stroke.append(triplets)
             per_arc_speeds = speed_profile_for_stroke(
                 triplets, base_speed_pct=speed_base,
                 min_speed_pct=speed_min, max_speed_pct=speed_max,
                 curvature_break=curvature_break,
                 curvature_steep=curvature_steep,
+                curvature_straight=curvature_straight,
                 smooth_window=speed_smooth_window,
             )
             for tri, spd in zip(triplets, per_arc_speeds):
@@ -289,6 +295,9 @@ def simulate_strategy_smooth(
         wu_out = clear_heights[si]
         z_movements.append(wu_out - w_contact)
         cur = pts[-1]
+
+    jerk = jerk_proxy(speeds)
+    hist = curvature_histogram(triplets_per_stroke)
 
     return {
         "strategy": "smooth",
@@ -304,6 +313,8 @@ def simulate_strategy_smooth(
         "speed_mean_pct": sum(speeds) / len(speeds) if speeds else speed_base,
         "reorder_indices": indices,
         "clear_heights_mm": clear_heights,
+        "jerk": jerk,
+        "curvature_histogram": hist,
     }
 
 
@@ -342,15 +353,70 @@ def estimate_time_seconds(metrics: Dict, *,
 
 # ============================================================ jerk estimate
 
-def jerk_proxy(speed_profile: List[int]) -> float:
-    """Speed-change proxy for jerk: sum |Δspeed| over the profile.
+def jerk_proxy(speed_profile: List[int]) -> dict:
+    """Speed-change proxy for jerk: stats of |Δspeed| over the profile.
 
-    Lower = smoother (fewer abrupt speed changes).
+    Lower jerk_sum = smoother (fewer abrupt speed changes).
+
+    Returns
+    -------
+    dict with keys:
+        jerk_sum     : Σ |speed[i+1] - speed[i]|
+        jerk_mean    : average per transition
+        jerk_max     : worst single transition
+        n_transitions: len(speed_profile) - 1
     """
     if len(speed_profile) < 2:
-        return 0.0
-    return float(sum(abs(speed_profile[i + 1] - speed_profile[i])
-                      for i in range(len(speed_profile) - 1)))
+        return {"jerk_sum": 0.0, "jerk_mean": 0.0, "jerk_max": 0.0,
+                "n_transitions": 0}
+    deltas = [abs(speed_profile[i + 1] - speed_profile[i])
+              for i in range(len(speed_profile) - 1)]
+    return {
+        "jerk_sum": float(sum(deltas)),
+        "jerk_mean": float(sum(deltas)) / len(deltas),
+        "jerk_max": float(max(deltas)),
+        "n_transitions": len(deltas),
+    }
+
+
+def curvature_histogram(triplets_list: List[List[tuple]],
+                         bins: List[float] = None) -> dict:
+    """Histogram of arc curvatures across all triplets.
+
+    Bins default: [0, 0.02, 0.1, 0.5, ∞] which match the speed-mapping
+    regions (straight / gentle / mid / sharp) so the output tells you how
+    many arcs fall in each speed-control bucket.
+
+    Parameters
+    ----------
+    triplets_list : list of [(triplet, triplet, ...)] per stroke
+    bins : list of upper-bound edges (mm^-1). Default 4-bucket.
+
+    Returns
+    -------
+    dict: bin_edges, counts (per bin), labels (descriptive)
+    """
+    if bins is None:
+        bins = [0.02, 0.1, 0.5, float("inf")]
+    labels = ["straight (R≥50mm)", "gentle (R 10-50mm)",
+              "mid (R 2-10mm)", "sharp (R<2mm)"]
+    counts = [0] * len(bins)
+    for triplets in triplets_list:
+        for tri in triplets:
+            k = compute_arc_curvature(tri)
+            for bi, ub in enumerate(bins):
+                if k <= ub:
+                    counts[bi] += 1
+                    break
+    total = sum(counts)
+    pct = [100.0 * c / max(1, total) for c in counts]
+    return {
+        "bin_upper_edges": bins,
+        "labels": labels,
+        "counts": counts,
+        "percentages": pct,
+        "total": total,
+    }
 
 
 # ============================================================ main
@@ -406,6 +472,30 @@ def run_benchmark(scene_name: str, verbose: bool = True) -> Dict:
         if m_naive["est_time_s"] > 0:
             speedup = m_naive["est_time_s"] / max(0.01, m_smooth["est_time_s"])
             print(f"estimated speedup (smooth vs naive): {speedup:.2f}x")
+        # jerk
+        j_n = m_naive.get("jerk", {})
+        j_a = m_arcs.get("jerk", {})
+        j_s = m_smooth.get("jerk", {})
+        print()
+        print(f"{'jerk metric':<22} {'naive':>12} {'arcs':>12} {'smooth':>12}")
+        print("-" * 60)
+        for key, fmt in [("jerk_sum", "{:.0f}"),
+                          ("jerk_mean", "{:.2f}"),
+                          ("jerk_max", "{:.0f}"),
+                          ("n_transitions", "{:.0f}")]:
+            print(f"{key:<22} "
+                  f"{fmt.format(j_n.get(key, 0)):>12} "
+                  f"{fmt.format(j_a.get(key, 0)):>12} "
+                  f"{fmt.format(j_s.get(key, 0)):>12}")
+        # curvature histogram for smooth (most informative)
+        hist = m_smooth.get("curvature_histogram", {})
+        if hist and hist.get("total"):
+            print()
+            print("curvature histogram (smooth strategy):")
+            for lab, cnt, pct in zip(hist["labels"],
+                                       hist["counts"], hist["percentages"]):
+                bar = "#" * int(pct / 2)
+                print(f"  {lab:<22} {cnt:>4} ({pct:5.1f}%) {bar}")
         print()
 
     return {

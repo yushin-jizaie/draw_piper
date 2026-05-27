@@ -108,6 +108,26 @@ class PanelFrame:
             for i in range(3)
         )
 
+    def from_base(self, x_mm, y_mm, z_mm):
+        """Convert robot base (x, y, z) mm to panel (u, v, w) mm.
+
+        Inverse of to_base. Assumes (u_axis, v_axis, normal) form an
+        orthonormal basis (i.e. they're mutually perpendicular unit vectors,
+        which from_yaml normalizes via _unit). Then the inverse is just the
+        dot product with each basis vector.
+
+        Used e.g. to ask "where is the pen tip right now in panel coords?"
+        for TSP-style trajectory planning that wants to start from the
+        current end-effector position.
+        """
+        dx = x_mm - self.origin[0]
+        dy = y_mm - self.origin[1]
+        dz = z_mm - self.origin[2]
+        u = dx * self.u_axis[0] + dy * self.u_axis[1] + dz * self.u_axis[2]
+        v = dx * self.v_axis[0] + dy * self.v_axis[1] + dz * self.v_axis[2]
+        w = dx * self.normal[0] + dy * self.normal[1] + dz * self.normal[2]
+        return (u, v, w)
+
     def in_bounds(self, u_mm, v_mm):
         """True if (u, v) lies within the declared drawing area."""
         return 0.0 <= u_mm <= self.size_mm[0] and 0.0 <= v_mm <= self.size_mm[1]
@@ -901,16 +921,18 @@ class Robot:
             # default: 1/3 of the way up from contact to clear
             w_clear_near = wc + (wu_max - wc) / 3.0
 
-        # current pen position (if known) for TSP start
+        # current pen position (if known) for TSP start: use the inverse
+        # transform panel.from_base() to get the pen tip in panel uv coords.
+        # Only used as a hint to start TSP from the nearest stroke endpoint.
+        start_uv = None
         try:
             cur_pose = self.get_end_pose()
-            # Convert base-frame xyz to panel-frame uv (only valid for points
-            # near the canvas plane; we use it as a hint, not strictly).
-            # If we lack a clean inverse from base to uv, just skip and let
-            # TSP start from strokes[0][0].
-            start_uv = None
             if cur_pose and len(cur_pose) >= 3:
-                start_uv = None    # safer: no base→uv inverse here
+                u_now, v_now, _w_now = panel.from_base(
+                    cur_pose[0], cur_pose[1], cur_pose[2])
+                start_uv = (u_now, v_now)
+                if self.verbose if hasattr(self, "verbose") else False:
+                    pass
         except Exception:
             start_uv = None
 
