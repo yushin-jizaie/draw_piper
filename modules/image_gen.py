@@ -135,6 +135,29 @@ MODEL_PRESETS: dict[str, dict] = {
         "guide_dilate_ksize": 5,
         "img2img_strength": 0.85,
     },
+    # 同上 matsumoto LoRA を inpainting で使う preset
+    # ユーザの線(黒画素) は exact 保持、 白背景部分を完全再生成。
+    # img2img と違って 「線をなぞる」 制限が無く LoRA が髪・rough stroke を
+    # 自由に書ける。 ただし mask 境界に切れ目が出やすいので keep_dilate で
+    # 数 px 余裕を取る。
+    "matsumoto_taiyo_inpaint": {
+        "base_model_id": "cagliostrolab/animagine-xl-3.1",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": None,
+        "num_inference_steps": 32,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "mt_taiyo_style, rough ink lineart, expressive face, "
+            "monochrome, white background, lots of white space"
+        ),
+        "lora_path": "training/lora/matsumoto_taiyo.safetensors",
+        "lora_scale": 1.3,
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": True,
+        "inpaint_line_threshold": 200,   # アンチエイリアスの薄グレーまで保持側
+        "inpaint_keep_dilate": 4,        # 線周辺 4px は触らない
+    },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
     "sdxl_lightning_4step_mistoline": {
@@ -324,6 +347,45 @@ def _dilate_guide_lines(img: Image.Image,
     return Image.fromarray(result).convert("RGB")
 
 
+def _make_inpaint_mask(img: Image.Image,
+                        line_threshold: int = 200,
+                        keep_dilate: int = 3) -> Image.Image:
+    """Inpaint mask を生成。
+
+    入力: 黒線 on 白背景 の sketch (RGB)
+    出力: 黒(0) = 元画素を保持 / 白(255) = SDXL に再生成させる、 の白黒 mask
+
+    Parameters
+    ----------
+    img : PIL.Image
+        guide image (RGB)
+    line_threshold : int
+        この値以上の輝度を「白背景=生成領域」 とみなす (0-255)。
+        200 だとアンチエイリアスの薄いグレーも 保持側に倒れる
+    keep_dilate : int
+        keep 領域(=線) を膨らませる pixel 数。 ユーザの線の周辺数 px は
+        触らないようにすると 線が SDXL に塗りつぶされるのを防げる。
+        0 で off, 推奨 3-5
+
+    Returns
+    -------
+    PIL.Image (mode='L')
+        白 = generate / 黒 = keep
+    """
+    arr = np.array(img.convert("L"))
+    # 白(>=threshold) を生成領域(=255)、 黒(<threshold) を keep(=0)
+    mask = (arr >= int(line_threshold)).astype(np.uint8) * 255
+    if keep_dilate >= 1:
+        try:
+            import cv2 as _cv2
+        except ImportError:
+            return Image.fromarray(mask)
+        # generate 領域を erode = keep 領域を膨らます
+        kernel = np.ones((int(keep_dilate), int(keep_dilate)), np.uint8)
+        mask = _cv2.erode(mask, kernel, iterations=1)
+    return Image.fromarray(mask)
+
+
 class ImageGenerator:
     """SDXL Turbo + MistoLine ControlNet ラッパー。
 
@@ -349,6 +411,9 @@ class ImageGenerator:
         lora_scale: float = 1.0,
         guide_dilate_ksize: int = 0,
         img2img_strength: float = 0.0,
+        inpaint_mode: bool = False,
+        inpaint_line_threshold: int = 200,
+        inpaint_keep_dilate: int = 3,
         verbose: bool = False,
     ):
         self.base_model_id = base_model_id
@@ -377,6 +442,13 @@ class ImageGenerator:
         # ControlNet で線位置 guide。 SDXL の "subject fills frame" prior を抑制し、
         # ユーザの描いた小さい oval を そのスケールのまま 残せる
         self.img2img_strength = float(img2img_strength)
+        # Inpaint mode (img2img_strength より優先)。 ユーザの線(黒画素) は
+        # 100% 保持、 白背景部分は SDXL + LoRA に完全自由 で再描画させる。
+        # → img2img の「init を一律 N% 残す」 では出来ない 「線だけ exact 保持
+        # + 周辺は LoRA で大胆に描画」 が可能
+        self.inpaint_mode = bool(inpaint_mode)
+        self.inpaint_line_threshold = int(inpaint_line_threshold)
+        self.inpaint_keep_dilate = int(inpaint_keep_dilate)
         self.verbose = verbose
 
         self._pipe = None
@@ -402,10 +474,15 @@ class ImageGenerator:
         if self.is_loaded:
             return
 
-        # img2img mode かどうかで pipeline class を切替
-        use_img2img = self.img2img_strength > 0.0
+        # mode 選択: inpaint > img2img > text2img の優先順
+        use_inpaint = self.inpaint_mode
+        use_img2img = (not use_inpaint) and self.img2img_strength > 0.0
         from diffusers import ControlNetModel
-        if use_img2img:
+        if use_inpaint:
+            from diffusers import (
+                StableDiffusionXLControlNetInpaintPipeline as PipeClass,
+            )
+        elif use_img2img:
             from diffusers import (
                 StableDiffusionXLControlNetImg2ImgPipeline as PipeClass,
             )
@@ -481,7 +558,12 @@ class ImageGenerator:
             else:
                 raise
         if self.verbose:
-            mode = "img2img" if use_img2img else "text2img"
+            if use_inpaint:
+                mode = "inpaint"
+            elif use_img2img:
+                mode = "img2img"
+            else:
+                mode = "text2img"
             print(f"[image_gen] pipeline loaded ({mode}) in "
                   f"{time.time() - t0:.1f}s")
 
@@ -584,11 +666,40 @@ class ImageGenerator:
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         t0 = time.time()
-        # img2img モードでは init_image (=ユーザのスケッチ生画像)、
-        # control_image (=線を太らせた lineart) を別々に渡す。
-        # text2img モードでは image=control_image だけ。
-        use_img2img = self.img2img_strength > 0.0
-        if use_img2img:
+        # mode で渡す引数構造が変わる:
+        #   text2img : image=control
+        #   img2img  : image=init, control_image=control, strength=...
+        #   inpaint  : image=init, mask_image=mask, control_image=control,
+        #              strength=1.0 (mask 内を完全 regenerate)
+        use_inpaint = self.inpaint_mode
+        use_img2img = (not use_inpaint) and self.img2img_strength > 0.0
+        if use_inpaint:
+            init_image = _normalize_image(guide_image, size=self.resolution)
+            mask_image = _make_inpaint_mask(
+                init_image,
+                line_threshold=self.inpaint_line_threshold,
+                keep_dilate=self.inpaint_keep_dilate,
+            )
+            if self.verbose:
+                m_arr = np.array(mask_image)
+                gen_pct = (m_arr > 127).mean() * 100
+                print(f"[image_gen] inpaint mask: {gen_pct:.1f}% generate, "
+                      f"{100 - gen_pct:.1f}% keep "
+                      f"(thresh={self.inpaint_line_threshold}, "
+                      f"keep_dilate={self.inpaint_keep_dilate})")
+            pipe_kwargs = {
+                "prompt": prompt,
+                "negative_prompt": neg,
+                "image": init_image,
+                "mask_image": mask_image,
+                "control_image": pil_guide,
+                "strength": 1.0,  # mask 内は完全再生成
+                "num_inference_steps": steps,
+                "guidance_scale": gs,
+                "controlnet_conditioning_scale": cn,
+                "generator": generator,
+            }
+        elif use_img2img:
             # init_image は元のユーザ画像 (dilate 前の生画像)。 白背景の
             # prior を残すため。 control_image は dilate 後の lineart
             init_image = _normalize_image(guide_image, size=self.resolution)

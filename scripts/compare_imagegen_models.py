@@ -112,6 +112,10 @@ def main() -> int:
                     help="LoRA scale を全 preset で上書き (0.6-1.2)")
     ap.add_argument("--dilate", type=int, default=None,
                     help="guide_dilate_ksize を全 preset で上書き (0/3/5/7)")
+    ap.add_argument("--inpaint", action="store_true",
+                    help="inpaint mode を強制 ON (preset の値より優先)")
+    ap.add_argument("--keep-dilate", type=int, default=None,
+                    help="inpaint mode の keep 領域膨張 px (3-6 推奨)")
     args = ap.parse_args()
 
     # validate preset names
@@ -165,6 +169,10 @@ def main() -> int:
             gen_overrides["lora_scale"] = args.lora_scale
         if args.dilate is not None:
             gen_overrides["guide_dilate_ksize"] = args.dilate
+        if args.inpaint:
+            gen_overrides["inpaint_mode"] = True
+        if args.keep_dilate is not None:
+            gen_overrides["inpaint_keep_dilate"] = args.keep_dilate
         gen = ImageGenerator.from_preset(name, **gen_overrides)
         t0 = time.time()
         try:
