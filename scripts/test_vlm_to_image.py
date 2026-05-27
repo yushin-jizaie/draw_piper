@@ -366,6 +366,7 @@ def main() -> int:
     # --steps が指定されていれば yaml を上書き
     if args.steps is not None:
         ig_cfg["num_inference_steps"] = int(args.steps)
+    steps_eff = ig_cfg["num_inference_steps"]
     from modules.image_gen import build_image_generator_from_config
     image_gen = build_image_generator_from_config(ig_cfg, verbose=True)
     # vectorizer の binarize 設定を yaml から読み込み (パイプライン GUI の

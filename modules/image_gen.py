@@ -193,6 +193,29 @@ MODEL_PRESETS: dict[str, dict] = {
         "img2img_strength": 0.85,
         # LoRA は意図的に未指定 (Plan E 第一段階は素の base を見る)
     },
+    # Plan E + 松本タッチ: Illustrious + v0 LoRA 軽載せ。
+    # v0 LoRA (panel 学習版、 89MB) は Animagine 単体だと黒テクスチャ暴走したが、
+    # Illustrious base + 低 scale なら「松本らしさ」 だけ抽出できる仮説。
+    # まず scale=0.4 で試行、 結果次第で 0.3/0.5 で振る。
+    "illustrious_v2_inpaint_mt": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "mt_taiyo_style, monochrome, greyscale, lineart, "
+            "white_background, simple_background"
+        ),
+        "lora_path": "training/lora/matsumoto_taiyo.safetensors",
+        "lora_scale": 0.4,
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": True,
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        "inpaint_strength": 1.0,
+    },
     # Plan E inpaint: Illustrious + MistoLine + inpaint mode で
     # 顔輪郭 (黒線) を exact 保持しつつ 白部分に体・髪・服を描き足す。
     "illustrious_v2_inpaint": {
