@@ -62,6 +62,11 @@
 
 ### benchmark (純関数シミュレータ、 mock 不要)
 
+**2026-05-28 更新 v2**: TSP 2-opt 改善 + jerk clipping 追加:
+- scattered_dots: greedy 748mm → 2-opt **650mm** (-13.1% 追加削減)
+- face_sketch: greedy 112mm → 2-opt **101mm** (-9.7% 追加削減)
+- jerk-clip (max_jerk_per_step=10): per-stroke jerk_max が確実に下がる
+
 **2026-05-28 更新**: 3-region speed mapping (直線加速 max=50%) + 真の弧長計算
 を追加 → 全シーンで speedup 向上 (face +18%, scattered +7%, zigzag +33%):
 
