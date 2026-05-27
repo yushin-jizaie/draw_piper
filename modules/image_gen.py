@@ -48,17 +48,23 @@ DEFAULT_CONTROLNET_SCALE = 1.0
 # 2026-05-27: 「中央クリーンな絵 + 周辺スクラッチ noise」 への対処として
 # noise / hatching / scribble 系を強化。
 DEFAULT_NEGATIVE_PROMPT = (
-    # 色味系: monochrome に絞る
-    "color, photo, photorealistic, "
-    # 雑乱系: 線が gritty すぎる方向は許容するが crosshatch / scribble は抑制
-    "scribble, pencil texture, scratch marks, noise, "
-    "duplicate strokes, smudge, blurry, "
-    # 商業データ汚れ
+    # 色味・写実系
+    "color, shading, photo, photorealistic, gradient, "
+    # ロボットアーム描画前提: ペン 1 本で描けない要素は全部 NG。
+    # Vectorizer が strokes に変換する時にノイズと誤認するので、
+    # 紙質感・ハッチング・塗りつぶし・グレー塗り は **絶対 NG**。
+    "scribble, sketchy, crosshatch, hatching, pencil texture, "
+    "scratch marks, noise, multiple overlapping lines, duplicate strokes, "
+    "paper grain, paper texture, sepia tone, aged paper, "
+    "brown background, beige background, "
+    "gray background, dark background, filled background, busy background, "
+    "background pattern, background texture, ink splatter, "
+    "halftone, screentone, dot pattern, "
+    "fabric texture, smudge, blurry, "
+    # 商業データ由来のノイズ
     "watermark, signature, text, frame, border, "
     "manga panel border, page number, "
-    # NOTE: 「ハッチング・gray 背景・背景パターン」 は許容する
-    # (松本タッチの自然な属性なので negative に入れない)
-    "blurry, jpeg artifacts"
+    "jpeg artifacts"
 )
 DEFAULT_RESOLUTION = 1024
 
@@ -140,33 +146,40 @@ MODEL_PRESETS: dict[str, dict] = {
     },
     # matsumoto LoRA inpaint preset。
     # 方針: ユーザの黒線 (顔輪郭・目) は 100% 保持、 周辺の白部分には
-    # LoRA に **完全な自由を与えて** 松本タッチで肉付けさせる
-    # (体・髪・服・ハッチング背景など)。 顔自体に関与せず周辺だけ
-    # 描き足すゴール。
+    # 松本タッチの **線で** 体・髪・服 を描き足す。
     #
-    # 「白背景を残す」 系の抑制は OFF。 LoRA が漫画パネル風に
-    # 背景埋めするのも本志向では許容 (むしろ歓迎)。
+    # 重要な制約: 出力はロボットアームで ホワイトボードに描く。
+    # → 紙質感・ハッチング・塗りつぶし・グレー塗り は 絶対 NG
+    # → 「clean な黒線のみ」 を強制 (DEFAULT_NEGATIVE で押し込み済)
+    # → LoRA は漫画パネル中心の学習なので背景埋め暴発しやすい。
+    #    lora_scale を控えめにし、 prompt で「描く対象 = 体/髪/服 だけ」
+    #    に絞って LoRA を線画モードに寄せる。
     "matsumoto_taiyo_inpaint": {
         "base_model_id": "cagliostrolab/animagine-xl-3.1",
         "controlnet_id": "TheMistoAI/MistoLine",
         "variant": None,
         "num_inference_steps": 32,
-        "guidance_scale": 6.5,
+        "guidance_scale": 7.0,            # 6.5 → 7.0 で negative の押し込み強化
         "controlnet_conditioning_scale": 0.85,
-        # キャラの全身/シチュエーション を 描かせるための style_hint。
-        # 顔だけだと LoRA に描く対象が見えず gray でしか塗れない。
-        # body / clothes / hair で 「ここ描き足してね」 と明示。
+        # style_hint:
+        # - mt_taiyo_style: trigger
+        # - 描いてほしいもの: messy hair, body, clothes (= キャラ線)
+        # - スタイル: clean black line art on white (← 線画モード強制)
+        # - 否定: no shading, no texture (= negative の補強)
         "style_hint": (
-            "mt_taiyo_style, full body, messy hair, casual clothes, "
-            "rough ink lineart, dynamic strokes"
+            "mt_taiyo_style, character with body and messy hair, "
+            "clean black line art on pure white background, "
+            "no shading, no texture"
         ),
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
-        "lora_scale": 1.3,
+        "lora_scale": 1.0,                # 1.3 だと暴走、 1.0 で松本ぽさ保ちつつ抑制
         "guide_dilate_ksize": 5,
         "inpaint_mode": True,
         "inpaint_line_threshold": 200,
         "inpaint_keep_dilate": 4,
-        "inpaint_strength": 1.0,   # 完全再生成、 LoRA に余地を最大化
+        # 0.9: mask 内に init (白) の prior を 10% 残す。 LoRA の背景埋めを
+        # 弱く抑制しつつ、 線画 (体・髪) を描く自由は ほぼ残す
+        "inpaint_strength": 0.9,
     },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
