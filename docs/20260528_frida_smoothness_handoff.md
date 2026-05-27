@@ -19,9 +19,11 @@
 ### 新規ファイル
 | ファイル | 内容 |
 |---|---|
-| `modules/stroke_planner.py` | TSP 並べ替え / 曲率計算 / 速度プロファイル / look-ahead clear heights の純関数群 |
-| `scripts/benchmark_stroke_smoothness.py` | 3 strategy (naive/arcs/smooth) の軌道メトリクス比較ベンチマーク (mock 不要) |
-| `scripts/test_frida_smoothness.py` | mock Robot で `draw_strokes_panel_smooth` を E2E テスト |
+| `modules/stroke_planner.py` | TSP 並べ替え / 曲率計算 / 3-region 速度マップ / look-ahead clear heights / 真の弧長 の純関数群 |
+| `scripts/benchmark_stroke_smoothness.py` | 3 strategy (naive/arcs/smooth) の軌道メトリクス比較 (mock 不要、 純関数) |
+| `scripts/test_frida_smoothness.py` | mock Robot で `draw_strokes_panel_smooth` を E2E smoke |
+| `scripts/test_pipeline_smooth.py` | **画像 → Vectorizer → Robot smooth** 通し E2E (mock/real) |
+| `scripts/test_draw_strokes_smooth.py` | **実機テスト用** (face_lite / scattered / zigzag 3 シーン) |
 | `docs/20260528_0030_frida_smoothness_design.md` | 設計ドキュメント |
 | `docs/20260528_frida_smoothness_handoff.md` | 本ファイル |
 
@@ -46,21 +48,27 @@
 
 ### benchmark (純関数シミュレータ、 mock 不要)
 
+**2026-05-28 更新**: 3-region speed mapping (直線加速 max=50%) + 真の弧長計算
+を追加 → 全シーンで speedup 向上 (face +18%, scattered +7%, zigzag +33%):
+
 ```
 === scene: face_sketch (9 strokes) ===
 metric            naive    arcs   smooth
 travel_path_mm    169.7    169.7   112.1   (-34%)
-est_time_s         10.0     10.0     6.9   (1.45x)
+speed_mean_pct     25.0     25.0    41.4   (旧 28.1 → 41.4、 直線部で加速)
+est_time_s         10.0     10.0     5.8   (1.71x, 旧 1.45x)
 
 === scene: scattered_dots (100 strokes) ===
 metric            naive    arcs   smooth
 travel_path_mm   4212.2   4212.2   748.1   (-82%)
-est_time_s        87.4     87.4    31.4   (2.78x)
+speed_mean_pct     25.0     25.0    50.0   (短 stroke 全部直線で max)
+est_time_s        87.4     87.4    29.3   (2.98x, 旧 2.78x)
 
 === scene: zigzag_signature (1 stroke) ===
 metric            naive    arcs   smooth
 travel_path_mm      0.0      0.0     0.0   (1 stroke → TSP 無効)
-est_time_s          8.0      7.5     7.7   (~同等、 速度プロファイルで微改善)
+speed_mean_pct     25.0     25.0    35.1   (smoothing 後は緩い曲線多い → 加速大)
+est_time_s          8.0      7.9     5.8   (1.38x, 旧 1.04x)
 ```
 
 ### mock Robot smoke test
@@ -119,25 +127,29 @@ python3 -m scripts.test_frida_smoothness
 - stroke 間 travel が短く感じる
 - pen-up 高さが「次に近いか」 で変わる (近い→浅く、 遠い→深く)
 
-### P2: Vectorizer 出力と接続
+### P2: Vectorizer 連携 (E2E スクリプト実装済 ✅)
 
-`modules/vectorizer.py::Vectorizer.vectorize_to_panel()` の出力 (polyline 列) を
-そのまま `draw_strokes_panel_smooth()` に渡せるはず:
+`scripts/test_pipeline_smooth.py` で 「画像 → Vectorizer → Robot smooth」 が
+通せるようにした。 実機モードもあり:
 
-```python
-from modules.vectorizer import Vectorizer
-from modules.robot import Robot
+```bash
+# 既存生成画像 → 実機描画 (Plan E の Illustrious 出力で確認推奨)
+python3 -m scripts.test_pipeline_smooth \
+    --image logs/imagegen_comparison_*/illustrious_v2_inpaint.png \
+    --real
 
-vec = Vectorizer(panel_frame=robot.panel)
-res = vec.vectorize_to_panel(generated_image)
-strokes = [list(s) for s in res.strokes_panel_mm]   # list of (u, v) polylines
-
-robot.draw_strokes_panel_smooth(strokes,
-    draw_speed_base=30, near_threshold_mm=15.0)
+# Vectorizer + 計画メトリクスだけ (Robot 起動不要、 設定確認用)
+python3 -m scripts.test_pipeline_smooth \
+    --image scripts/test_sketch.jpg \
+    --vectorize-only
 ```
 
-`test_vlm_to_image.py` (M9 のスクリプト) の Vectorizer 出力を **そのまま実機描画**
-する E2E テストにすると 「VLM → ImageGen → Vectorizer → Robot」 が完成。
+mock 動作確認済 (sandbox):
+- test_sketch.jpg → 8 strokes / 140 arcs / TSP で 37% travel 削減
+- 速度プロファイル mean 41.0% (旧 28.4%)、 max 50% (3-region 加速の効果)
+
+VLM → ImageGen 部分は test_vlm_to_image.py を別途使い、 その出力画像を
+`--image` に渡せば 完全な VLM → ImageGen → Vectorizer → Robot 連携。
 
 ### P3: パラメータチューニング (実機の感触次第)
 
@@ -189,15 +201,16 @@ mock smoke test は scripts/test_frida_smoothness.py で stroke 数を絞る。
 strokes[0][0] にしてる。 ロボット現在位置から最近の stroke を選びたければ、
 panel.base_to_uv() の逆変換実装が要 (将来追加候補)。
 
-### 4. speed_max_pct は未使用
+### 4. speed_max_pct で直線部加速は実装済 ✅ (2026-05-28)
 
-`speed_from_curvature` で 「直線部で加速する」 仕様は今は未実装 (base が上限)。
-実機テストで「直線部は もっと速くしたい」 要望が出たら追加実装。
+3-region mapping (curvature_straight 以下で max_speed_pct) を導入。
+デフォルト straight=0.02 (R≥50mm)、 max=50%。 face_sketch で 1.71x、
+zigzag で 1.38x まで speedup 改善。
 
-### 5. arc 長は chord-sum で近似
+### 5. arc 長は真の弧長で計算済 ✅ (2026-05-28)
 
-ベンチマークの draw_path_mm は 三つ組の chord-sum (a-b + b-c) であって、 真の
-弧長より短い。 真の値が要るなら circle_arc_length() を追加実装。
+`compute_arc_length(triplet)` で R*angle の真値を計算、 benchmark に統合。
+ベンチマーク draw_path は chord-sum 比 +1-6% で正確化。
 
 ---
 
