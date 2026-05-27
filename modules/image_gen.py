@@ -48,23 +48,17 @@ DEFAULT_CONTROLNET_SCALE = 1.0
 # 2026-05-27: 「中央クリーンな絵 + 周辺スクラッチ noise」 への対処として
 # noise / hatching / scribble 系を強化。
 DEFAULT_NEGATIVE_PROMPT = (
-    # 色味・写実系
-    "color, shading, photo, photorealistic, gradient, "
-    # ロボットアーム描画前提: ペン 1 本で描けない要素は全部 NG。
-    # Vectorizer が strokes に変換する時にノイズと誤認するので、
-    # 紙質感・ハッチング・塗りつぶし・グレー塗り は **絶対 NG**。
-    "scribble, sketchy, crosshatch, hatching, pencil texture, "
-    "scratch marks, noise, multiple overlapping lines, duplicate strokes, "
-    "paper grain, paper texture, sepia tone, aged paper, "
-    "brown background, beige background, "
-    "gray background, dark background, filled background, busy background, "
-    "background pattern, background texture, ink splatter, "
-    "halftone, screentone, dot pattern, "
-    "fabric texture, smudge, blurry, "
-    # 商業データ由来のノイズ
+    # 2026-05-28: CLIP L の 77 token 制限内に収まるよう整理。
+    # 最重要 (ペン 1 本ロボット描画前提) のみ残す:
+    #   - 色 (青背景暴走対策含む)
+    #   - ハッチング・スクリーントーン・塗り (Vectorizer ノイズ源)
+    #   - 文字・ロゴ (LoRA / Illustrious 副産物)
+    "color, colored, blue background, cyan, sky, gradient, "
+    "hatching, crosshatch, screentone, halftone, dot pattern, "
+    "filled background, paper texture, scribble, sketchy, "
+    "shading, gray, sepia, "
     "watermark, signature, text, frame, border, "
-    "manga panel border, page number, "
-    "jpeg artifacts"
+    "blurry, noise, jpeg artifacts"
 )
 DEFAULT_RESOLUTION = 1024
 
@@ -175,6 +169,65 @@ MODEL_PRESETS: dict[str, dict] = {
         "inpaint_keep_dilate": 4,
         "inpaint_strength": 1.0,          # 0.9 → 1.0 (mask 内は完全再生成、
                                           #   init の白背景 prior を捨てる)
+    },
+    # Plan E: Illustrious XL (manga 寄り SDXL、 Danbooru タグ対応) + MistoLine
+    # ユーザ提案 「漫画を描くようなモデルを使えばいい」 を反映 (2026-05-27)。
+    # 注: OnomaAIResearch/Illustrious-XL-v1.0/v2.0 は single-file safetensors
+    # 形式 (model_index.json なし)。 diffusers から_pretrained() で読めるのは
+    # early-release-v0 (= 全 v 系の base) のみ。 まずこれで manga 寄りタッチが
+    # 出るか確認、 良ければ v2.0 を from_single_file 対応で取り込む。
+    "illustrious_v2_mistoline": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        # Danbooru tags で manga/line art 寄りに誘導:
+        "style_hint": (
+            # Danbooru tags (Illustrious は Danbooru 訓練): underscore 表記
+            "monochrome, greyscale, lineart, sketch, "
+            "white_background, simple_background"
+        ),
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.85,
+        # LoRA は意図的に未指定 (Plan E 第一段階は素の base を見る)
+    },
+    # Plan E inpaint: Illustrious + MistoLine + inpaint mode で
+    # 顔輪郭 (黒線) を exact 保持しつつ 白部分に体・髪・服を描き足す。
+    "illustrious_v2_inpaint": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "monochrome, greyscale, lineart, sketch, "
+            "white_background, simple_background"
+        ),
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": True,
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        "inpaint_strength": 1.0,
+    },
+    # Plan E 診断用 Phase 1/2: Illustrious XL を text2img mode で見る
+    # (ControlNet off, img2img off で 素の base + prompt の挙動)
+    "illustrious_v2_text2img": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.0,   # ControlNet off
+        "style_hint": (
+            # Danbooru tags (Illustrious は Danbooru 訓練): underscore 表記
+            "monochrome, greyscale, lineart, sketch, "
+            "white_background, simple_background"
+        ),
+        "img2img_strength": 0.0,                # text2img mode
+        "inpaint_mode": False,
     },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
