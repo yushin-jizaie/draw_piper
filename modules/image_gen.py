@@ -53,7 +53,9 @@ DEFAULT_NEGATIVE_PROMPT = (
     "scratch marks, noise, multiple overlapping lines, "
     "duplicate strokes, dirty background, paper grain, paper texture, "
     "sepia tone, aged paper, brown background, beige background, "
-    "manga panel border, halftone, "
+    "gray background, dark background, filled background, busy background, "
+    "background pattern, background texture, ink splatter, "
+    "manga panel border, halftone, screentone, dot pattern, "
     "fabric texture, smudge, blurry, watermark, signature, "
     "text, frame, border"
 )
@@ -140,6 +142,11 @@ MODEL_PRESETS: dict[str, dict] = {
     # img2img と違って 「線をなぞる」 制限が無く LoRA が髪・rough stroke を
     # 自由に書ける。 ただし mask 境界に切れ目が出やすいので keep_dilate で
     # 数 px 余裕を取る。
+    #
+    # 注意: matsumoto LoRA は漫画パネル中心の dataset で学習しているので
+    # inpaint で自由を与えると 背景全体にハッチング・グレー塗りで埋める
+    # 暴走傾向あり。 scale を 1.0 に抑え、 style_hint に
+    # "isolated, white background" を強調して抑制。
     "matsumoto_taiyo_inpaint": {
         "base_model_id": "cagliostrolab/animagine-xl-3.1",
         "controlnet_id": "TheMistoAI/MistoLine",
@@ -148,15 +155,18 @@ MODEL_PRESETS: dict[str, dict] = {
         "guidance_scale": 6.5,
         "controlnet_conditioning_scale": 0.85,
         "style_hint": (
-            "mt_taiyo_style, rough ink lineart, expressive face, "
-            "monochrome, white background, lots of white space"
+            "mt_taiyo_style, isolated character, pure white background, "
+            "monochrome ink lineart, no background pattern"
         ),
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
-        "lora_scale": 1.3,
+        "lora_scale": 1.0,               # 1.3 → 1.0 (背景埋め暴走を抑制)
         "guide_dilate_ksize": 5,
         "inpaint_mode": True,
-        "inpaint_line_threshold": 200,   # アンチエイリアスの薄グレーまで保持側
-        "inpaint_keep_dilate": 4,        # 線周辺 4px は触らない
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        # 0.75 = mask 領域に init (白) の prior を 25% 残す。 LoRA の
+        # 背景埋め暴走を抑制しつつ、 顔ディテール追加の自由は残る
+        "inpaint_strength": 0.75,
     },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
@@ -414,6 +424,7 @@ class ImageGenerator:
         inpaint_mode: bool = False,
         inpaint_line_threshold: int = 200,
         inpaint_keep_dilate: int = 3,
+        inpaint_strength: float = 1.0,
         verbose: bool = False,
     ):
         self.base_model_id = base_model_id
@@ -449,6 +460,10 @@ class ImageGenerator:
         self.inpaint_mode = bool(inpaint_mode)
         self.inpaint_line_threshold = int(inpaint_line_threshold)
         self.inpaint_keep_dilate = int(inpaint_keep_dilate)
+        # inpaint denoising strength。 1.0 = mask 領域は完全再生成 (init 無視)。
+        # 0.6-0.9 = mask 領域に init pixel (白背景) の prior を 部分的に残す
+        # → LoRA の「背景パターンで埋める」 prior を白背景プリミティブで抑制
+        self.inpaint_strength = float(inpaint_strength)
         self.verbose = verbose
 
         self._pipe = None
@@ -693,7 +708,7 @@ class ImageGenerator:
                 "image": init_image,
                 "mask_image": mask_image,
                 "control_image": pil_guide,
-                "strength": 1.0,  # mask 内は完全再生成
+                "strength": self.inpaint_strength,
                 "num_inference_steps": steps,
                 "guidance_scale": gs,
                 "controlnet_conditioning_scale": cn,

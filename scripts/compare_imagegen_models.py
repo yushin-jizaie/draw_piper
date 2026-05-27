@@ -116,6 +116,9 @@ def main() -> int:
                     help="inpaint mode を強制 ON (preset の値より優先)")
     ap.add_argument("--keep-dilate", type=int, default=None,
                     help="inpaint mode の keep 領域膨張 px (3-6 推奨)")
+    ap.add_argument("--inpaint-strength", type=float, default=None,
+                    help="inpaint mode の denoising strength "
+                         "(1.0=完全再生成, 0.5-0.8=init bias 残す)")
     args = ap.parse_args()
 
     # validate preset names
@@ -173,6 +176,8 @@ def main() -> int:
             gen_overrides["inpaint_mode"] = True
         if args.keep_dilate is not None:
             gen_overrides["inpaint_keep_dilate"] = args.keep_dilate
+        if args.inpaint_strength is not None:
+            gen_overrides["inpaint_strength"] = args.inpaint_strength
         gen = ImageGenerator.from_preset(name, **gen_overrides)
         t0 = time.time()
         try:
