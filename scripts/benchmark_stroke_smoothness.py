@@ -233,7 +233,9 @@ def simulate_strategy_smooth(
     step_mm: float = 2.0,
     smooth_lambda: float = 0.0,
     reorder: bool = True,
+    two_opt: bool = True,
     speed_smooth_window: int = 3,
+    max_jerk_per_step=None,
 ) -> Dict:
     """Frida-inspired: arcs + TSP reorder + curvature speed + look-ahead descent."""
     if not strokes:
@@ -241,8 +243,8 @@ def simulate_strategy_smooth(
 
     # 1. reorder
     if reorder:
-        strokes_o, indices = reorder_strokes_tsp(list(strokes),
-                                                  start_point=None)
+        strokes_o, indices = reorder_strokes_tsp(
+            list(strokes), start_point=None, two_opt=two_opt)
     else:
         strokes_o = list(strokes)
         indices = list(range(len(strokes)))
@@ -286,6 +288,7 @@ def simulate_strategy_smooth(
                 curvature_steep=curvature_steep,
                 curvature_straight=curvature_straight,
                 smooth_window=speed_smooth_window,
+                max_jerk_per_step=max_jerk_per_step,
             )
             for tri, spd in zip(triplets, per_arc_speeds):
                 draw_path += compute_arc_length(tri)   # true arc length

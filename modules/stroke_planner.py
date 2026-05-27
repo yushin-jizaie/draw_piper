@@ -40,8 +40,17 @@ def _dist(a: Point, b: Point) -> float:
 def reorder_strokes_tsp(
     strokes: Sequence[Stroke],
     start_point: Optional[Point] = None,
+    *,
+    two_opt: bool = True,
+    two_opt_max_iters: int = 100,
 ) -> Tuple[List[Stroke], List[int]]:
-    """Greedy nearest-neighbor TSP approximation で stroke 順を並べ替え。
+    """TSP 近似で stroke 順を並べ替え (greedy NN → 2-opt 改善)。
+
+    Phase 1: greedy nearest-neighbor で初期解
+    Phase 2: (two_opt=True) 2-opt swap で 局所最適へ改善
+      - 隣接でない 2 edge を入れ替えて travel が短くなれば採用
+      - stroke の reverse も同時に考慮 (両端どちらから始めても等価)
+      - 改善が無くなるまで repeat (上限 two_opt_max_iters)
 
     各 stroke は 両端どちらから始めても等価 (反転可能) として扱う。
 
@@ -50,13 +59,16 @@ def reorder_strokes_tsp(
     strokes : list of polylines
     start_point : (x, y) or None
         ロボットの初期位置 (panel uv 系 mm)。 None なら strokes[0] 先頭から開始。
+    two_opt : bool
+        True なら 2-opt 改善を greedy 後に走らせる (default)。
+    two_opt_max_iters : int
+        2-opt iteration の安全上限。
 
     Returns
     -------
     (reordered_strokes, original_indices)
-        reordered_strokes : 並べ替え後の strokes。 必要に応じて反転済。
-        original_indices : reordered[i] = strokes[indices[i]] (or reversed) を
-                           示す int リスト。 デバッグ・検証用。
+        reordered_strokes : 並べ替え後の strokes (反転済の場合あり)。
+        original_indices  : reordered[i] = (反転かもしれない) strokes[indices[i]]
     """
     if len(strokes) <= 1:
         return list(strokes), list(range(len(strokes)))
@@ -65,12 +77,12 @@ def reorder_strokes_tsp(
     used = [False] * n
     reordered: List[Stroke] = []
     indices: List[int] = []
-    # current = ロボット先端の現在位置
     if start_point is None:
         current: Point = _stroke_endpoints(strokes[0])[0]
     else:
         current = start_point
 
+    # ---- Phase 1: greedy nearest-neighbor ----
     for _ in range(n):
         best_i = -1
         best_dist = float('inf')
@@ -97,7 +109,71 @@ def reorder_strokes_tsp(
         used[best_i] = True
         current = _stroke_endpoints(s)[1]
 
-    return reordered, indices
+    if not two_opt or n < 4:
+        return reordered, indices
+
+    # ---- Phase 2: 2-opt swap improvement ----
+    # 各 stroke の両端 (head, tail) を取り出して 操作する
+    # cur_order : list of (orig_idx, reversed_flag)
+    cur_order = [(indices[i],
+                   reordered[i][0] != strokes[indices[i]][0])
+                  for i in range(n)]
+    # convenience: get head/tail of a (idx, rev) entry
+    def _ht(entry):
+        idx, rev = entry
+        s = strokes[idx]
+        if rev:
+            return s[-1], s[0]
+        return s[0], s[-1]
+
+    def _travel_total(order):
+        total = 0.0
+        if start_point is not None:
+            total += _dist(start_point, _ht(order[0])[0])
+        for i in range(len(order) - 1):
+            total += _dist(_ht(order[i])[1], _ht(order[i + 1])[0])
+        return total
+
+    iters = 0
+    improved = True
+    while improved and iters < two_opt_max_iters:
+        improved = False
+        iters += 1
+        base_travel = _travel_total(cur_order)
+        # try 2-opt: reverse the sub-sequence [i+1 .. j], which also
+        # flips each entry's reversed flag and swaps their order
+        for i in range(-1, n - 2):
+            for j in range(i + 2, n):
+                if i == -1 and j == n - 1:
+                    # full reversal is equivalent to nothing useful
+                    continue
+                new_order = list(cur_order)
+                sub = new_order[i + 1: j + 1]
+                # flip the sub-segment order AND each entry's rev flag
+                # (because going through a stroke "backwards" through the
+                # new order means each one is traversed in opposite direction)
+                flipped = [(idx, not rev) for (idx, rev) in reversed(sub)]
+                new_order[i + 1: j + 1] = flipped
+                new_travel = _travel_total(new_order)
+                if new_travel + 1e-9 < base_travel:
+                    cur_order = new_order
+                    base_travel = new_travel
+                    improved = True
+                    # restart from beginning for further improvements
+                    break
+            if improved:
+                break
+
+    # reconstruct reordered + indices from cur_order
+    reordered_2 = []
+    indices_2 = []
+    for (idx, rev) in cur_order:
+        s = strokes[idx]
+        if rev:
+            s = list(reversed(s))
+        reordered_2.append(s)
+        indices_2.append(idx)
+    return reordered_2, indices_2
 
 
 def total_travel_distance(
@@ -236,10 +312,22 @@ def speed_profile_for_stroke(
     curvature_steep: float = 0.5,
     curvature_straight: float = 0.02,
     smooth_window: int = 3,
+    max_jerk_per_step: Optional[int] = None,
 ) -> List[int]:
-    """各 arc の speed% を計算し、 移動平均で滑らかにして返す。
+    """各 arc の speed% を計算し、 移動平均 + jerk clipping で滑らかにして返す。
 
-    急な speed 切替は jerk の原因なので、 隣接 arc と平均する。
+    Phase 1: 各 arc の曲率 → 速度% を `speed_from_curvature` で個別計算
+    Phase 2: smooth_window で移動平均 (smooth_window<=1 で skip)
+    Phase 3: max_jerk_per_step が指定されてれば、 隣接 arc 間の |Δspeed| が
+             その値を超えないよう前向き / 後向きの 2 パスで clipping
+
+    Parameters
+    ----------
+    triplets : list of arc triplets
+    base/min/max_speed_pct, curvature_* : speed_from_curvature 参照
+    smooth_window : 移動平均 window (default 3)
+    max_jerk_per_step : None なら clipping 無し。 例 10 なら隣接 arc 間で
+        最大 10% までしか速度変化を許さない (急減速の段差を緩和)
 
     Returns
     -------
@@ -259,16 +347,38 @@ def speed_profile_for_stroke(
         )
         for t in triplets
     ]
-    if smooth_window <= 1 or len(raw) <= 1:
-        return raw
-    # 移動平均 (端は片側のみ参照)
-    out = []
-    half = smooth_window // 2
-    for i in range(len(raw)):
-        lo = max(0, i - half)
-        hi = min(len(raw), i + half + 1)
-        out.append(int(round(sum(raw[lo:hi]) / (hi - lo))))
-    return out
+    if smooth_window > 1 and len(raw) > 1:
+        out = []
+        half = smooth_window // 2
+        for i in range(len(raw)):
+            lo = max(0, i - half)
+            hi = min(len(raw), i + half + 1)
+            out.append(int(round(sum(raw[lo:hi]) / (hi - lo))))
+        raw = out
+    if max_jerk_per_step is not None and max_jerk_per_step > 0 and len(raw) > 1:
+        # Two-pass jerk clipping (forward then backward):
+        # forward:  cap speed[i+1] so that |speed[i+1] - speed[i]| <= max_jerk
+        # backward: cap speed[i]   so that |speed[i+1] - speed[i]| <= max_jerk
+        # 直前/直後 arc の制約を両方満たすよう繰り返す。 これで sharp なピーク
+        # (例 speed=50 → 10 → 50 の triangle) を 段階的減速 (50 → 40 → 30 → 20
+        # → 10 → 20 → ...) にできる
+        out = list(raw)
+        # forward pass
+        for i in range(1, len(out)):
+            delta = out[i] - out[i - 1]
+            if delta > max_jerk_per_step:
+                out[i] = out[i - 1] + max_jerk_per_step
+            elif delta < -max_jerk_per_step:
+                out[i] = out[i - 1] - max_jerk_per_step
+        # backward pass
+        for i in range(len(out) - 2, -1, -1):
+            delta = out[i] - out[i + 1]
+            if delta > max_jerk_per_step:
+                out[i] = out[i + 1] + max_jerk_per_step
+            elif delta < -max_jerk_per_step:
+                out[i] = out[i + 1] - max_jerk_per_step
+        raw = out
+    return [int(round(v)) for v in raw]
 
 
 # ============================================================ look-ahead descent

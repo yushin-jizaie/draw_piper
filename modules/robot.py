@@ -849,6 +849,7 @@ class Robot:
                                    smooth_lambda=0.0,
                                    reorder=True,
                                    speed_smooth_window=3,
+                                   max_jerk_per_step=None,
                                    settle_s=2.0,
                                    arrival_tol_mm=2.0,
                                    arrival_timeout_s=15.0):
@@ -988,6 +989,7 @@ class Robot:
                 curvature_steep=curvature_steep,
                 curvature_straight=curvature_straight,
                 smooth_window=speed_smooth_window,
+                max_jerk_per_step=max_jerk_per_step,
             )
             speeds_all.extend(speeds)
 
