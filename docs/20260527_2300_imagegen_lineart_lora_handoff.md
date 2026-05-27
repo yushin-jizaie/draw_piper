@@ -1,0 +1,272 @@
+# ImageGen LoRA 学習 作業引き継ぎ (2026-05-27 23:00 時点)
+
+> Claude Code Web 版 / 別セッションへの引き継ぎ。
+> ブランチ: `claude/smooth-curve-rendering-e88Vb` (全 push 済)
+> 親プロジェクト: `~/draw_piper` (Piper ロボットアーム × ホワイトボード描画)
+> 本作業は画像生成スレッド (M9 from MILESTONES.md の先) の探索中。 完了 (●) にはまだ到達していない。
+
+---
+
+## TL;DR (5 行)
+
+1. **目的**: ユーザのスケッチ → 松本大洋風線画 (ロボット描画可能) を生成する LoRA を作る
+2. **進捗**: ImageGenerator に inpaint mode 実装済。 LoRA 学習 v2 (lineart grayscale) が現在進行中 (~23:30 完走予定)
+3. **直近の失敗**: lineart v1 (bolden ON) で大面積黒テクスチャ暴走 → bolden 削除して v2 再学習中
+4. **次セッションの最優先**: v2 学習の結果を確認 → 推論テスト → ダメなら更なる対処
+5. **最重要制約**: 出力はロボット描画 = **線のみ・白背景・ハッチング NG・塗りつぶし NG**。 これを忘れない
+
+---
+
+## プロジェクトの本流 (再確認)
+
+- `draw_piper` = Piper アームでホワイトボードに描く
+- パイプライン: VLM → prompt_builder → **ImageGenerator** → Vectorizer → Robot
+- 本作業は **ImageGenerator** 部分の品質向上 (M8/M9 完了済の先)
+- 出力画像は 後段 Vectorizer で strokes 化 → ロボットがペン 1 本で描画
+- → **塗りつぶし・ハッチング・グレー塗り・紙質感 は全て NG** (Vectorizer がノイズと誤認 + ロボットが描けない)
+
+詳細は `MILESTONES.md` 参照。 現在地は M12 (canvas キャリブ v3)。
+
+---
+
+## 作業の経緯 (時系列、 失敗から学んだこと)
+
+### 1. 構図問題の解決 (済)
+
+ユーザの 「小さい oval を そのスケールで保持しつつ周辺に肉付け」 要望に対し、 当初の text2img + ControlNet では SDXL の "subject fills frame" prior が支配的で 顔がフレーム超え。
+
+**解決**: `img2img + ControlNet` モード追加 (`StableDiffusionXLControlNetImg2ImgPipeline`)。 init image にユーザのスケッチを渡して 白背景 prior を保持。 commit `29cff00`。
+
+### 2. ControlNet variant 整合 (済)
+
+MistoLine は fp16 variant のみ提供。 base model (Animagine) が variant=None だと ControlNet 側も None で .bin を探して失敗。 commit `47bc5f0` で base / ControlNet 独立解決。
+
+### 3. peft / diffusers 版整合 (済)
+
+`train_text_to_image_lora_sdxl.py` が peft を直接 import + `check_min_version` が installed diffusers と整合しない問題。 commit `23cb2d1` で `_installed_diffusers_tag()` でインストール済 diffusers 版に合致する git tag で clone。
+
+### 4. matsumoto LoRA v0 学習 (済、 1080 step で中断)
+
+35 枚の漫画パネルで学習。 ターミナル切れで step 1323/1500 で中断したが、 checkpoint-1080 を `matsumoto_taiyo.safetensors` (89MB) として確定。 commit history 参照。
+
+### 5. inpaint mode 実装 (済)
+
+img2img の構造的限界 (init 一律保持) を超えるため、 inpaint pipeline を追加。 ユーザの黒線部分 (mask=0) は exact 保持、 白部分 (mask=255) は LoRA 全力描画。 commit `76e4227`。
+
+### 6. ❌ LoRA v0 (panel 学習) の暴走
+
+inpaint mode で v0 LoRA を使うと、 学習データが漫画パネル全体 (screentone・ハッチング・吹き出し・複数キャラ) だったため、 LoRA は「松本らしさ = ハッチング背景 + 塗り」 として記憶。 出力に **背景ハッチング・グレー塗り** が必ず混入 → ロボット描画 NG。
+
+**問題の根本**: dataset が「線 + 塗り + トーン」 のセット。 LoRA はそれをセットで学習する。
+
+### 7. 線画抽出パイプライン実装 (済)
+
+`scripts/extract_lineart.py` を新規作成。 controlnet_aux の `LineartAnimeDetector` で 36 枚の raw 画像から線画抽出。
+
+- Method A (cv2 adaptive threshold): カラー画で塗りつぶし残る → 不採用
+- Method B (LineartAnimeDetector ML): 全画像で クリーンな線抽出 → 採用
+
+36 枚から 7 枚除外 (ロゴ・大文字テキスト多い画像)、 残り 29 枚で学習用 dataset 化。 commit `b827d88`、 `5543bc8`。
+
+### 8. ❌ LoRA v1 (lineart + bolden) の暴走
+
+`--bolden` (threshold 180 + dilate 1 で 2 値化) を適用して学習。 1500 step 完走したが、 推論時に **黒テクスチャで全画面埋め尽くす** 失敗。
+
+**原因**: ML lineart 検出器の出力 grayscale を 2 値化する際、 「弱く検出された線」 (シロの黒髪領域のシルエット境界・服の塗り境界 etc) も全部黒化。 結果として dataset に大面積の黒が残り、 LoRA がそれを学習。
+
+詳細: docs に書いてないけど、 学習データ `training/matsumoto_taiyo/lineart_b_bold/` の中身が「線画」 ではなく「黒い塊 + 線」 になっていた。
+
+### 9. → 現在: LoRA v2 (lineart grayscale、 bolden 無し) 学習中
+
+`--bolden` 削除して grayscale 出力で学習。 弱い線は淡いまま、 強い線は濃い、 塗り境界程度では検出されない。 これで「線だけ」 を LoRA に学ばせる狙い。
+
+開始時刻: 22:50 頃、 完走予定: ~23:30 (1500 step × 1.66s = 41 分)
+ログ: `training/lora_runs/lineart_v2_grayscale_*.log`
+PID: 203679
+
+---
+
+## 走っているもの (引き継ぎ時点で活きてるプロセス)
+
+```bash
+# 確認
+ps -p 203679 -o pid,etime,cmd
+tail -3 training/lora_runs/lineart_v2_grayscale_*.log
+
+# 完走サイン
+ls -lh training/lora/matsumoto_taiyo.safetensors    # 89M で 23:30 過ぎに更新されれば完走
+ls -lt training/lora_runs/matsumoto_taiyo/           # checkpoint-1500 の存在
+```
+
+完走したら PID 203679 は消える。 LoRA v2 が `training/lora/matsumoto_taiyo.safetensors` に書き出される。
+
+旧 LoRA は `training/lora/matsumoto_taiyo_bold_v1.safetensors` に退避済 (黒テクスチャ暴走版)。
+
+---
+
+## 次セッションの最優先タスク
+
+### P0: 学習データの目視確認 (5 分)
+
+学習が始まる前に **確認しそびれた**。 完走前でも構わないので確認。
+
+```bash
+xdg-open ~/draw_piper/training/matsumoto_taiyo/lineart_b/IMG_4326.png  # シロ夜空 (黒髪)
+xdg-open ~/draw_piper/training/matsumoto_taiyo/lineart_b/2.png         # 鉄コン
+xdg-open ~/draw_piper/training/matsumoto_taiyo/lineart_b/8f640a63f5520f466b5ba1560d2e89dc.png  # シロ青シャツ
+```
+
+**判定基準**:
+- ✅ 髪・服が「淡いグレー線」 中心 (背景は白) → 健全、 v2 LoRA に期待できる
+- ❌ 髪・服が依然「黒い塊」 → grayscale でも塗り境界が強く検出されている。 別アプローチ要 (§次の手 D)
+
+caption 確認:
+```bash
+head ~/draw_piper/training/matsumoto_taiyo/dataset/1.txt
+# 期待: "mt_taiyo_style, a cartoon strip shows a man looking at a computer"
+# "mt_taiyo_style" だけなら cp 失敗 → 旧 caption を再 cp 後 学習やり直し
+```
+
+### P1: v2 学習完走確認 + 推論テスト
+
+```bash
+cd ~/draw_piper
+
+# 完走確認
+ls -lh training/lora/matsumoto_taiyo.safetensors
+
+# 推論 (1 seed で動作確認)
+python3 -m scripts.compare_imagegen_models \
+    --guide scripts/test_sketch.jpg \
+    --prompt "young boy with messy hair, surprised expression" \
+    --presets matsumoto_taiyo_inpaint --seed 42
+
+# 結果が良ければ 6 seed で安定性
+for s in 0 1 7 13 42 100; do
+  python3 -m scripts.compare_imagegen_models \
+    --guide scripts/test_sketch.jpg \
+    --prompt "young boy with messy hair, surprised expression" \
+    --presets matsumoto_taiyo_inpaint --seed $s
+done
+```
+
+**期待される良い出力** (方針 B + lineart):
+- 白背景キープ ✓
+- 顔の oval / 目 が exact 保持 ✓
+- 顔周辺に **線のみで** 体・髪・服 が追加 ← ここが本命
+- 紙質感・ハッチング・グレー塗りは出ない
+
+### P2: 結果分岐
+
+| 出力パターン | 次の手 |
+|---|---|
+| 期待通り (線で体・髪が追加) | 🎉 完成 → MILESTONES.md に新 ● を提案、 推論側 preset を確定、 ロボット描画統合テストへ |
+| 顔周辺に何も描かれない (静止) | LoRA scale を 1.5 / 1.7 / 2.0 で振る (`--lora-scale N`) |
+| また黒テクスチャ暴走 | §次の手 D へ (dataset 精選 / rank 下げ) |
+| 線は出るが ぐちゃぐちゃ | rank 32 → 16、 lr 5e-5、 steps 800 で再学習 |
+
+### P3: ロボット描画統合 (v2 LoRA OK 後)
+
+推論結果が良ければ、 次の段階で **Vectorizer → strokes → アーム描画** までテスト:
+```bash
+# VLM → ImageGen → Vectorizer の通し試験 (M9 の検証スクリプト流用)
+python3 -m scripts.test_vlm_to_image --steps 4 --cycles 1
+# cycle_NN/strokes.json と vec_debug/06_strokes.png を確認
+```
+
+→ matsumoto preset を test_vlm_to_image に組み込む変更が要るかも (現状 default の preset を使ってる可能性)。
+
+---
+
+## 触らない方がいいもの (落とし穴)
+
+### 1. `--bolden` を再有効化しない
+
+v1 で 黒テクスチャ暴走の元凶。 grayscale lineart のままで OK。 もし「線が薄い」 と感じても bolden 復活ではなく、 **学習 step 増 or rank 増 で対処** する。
+
+### 2. 推論を学習中に走らせない
+
+GPU 16GB しか無い。 学習が 10.5GB、 推論も 同程度 必要 → 100% OOM。 `ps -p 203679` が消えるまで推論コマンドは打たない (前回 OOM 14 連発した)。
+
+### 3. ターミナル切れ防止
+
+`nohup ... & disown` のお作法を必ず守る。 これを忘れた回 (1080 step で中断) があった。
+
+### 4. matsumoto preset の値を意図せず変えない
+
+`modules/image_gen.py` の `matsumoto_taiyo_inpaint` preset は現状:
+- `lora_scale: 1.4`
+- `inpaint_strength: 1.0`
+- `inpaint_keep_dilate: 4`
+- `style_hint`: trigger + 描く対象だけ (短い)
+- `guidance_scale: 7.0`
+
+これらは試行錯誤の結果。 動作試験では CLI overrride (`--lora-scale 1.5` 等) を使う。
+
+### 5. style_hint は 77 token 超えない
+
+CLIP 制限。 超えると末尾が切られて指示が届かない。 commit `18d122d` で短縮済だが、 prompt + style_hint 合計を意識。
+
+---
+
+## 次の手 D (v2 もダメだった場合の対処順)
+
+1. **dataset 精選**: lineart_b/ から「黒い塊が残ってる画像」 を手動 exclude。 候補:
+   - `IMG_4326` (シロ黒髪)、 `IMG_4324` (ゴーグルキャラ)、 `EdvzOK7VAAAoA9G` (黒シャツ)
+   - 残り 20 枚程度に絞って再学習
+2. **学習 hyperparameter 緩める**: rank 32 → 16、 lr 1e-4 → 5e-5、 steps 1500 → 800
+   ```bash
+   python3 -m scripts.train_style_lora --dataset ... --rank 16 --steps 800 --lr 5e-5
+   ```
+3. **別の lineart 抽出器**: `LineartDetector` (anime じゃない方) / Canny / DexiNed 等を試す
+4. **LoRA 諦めて prompt engineering**: 「松本タッチ」 は LoRA 無しの SDXL + prompt で部分的に再現可能。 完璧主義捨てる選択肢
+
+---
+
+## 重要ファイル早見
+
+| 何 | パス |
+|---|---|
+| この引き継ぎ | `docs/20260527_2300_imagegen_lineart_lora_handoff.md` |
+| 全体方針 | `MILESTONES.md`, `CLAUDE.md` |
+| ImageGenerator 本体 | `modules/image_gen.py` |
+| 学習スクリプト | `scripts/train_style_lora.py` |
+| 線画抽出 | `scripts/extract_lineart.py` |
+| 推論比較 | `scripts/compare_imagegen_models.py` |
+| dataset 準備 | `scripts/prepare_style_dataset.py` |
+| LoRA v2 (本命) | `training/lora/matsumoto_taiyo.safetensors` (学習完走後) |
+| LoRA v1 退避 | `training/lora/matsumoto_taiyo_bold_v1.safetensors` (黒テクスチャ版) |
+| 学習データ v2 | `training/matsumoto_taiyo/lineart_b/` (29 枚 grayscale) |
+| 学習データ v1 退避 | `training/matsumoto_taiyo/lineart_b_bold/` (失敗版) |
+| 学習 dataset | `training/matsumoto_taiyo/dataset/` (29 枚 + caption.txt) |
+| 学習 raw | `training/matsumoto_taiyo/raw/` (36 枚、 触らない) |
+| 学習ログ v2 | `training/lora_runs/lineart_v2_grayscale_*.log` |
+
+---
+
+## 直近の commit history (上から新しい順)
+
+```
+b73e0b4  inpaint preset 調整 (lineart LoRA に合わせて LoRA scale UP)
+2182e0f  --bolden で B 出力を 2 値化、 --exclude で除外指定
+5543bc8  detector 出力 shape を元画像に揃える
+b827d88  学習 raw → 線画抽出スクリプト新規作成
+4805ce0  inpaint preset を方針反転 (LoRA に自由を与える、 周辺描き足し)
+8074e8c  inpaint mode の LoRA 背景埋め暴走を抑制
+76e4227  inpaint mode 追加 (黒線 exact 保持 + 白部分を LoRA 全開で再描画)
+18d122d  3 preset の style_hint を短縮 (CLIP 77 token 制限対策)
+8641888  matsumoto preset を方針 B 値で確定 (白背景 + 顔ディテール)
+81d2353  --image_column=file_name → image に修正
+23cb2d1  pip 版 diffusers と clone tag を整合
+e796bb9  peft を deps に追加 + Animagine の --variant=fp32 削除
+47bc5f0  ControlNet の variant を base model と独立に解決
+29cff00  img2img + ControlNet モードで構図維持 (顔はみ出し fix)
+```
+
+---
+
+## ユーザの目標を ふたたび 明文化
+
+「**スケッチで描いた顔の輪郭はそのまま尊重しつつ、 周辺に松本大洋風の線で体・髪・服を描き足したい。 ロボットアームで描けるよう、 黒い塗りつぶしやハッチングは無し。 純粋な線画のみ。**」
+
+これに合致してるか、 全ての判断の基準。
