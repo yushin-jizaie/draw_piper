@@ -133,6 +133,30 @@
                        実機 drag-teach は Step 4 で B2 自動サンプリングが入った後に検証予定。
                        設計: docs/20260525_1447_canvas_calibration_v3_design.md
                        進捗: docs/20260525_{1457,1517}_canvas_calibration_v3_step{1,2}_*.md
+
+05-28 12:00   ○ M13 (下書き) Frida-inspired multi-stroke smoothness
+              │      (PR #2 dev、 実機検証 PASS で ● に確定)
+              │      └ 既存 trajectory.smooth_polyline + draw_stroke_panel_arcs
+              │        (1 stroke の Bezier 化、 M11 で完了済) の上に、 複数 stroke
+              │        最適化を追加:
+              │        - modules/stroke_planner.py — TSP greedy / 3-region 曲率
+              │          速度マップ / look-ahead clear height / 真の弧長 / jerk metric
+              │        - Robot.draw_strokes_panel_smooth() (modules/robot.py)
+              │        - PanelFrame.from_base() 逆変換 (TSP 起点に現在 pen 位置)
+              │        - modules/stroke_visualizer.py (raw vs TSP 比較 PNG)
+              │        - scripts/{benchmark_,test_,preflight_,bench_robot_,
+              │          gui_frida_,test_pipeline_smooth,test_draw_strokes_smooth}.py
+              │      └ ベンチ (純関数 sim、 mock 不要):
+              │        scattered_dots 100 stroke で travel **82% 削減 / 2.98x speedup**
+              │        face_sketch 9 stroke で 34% 削減 / 1.71x
+              │        zigzag 1 stroke で 38% (速度プロファイル単体)
+              │      └ Vectorizer → Robot.smooth E2E (test_pipeline_smooth) も通過。
+              │      └ 実機検証は user 側で test_draw_strokes_smooth + bench_robot_timing
+              │        で実施 → PASS したら M13 として ● 確定 + ★ 現在地 更新
+              │      └ ブランチ: claude/frida-smoothness-20260527
+              │        PR: https://github.com/yushin-jizaie/draw_piper/pull/2
+              │        引き継ぎ: docs/20260528_frida_smoothness_handoff.md
+              │        設計:   docs/20260528_0030_frida_smoothness_design.md
 ```
 
 ---
@@ -156,6 +180,7 @@
 | M10 | 2026-05-23 18:12 | drag-teach キャンバスキャリブ実機成功(壁面描画スレッド) | `221f0fb` | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X 方向 |
 | M11 | 2026-05-23 21:00 | 壁面描画 GUI 統合(Tkinter wrapper、2-phase drag-teach 実装、speed 分離、Restart GUI、pkexec CAN up) | `f43e8e4` | `~/piper_test/wall_drawing_gui.py` 起動 → GUI 表示 + CAN status 反映、`Connect → Recover → Tune Contact → Draw Square` で四角描画(M10 キャリブのまま)。2-phase drag-teach は実装済・実機未検証(次セッション) |
 | M12 | 2026-05-25 15:17 | canvas_calibration yaml schema v3 (5-phase 設計) IO モジュール + GUI 配線(read/write_v3、_load_calib_defaults、_capture_point、_fit_and_save) | `c24438c` | `~/draw_piper/venv/bin/python ~/piper_test/test_canvas_calibration_io.py` で 50 checks PASS、`~/draw_piper/venv/bin/python ~/piper_test/test_step2_v3_save.py` で 33 checks PASS。GUI 起動時 `_load_calib_defaults` が v1/v2/v3 を自動検出してロード。実機 drag-teach は M11 同様未検証で Step 4 (B2 自動サンプリング実装後) にまとめて検証予定 |
+| **M13 (下書き)** | 2026-05-28 12:00 | Frida-inspired multi-stroke smoothness — `stroke_planner` (TSP greedy + 3-region 曲率→速度 + look-ahead descent) + `Robot.draw_strokes_panel_smooth` + Vectorizer 連携 + 視覚化 + 専用 GUI + 実機ヘルパ (preflight / A/B/C bench) | `eb07c91` (frida ブランチ最新) | **実機検証 PASS で確定**。 PR #2 dev 待ち。 ベンチ (mock 不要 純関数 sim): scattered_dots travel **82% 削減 / 2.98x speedup**、 face_sketch 1.71x、 zigzag 1.38x。 検証手順は `docs/20260528_frida_smoothness_handoff.md` §P1 (preflight → face_lite → bench_robot_timing → 生成画像 → gui_frida_draw) |
 
 ---
 
