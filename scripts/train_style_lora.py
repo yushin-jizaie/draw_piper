@@ -36,6 +36,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Optional
 
 _ROOT = Path(__file__).resolve().parent.parent
 
@@ -73,8 +74,29 @@ def _check_training_deps() -> None:
         raise SystemExit(2)
 
 
+def _installed_diffusers_tag() -> Optional[str]:
+    """pip でインストール済の diffusers のバージョンに対応する git tag。
+
+    例: '0.38.0' → 'v0.38.0'。 dev 版 / 不明時は None。
+    """
+    try:
+        import diffusers   # type: ignore
+        v = diffusers.__version__
+    except ImportError:
+        return None
+    # '0.38.0+cu118' / '0.38.0.dev0' などは tag が無いので落とす
+    base = v.split('+')[0]
+    if '.dev' in base or 'rc' in base:
+        return None
+    return f"v{base}"
+
+
 def _resolve_diffusers_path() -> Path:
-    """Locate a diffusers checkout (env var > project-cache); clone if missing."""
+    """Locate a diffusers checkout (env var > project-cache); clone if missing.
+
+    pip でインストール済 diffusers のバージョンに合致する git tag で clone。
+    キャッシュが別バージョンなら再 clone する (check_min_version で死ぬのを防ぐ)。
+    """
     env_path = os.environ.get("HF_DIFFUSERS_PATH")
     if env_path:
         p = Path(env_path).expanduser()
@@ -84,15 +106,45 @@ def _resolve_diffusers_path() -> Path:
               file=sys.stderr)
 
     cache = DEFAULT_DIFFUSERS_CACHE
-    if (cache / TRAIN_SCRIPT_REL).exists():
-        return cache
+    target_tag = _installed_diffusers_tag()    # e.g. "v0.38.0"
+
+    # キャッシュ存在 + tag 一致なら再利用
+    if cache.exists() and (cache / TRAIN_SCRIPT_REL).exists():
+        cached_tag = None
+        try:
+            cached_tag = subprocess.check_output(
+                ["git", "-C", str(cache), "describe", "--tags",
+                 "--exact-match", "HEAD"],
+                stderr=subprocess.DEVNULL).decode().strip()
+        except Exception:
+            pass
+        if target_tag is None or cached_tag == target_tag:
+            return cache
+        print(f"[train] cached diffusers is {cached_tag or 'unknown'}, "
+              f"target is {target_tag} → re-cloning")
+        shutil.rmtree(cache)
 
     cache.parent.mkdir(parents=True, exist_ok=True)
-    print(f"[train] cloning diffusers (shallow) -> {cache} ...")
-    subprocess.run(
-        ["git", "clone", "--depth", "1", DIFFUSERS_REPO, str(cache)],
-        check=True,
-    )
+    clone_cmd = ["git", "clone", "--depth", "1"]
+    if target_tag:
+        clone_cmd += ["--branch", target_tag]
+        print(f"[train] cloning diffusers (tag={target_tag}) -> {cache} ...")
+    else:
+        print(f"[train] cloning diffusers (HEAD) -> {cache} "
+              f"— installed diffusers バージョンから tag 特定不可")
+    clone_cmd += [DIFFUSERS_REPO, str(cache)]
+
+    try:
+        subprocess.run(clone_cmd, check=True)
+    except subprocess.CalledProcessError:
+        if target_tag:
+            print(f"[train] tag {target_tag} clone 失敗 → HEAD で再試行",
+                  file=sys.stderr)
+            subprocess.run(["git", "clone", "--depth", "1",
+                            DIFFUSERS_REPO, str(cache)], check=True)
+        else:
+            raise
+
     if not (cache / TRAIN_SCRIPT_REL).exists():
         raise RuntimeError(
             f"clone succeeded but {TRAIN_SCRIPT_REL} missing in {cache}")
