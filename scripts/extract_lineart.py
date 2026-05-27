@@ -119,6 +119,40 @@ def method_b_anime_lineart(rgb: np.ndarray) -> np.ndarray:
     return 255 - out
 
 
+def _bolden(lineart_gray: np.ndarray,
+             threshold: int = 180,
+             dilate: int = 1) -> np.ndarray:
+    """薄い lineart (grayscale) を 2 値化 + dilate で bold 化。
+
+    Method B (LineartAnimeDetector) は線が淡いグレースケールで出るので、
+    学習データとして使うには 「はっきりした黒線 on 白背景」 に変換した方が
+    SDXL/LoRA が学習しやすい。
+
+    Parameters
+    ----------
+    lineart_gray : np.ndarray (H,W) uint8
+        低い値 = 線、 高い値 = 背景
+    threshold : int
+        < threshold を 線(=0) とみなす
+    dilate : int
+        線を太らせる px (0=off、 1-2 推奨)。 ロボットアームのペン太さに
+        合わせるなら 1-2 が自然
+
+    Returns
+    -------
+    np.ndarray (H,W) uint8
+        0 = 線 / 255 = 背景 の 2 値画像
+    """
+    bw = np.where(lineart_gray < threshold, 0, 255).astype(np.uint8)
+    if dilate >= 1:
+        # 線(=0) を太らせるには 背景(=255) を erode する = invert→dilate→invert
+        lines = 255 - bw
+        kernel = np.ones((int(dilate), int(dilate)), np.uint8)
+        lines = cv2.dilate(lines, kernel, iterations=1)
+        bw = 255 - lines
+    return bw
+
+
 # ---- Compose preview -----------------------------------------------------
 def _to_rgb(gray: np.ndarray) -> np.ndarray:
     """grayscale uint8 → RGB uint8 (3-ch)。"""
@@ -181,6 +215,17 @@ def main() -> None:
                     help="読み込み時 長辺 px (default 1024)")
     ap.add_argument("--max-images", type=int, default=None,
                     help="先頭 N 枚だけ処理 (動作確認用)")
+    ap.add_argument("--exclude", type=str, default="",
+                    help="除外するファイル名 stem の comma list "
+                         "(例: 'IMG_4310,IMG_4316,images')。 "
+                         "preview / apply 両方で適用")
+    ap.add_argument("--bolden", action="store_true",
+                    help="apply 時に B 出力を 2 値化 + dilate で bold 化。 "
+                         "Method B の薄い線画を 学習用にクリーン化")
+    ap.add_argument("--bolden-threshold", type=int, default=180,
+                    help="bolden の threshold (default 180、 上げると線が増える)")
+    ap.add_argument("--bolden-dilate", type=int, default=1,
+                    help="bolden の dilate ksize (default 1、 0=太らせない)")
     args = ap.parse_args()
 
     if not args.preview and args.apply is None:
@@ -192,10 +237,18 @@ def main() -> None:
 
     paths = [p for p in sorted(raw_dir.iterdir())
              if p.suffix in _RAW_EXTS]
+    # exclude stem 適用
+    exclude_set = {s.strip() for s in args.exclude.split(",") if s.strip()}
+    if exclude_set:
+        before = len(paths)
+        paths = [p for p in paths if p.stem not in exclude_set]
+        skipped = before - len(paths)
+        print(f"[extract_lineart] excluded {skipped} images "
+              f"(by stem: {sorted(exclude_set)})")
     if args.max_images:
         paths = paths[:args.max_images]
     if not paths:
-        sys.exit(f"no images in {raw_dir}")
+        sys.exit(f"no images to process in {raw_dir}")
     print(f"[extract_lineart] {len(paths)} images")
 
     if args.preview:
@@ -214,7 +267,8 @@ def main() -> None:
               f"xdg-open {out_dir.absolute()}")
 
     if args.apply:
-        out_dir = args.output / f"lineart_{args.apply}"
+        suffix = f"_{args.apply}" + ("_bold" if args.bolden else "")
+        out_dir = args.output / f"lineart{suffix}"
         out_dir.mkdir(parents=True, exist_ok=True)
         fn = method_a_threshold if args.apply == "a" else method_b_anime_lineart
         for i, p in enumerate(paths, 1):
@@ -222,11 +276,17 @@ def main() -> None:
             try:
                 rgb = _load_rgb(p, max_edge=args.max_edge)
                 lineart = fn(rgb)
+                if args.bolden:
+                    lineart = _bolden(lineart,
+                                       threshold=args.bolden_threshold,
+                                       dilate=args.bolden_dilate)
                 # 元の resize 後解像度で出力 (学習時にまた resize されるので)
                 Image.fromarray(lineart).save(out_dir / f"{p.stem}.png")
             except Exception as e:
                 print(f"  ! failed: {e}")
         print(f"[extract_lineart] lineart saved to {out_dir}/")
+        print(f"[extract_lineart] open with: "
+              f"xdg-open {out_dir.absolute()}")
 
 
 if __name__ == "__main__":
