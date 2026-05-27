@@ -811,6 +811,231 @@ class Robot:
                            timeout_s=arrival_timeout_s,
                            fallback_s=settle_s)
 
+    # ==================================================================
+    # Frida-inspired multi-stroke smooth drawing
+    # ==================================================================
+    def draw_strokes_panel_smooth(self, strokes_uv, *,
+                                   w_contact=None, w_clear_max=None,
+                                   w_clear_near=None,
+                                   travel_speed=60,
+                                   draw_speed_base=30,
+                                   draw_speed_min=10,
+                                   draw_speed_max=50,
+                                   curvature_break=0.1,
+                                   curvature_steep=0.5,
+                                   near_threshold_mm=15.0,
+                                   step_mm=2.0,
+                                   smooth_lambda=0.0,
+                                   reorder=True,
+                                   speed_smooth_window=3,
+                                   settle_s=2.0,
+                                   arrival_tol_mm=2.0,
+                                   arrival_timeout_s=15.0):
+        """Multi-stroke smooth drawing (Frida-inspired).
+
+        Apply 3 multi-stroke optimizations on top of draw_stroke_panel_arcs:
+
+        1. **Stroke ordering** (TSP greedy nearest-neighbor):
+           Reorder strokes so adjacent strokes are spatially close, reducing
+           pen-up travel between them. Each stroke may be reversed if its
+           tail is closer than its head.
+
+        2. **Curvature-coupled speed**:
+           Compute each arc triplet's curvature and modulate draw speed
+           (lower for sharp turns, higher for gentle curves) — reduces jerk.
+
+        3. **Look-ahead descent height**:
+           Use a low pen-up height between near-by strokes (faster travel),
+           and the full clear height between distant strokes.
+
+        Parameters
+        ----------
+        strokes_uv : list of polylines [(u_mm, v_mm), ...]
+        w_contact, w_clear_max : float or None
+            Panel contact / max clear heights. None → panel frame defaults.
+        w_clear_near : float or None
+            Pen-up height for short inter-stroke travel. Defaults to
+            (w_clear_max - w_contact) / 3 above contact.
+        travel_speed : int
+            speed% for inter-stroke travel.
+        draw_speed_base : int
+            speed% for gentle arcs (curvature <= curvature_break).
+        draw_speed_min : int
+            speed% floor for sharp arcs (curvature >= curvature_steep).
+        draw_speed_max : int
+            (reserved) ceiling for very gentle / straight arcs.
+        curvature_break, curvature_steep : float (1/mm)
+            Curvature thresholds for the speed map.
+        near_threshold_mm : float
+            Inter-stroke gap below which we use w_clear_near.
+        step_mm, smooth_lambda : passed to trajectory.smooth_polyline.
+        reorder : bool
+            Apply TSP ordering. Disable for benchmarking / when caller has
+            already ordered.
+        speed_smooth_window : int
+            Moving-average window for the speed profile (reduces jerk from
+            abrupt speed switches).
+        settle_s, arrival_tol_mm, arrival_timeout_s :
+            passed to wait_for_pose.
+
+        Returns
+        -------
+        dict with planning diagnostics:
+            n_strokes, n_arcs, reorder_indices,
+            travel_before_mm, travel_after_mm,
+            speed_min/max/mean, clear_heights, ...
+        """
+        from .trajectory import smooth_polyline, polyline_to_arc_triplets
+        from .stroke_planner import (
+            reorder_strokes_tsp, plan_clear_heights,
+            speed_profile_for_stroke, total_travel_distance,
+        )
+
+        panel = self._require_panel()
+        if not strokes_uv:
+            return {"n_strokes": 0, "n_arcs": 0}
+        wc = panel.w_contact_mm if w_contact is None else w_contact
+        wu_max = panel.w_clear_mm if w_clear_max is None else w_clear_max
+        if w_clear_near is None:
+            # default: 1/3 of the way up from contact to clear
+            w_clear_near = wc + (wu_max - wc) / 3.0
+
+        # current pen position (if known) for TSP start
+        try:
+            cur_pose = self.get_end_pose()
+            # Convert base-frame xyz to panel-frame uv (only valid for points
+            # near the canvas plane; we use it as a hint, not strictly).
+            # If we lack a clean inverse from base to uv, just skip and let
+            # TSP start from strokes[0][0].
+            start_uv = None
+            if cur_pose and len(cur_pose) >= 3:
+                start_uv = None    # safer: no base→uv inverse here
+        except Exception:
+            start_uv = None
+
+        strokes_in = [list(s) for s in strokes_uv]
+        travel_before = total_travel_distance(strokes_in, start_point=start_uv)
+
+        if reorder:
+            strokes_out, indices = reorder_strokes_tsp(
+                strokes_in, start_point=start_uv)
+        else:
+            strokes_out = strokes_in
+            indices = list(range(len(strokes_in)))
+
+        travel_after = total_travel_distance(strokes_out, start_point=start_uv)
+
+        # look-ahead clear heights
+        clear_heights = plan_clear_heights(
+            strokes_out,
+            w_clear_max_mm=wu_max,
+            w_clear_near_mm=w_clear_near,
+            near_threshold_mm=near_threshold_mm,
+        )
+
+        # ---- draw each stroke ----
+        n_arcs_total = 0
+        speeds_all = []
+        for si, stroke in enumerate(strokes_out):
+            if len(stroke) < 2:
+                continue
+            # 1) smooth + arc grouping
+            pts = smooth_polyline(stroke, step_mm=step_mm,
+                                   smooth_lambda=smooth_lambda)
+            if len(pts) < 3:
+                # too short for arc — fall back to MOVE_L
+                self.draw_stroke_panel(
+                    pts, w_contact=wc, w_clear=clear_heights[si],
+                    travel_speed=travel_speed,
+                    draw_speed=draw_speed_base,
+                    inter_point_delay=0.02, settle_s=settle_s,
+                    arrival_tol_mm=arrival_tol_mm,
+                    arrival_timeout_s=arrival_timeout_s)
+                continue
+            triplets = polyline_to_arc_triplets(pts)
+            if not triplets:
+                continue
+
+            # 2) per-arc speed profile from curvature
+            speeds = speed_profile_for_stroke(
+                triplets, base_speed_pct=draw_speed_base,
+                min_speed_pct=draw_speed_min,
+                max_speed_pct=draw_speed_max,
+                curvature_break=curvature_break,
+                curvature_steep=curvature_steep,
+                smooth_window=speed_smooth_window,
+            )
+            speeds_all.extend(speeds)
+
+            u0, v0 = pts[0]
+            u_last, v_last = pts[-1]
+
+            # travel to start at clear height (use prev stroke's look-ahead)
+            wu_in = clear_heights[si - 1] if si > 0 else wu_max
+            self.goto_panel(u0, v0, wu_in, speed_pct=travel_speed,
+                             move_mode=0x02, wait_s=0.0)
+            bx, by, bz = panel.to_base(u0, v0, wu_in)
+            self.wait_for_pose(bx, by, bz,
+                                tol_mm=arrival_tol_mm,
+                                timeout_s=arrival_timeout_s,
+                                fallback_s=settle_s)
+
+            # descent
+            self.goto_panel(u0, v0, wc, speed_pct=draw_speed_base,
+                             move_mode=0x02, wait_s=0.0)
+            bx, by, bz = panel.to_base(u0, v0, wc)
+            self.wait_for_pose(bx, by, bz,
+                                tol_mm=arrival_tol_mm,
+                                timeout_s=arrival_timeout_s,
+                                fallback_s=settle_s)
+
+            # arc chain with per-arc speed
+            for (a, b, c), spd in zip(triplets, speeds):
+                self.goto_arc_panel((a[0], a[1], wc),
+                                     (b[0], b[1], wc),
+                                     (c[0], c[1], wc),
+                                     speed_pct=int(spd))
+                bx, by, bz = panel.to_base(c[0], c[1], wc)
+                self.wait_for_pose(bx, by, bz,
+                                    tol_mm=arrival_tol_mm,
+                                    timeout_s=arrival_timeout_s,
+                                    fallback_s=settle_s)
+                n_arcs_total += 1
+
+            # pen-up to look-ahead height for this stroke
+            wu_out = clear_heights[si]
+            self.goto_panel(u_last, v_last, wu_out,
+                             speed_pct=travel_speed, move_mode=0x02,
+                             wait_s=0.0)
+            bx, by, bz = panel.to_base(u_last, v_last, wu_out)
+            self.wait_for_pose(bx, by, bz,
+                                tol_mm=arrival_tol_mm,
+                                timeout_s=arrival_timeout_s,
+                                fallback_s=settle_s)
+
+        # diagnostics
+        if speeds_all:
+            spd_min = min(speeds_all)
+            spd_max = max(speeds_all)
+            spd_mean = sum(speeds_all) / len(speeds_all)
+        else:
+            spd_min = spd_max = spd_mean = draw_speed_base
+        return {
+            "n_strokes": len(strokes_out),
+            "n_arcs": n_arcs_total,
+            "reorder_indices": indices,
+            "travel_before_mm": travel_before,
+            "travel_after_mm": travel_after,
+            "travel_saved_mm": travel_before - travel_after,
+            "speed_min_pct": spd_min,
+            "speed_max_pct": spd_max,
+            "speed_mean_pct": spd_mean,
+            "clear_heights_mm": clear_heights,
+            "w_contact_mm": wc,
+            "w_clear_max_mm": wu_max,
+            "w_clear_near_mm": w_clear_near,
+        }
+
 
 if __name__ == '__main__':
     # simple smoke test: draw a 30mm square in mock or real mode
