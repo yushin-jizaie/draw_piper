@@ -122,6 +122,30 @@ def total_travel_distance(
 
 # ============================================================ curvature → speed
 
+def compute_arc_length(triplet: Tuple[Point, Point, Point]) -> float:
+    """3 点 (start, mid, end) の弧長 [mm] を計算する。
+
+    曲率が 0 (collinear) の時は |start-end| を返す (直線扱い)。
+    曲率が有限の時は R * angle で 真の弧長を計算 (chord-sum より正確)。
+
+    Notes
+    -----
+    ベンチマーク script の draw_path_mm 集計に使う。 元の chord-sum
+    (|a-b| + |b-c|) は 直線 chord の和で 真の弧長より短い。
+    """
+    a, b, c = triplet
+    k = compute_arc_curvature(triplet)
+    chord_ac = math.hypot(c[0] - a[0], c[1] - a[1])
+    if k < 1e-9:
+        return chord_ac
+    R = 1.0 / k
+    # central angle from chord: chord = 2 * R * sin(angle / 2)
+    # → angle = 2 * arcsin(chord / (2R)), with clip for numerical safety
+    arg = max(-1.0, min(1.0, chord_ac / (2.0 * R)))
+    angle = 2.0 * math.asin(arg)
+    return R * angle
+
+
 def compute_arc_curvature(triplet: Tuple[Point, Point, Point]) -> float:
     """Compute curvature 1/R (1/mm) for a 3-point arc.
 
@@ -156,43 +180,48 @@ def speed_from_curvature(
     max_speed_pct: float = 50.0,
     curvature_break: float = 0.1,
     curvature_steep: float = 0.5,
+    curvature_straight: float = 0.02,
 ) -> int:
-    """曲率 → 速度% マッピング。
+    """曲率 → 速度% マッピング (3 region 線形補間)。
 
-    - curvature <= break (= 緩い曲線、 半径 >= 10mm 程度) → base_speed_pct
-    - curvature >= steep (= 鋭い曲線、 半径 <= 2mm 程度) → min_speed_pct
-    - 中間は線形補間
+    - curvature <= straight (= ほぼ直線、 半径 >= 50mm 程度) → max_speed_pct
+    - straight < curvature <= break (= 緩い曲線、 R 10-50mm) → base 〜 max を線形
+    - break < curvature < steep (= 中曲線、 R 2-10mm) → base 〜 min を線形
+    - curvature >= steep (= 鋭い曲線、 R <= 2mm) → min_speed_pct
 
-    実機の速度% は EndPoseCtrl の speed パラメータ (1-100 推奨は 10-50)。
+    実機の速度% は EndPoseCtrl の speed パラメータ (推奨は 10-50)。
     曲率は 1/mm 単位 (半径 R[mm] の逆数)。
 
     Parameters
     ----------
     curvature : float (1/mm)
-        compute_arc_curvature の出力
-    base_speed_pct : float
-        緩い曲線での基準速度% (例 30)
-    min_speed_pct : float
-        鋭い曲線での最低速度% (例 10)
-    max_speed_pct : float
-        曲率がほぼ 0 の直線部での加速速度% (例 50)
-        Note: 現実装は base を上限、 max はまだ未使用 (curvature 0 でも base 維持)
-    curvature_break : float
-        この値以下は緩い扱い (default 0.1 = R 10mm)
-    curvature_steep : float
-        この値以上は鋭い扱い (default 0.5 = R 2mm)
+    base_speed_pct : float — 緩い曲線の基準 (例 30)
+    min_speed_pct  : float — 鋭い曲線の下限 (例 10)
+    max_speed_pct  : float — 直線部での上限 (例 50)
+    curvature_straight : float — この値以下は直線扱いで max 速度
+    curvature_break    : float — この値以下は緩い扱い (default 0.1 = R 10mm)
+    curvature_steep    : float — この値以上は鋭い扱い (default 0.5 = R 2mm)
 
     Returns
     -------
     int : 1-100 にクリップした speed%
     """
-    if curvature <= curvature_break:
-        spd = base_speed_pct
+    if max_speed_pct < base_speed_pct:
+        # ガード: 入力が逆転してたら base を上限扱い
+        max_speed_pct = base_speed_pct
+    if curvature <= curvature_straight:
+        spd = max_speed_pct
+    elif curvature <= curvature_break:
+        # straight → break 区間: max → base に線形
+        t = (curvature - curvature_straight) / max(
+            1e-12, curvature_break - curvature_straight)
+        spd = max_speed_pct + t * (base_speed_pct - max_speed_pct)
     elif curvature >= curvature_steep:
         spd = min_speed_pct
     else:
-        # 線形補間
-        t = (curvature - curvature_break) / (curvature_steep - curvature_break)
+        # break → steep 区間: base → min に線形
+        t = (curvature - curvature_break) / max(
+            1e-12, curvature_steep - curvature_break)
         spd = base_speed_pct + t * (min_speed_pct - base_speed_pct)
     return int(round(max(1.0, min(100.0, spd))))
 
@@ -205,6 +234,7 @@ def speed_profile_for_stroke(
     max_speed_pct: float = 50.0,
     curvature_break: float = 0.1,
     curvature_steep: float = 0.5,
+    curvature_straight: float = 0.02,
     smooth_window: int = 3,
 ) -> List[int]:
     """各 arc の speed% を計算し、 移動平均で滑らかにして返す。
@@ -225,6 +255,7 @@ def speed_profile_for_stroke(
             max_speed_pct=max_speed_pct,
             curvature_break=curvature_break,
             curvature_steep=curvature_steep,
+            curvature_straight=curvature_straight,
         )
         for t in triplets
     ]

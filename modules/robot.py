@@ -823,6 +823,7 @@ class Robot:
                                    draw_speed_max=50,
                                    curvature_break=0.1,
                                    curvature_steep=0.5,
+                                   curvature_straight=0.02,
                                    near_threshold_mm=15.0,
                                    step_mm=2.0,
                                    smooth_lambda=0.0,
@@ -963,6 +964,7 @@ class Robot:
                 max_speed_pct=draw_speed_max,
                 curvature_break=curvature_break,
                 curvature_steep=curvature_steep,
+                curvature_straight=curvature_straight,
                 smooth_window=speed_smooth_window,
             )
             speeds_all.extend(speeds)

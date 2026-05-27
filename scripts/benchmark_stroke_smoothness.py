@@ -39,6 +39,7 @@ from modules.stroke_planner import (
     plan_clear_heights,
     speed_profile_for_stroke,
     compute_arc_curvature,
+    compute_arc_length,
     total_travel_distance,
     stroke_set_diagnostics,
 )
@@ -191,9 +192,8 @@ def simulate_strategy_arcs(
                 speeds.append(speed_draw)
         else:
             triplets = polyline_to_arc_triplets(pts)
-            for (a, b, c) in triplets:
-                # arc length approximated by chord-sum for now
-                draw_path += _dist(a, b) + _dist(b, c)
+            for tri in triplets:
+                draw_path += compute_arc_length(tri)   # true arc length
                 speeds.append(speed_draw)
                 n_arcs += 1
         # pen-up
@@ -281,8 +281,8 @@ def simulate_strategy_smooth(
                 curvature_steep=curvature_steep,
                 smooth_window=speed_smooth_window,
             )
-            for (a, b, c), spd in zip(triplets, per_arc_speeds):
-                draw_path += _dist(a, b) + _dist(b, c)
+            for tri, spd in zip(triplets, per_arc_speeds):
+                draw_path += compute_arc_length(tri)   # true arc length
                 speeds.append(spd)
                 n_arcs += 1
         # pen-up to look-ahead height
