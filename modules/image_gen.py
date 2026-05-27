@@ -77,22 +77,20 @@ MODEL_PRESETS: dict[str, dict] = {
         "base_model_id": "stabilityai/sdxl-turbo",
         "controlnet_id": "TheMistoAI/MistoLine",
         "variant": "fp16",
-        "num_inference_steps": 4,
-        "guidance_scale": 0.0,
+        "num_inference_steps": 6,            # img2img だと effective steps が
+        "guidance_scale": 0.0,                # strength で減るので 4 → 6 に増やす
         "controlnet_conditioning_scale": 1.0,
         "style_hint": (
-            # prompt_builder と組み合わせる用の追加スタイル指示。 caller が
-            # 既存 prompt の前後に挿す。 不要なら "" にする。
             "line art, black ink on white, simple clean lines, "
             "minimal detail, no shading, white background, "
-            # 構図 hint: SDXL の "subject fills frame" prior を抑制
-            "head and shoulders portrait, centered composition, "
-            "head occupies center of frame with margin around it, "
-            "head does not touch top or bottom edges"
+            # 余白を強調 — img2img の白背景 prior を補強
+            "small character in the center of large empty white canvas, "
+            "lots of white space around"
         ),
-        # 入力スケッチが細線だと MistoLine の conditioning が弱く、 顔が
-        # 画面はみ出すまで拡大される問題。 dilate で線を太らせて signal 強化
         "guide_dilate_ksize": 5,
+        # img2img + ControlNet で空間レイアウト維持。 0.85 = 強めに denoise
+        # (Turbo は steps 少ないので strength 高めにしないと変化が出にくい)
+        "img2img_strength": 0.85,
     },
     # アニメ線画ベース (cagliostrolab/animagine-xl-3.1)
     # 線が太く clean、 影が少なめ。 ストローク描画と相性◎
@@ -100,17 +98,20 @@ MODEL_PRESETS: dict[str, dict] = {
         "base_model_id": "cagliostrolab/animagine-xl-3.1",
         "controlnet_id": "TheMistoAI/MistoLine",
         "variant": None,    # Animagine は fp16 variant なし
-        "num_inference_steps": 28,
-        "guidance_scale": 7.0,
+        "num_inference_steps": 30,
+        "guidance_scale": 6.5,
         "controlnet_conditioning_scale": 0.9,
         "style_hint": (
             # Animagine 推奨の quality タグ + 線画指示
             "masterpiece, best quality, monochrome lineart, "
             "thick clean lines, no shading, white background, "
             "simple composition, "
-            "head and shoulders portrait, centered with margin"
+            "small character in center of empty white canvas, "
+            "lots of white space around the subject"
         ),
         "guide_dilate_ksize": 5,
+        # img2img: 0.7 で init 画像(白背景含む) と SDXL 生成の中間
+        "img2img_strength": 0.7,
     },
     # 松本大洋風 LoRA (Animagine ベース + 自前学習 LoRA)
     # 学習: scripts/train_style_lora.py (training/matsumoto_taiyo/ の画像から)
@@ -119,7 +120,7 @@ MODEL_PRESETS: dict[str, dict] = {
         "base_model_id": "cagliostrolab/animagine-xl-3.1",
         "controlnet_id": "TheMistoAI/MistoLine",
         "variant": None,
-        "num_inference_steps": 30,
+        "num_inference_steps": 32,
         "guidance_scale": 6.5,
         "controlnet_conditioning_scale": 0.85,
         # trigger word は学習時に caption へ挿入したものを使う
@@ -127,12 +128,14 @@ MODEL_PRESETS: dict[str, dict] = {
             "mt_taiyo_style, rough ink lineart, expressive faces, "
             "loose dynamic strokes, monochrome, white background, "
             "no shading, "
-            "head and shoulders portrait, centered with margin around head"
+            "small character in center of empty white canvas, "
+            "lots of white space around the subject"
         ),
         # 学習結果。 path は project_root 相対 (相対パスは load() 時解決)
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
-        "lora_scale": 0.85,
+        "lora_scale": 1.0,            # LoRA がちゃんと効くよう 0.85 → 1.0
         "guide_dilate_ksize": 5,
+        "img2img_strength": 0.7,
     },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
@@ -347,6 +350,7 @@ class ImageGenerator:
         lora_path: Optional[str] = None,
         lora_scale: float = 1.0,
         guide_dilate_ksize: int = 0,
+        img2img_strength: float = 0.0,
         verbose: bool = False,
     ):
         self.base_model_id = base_model_id
@@ -370,6 +374,11 @@ class ImageGenerator:
         # 入力線が細すぎて ControlNet が空間保持できない問題への対処。
         # 1 以下 = 無効、 推奨 3-7 (5 が標準)
         self.guide_dilate_ksize = int(guide_dilate_ksize)
+        # img2img + ControlNet モード。 0.0 = text2img (従来)、
+        # 0.5-0.7 = init_image (ユーザのスケッチ) の白背景 prior を残しつつ
+        # ControlNet で線位置 guide。 SDXL の "subject fills frame" prior を抑制し、
+        # ユーザの描いた小さい oval を そのスケールのまま 残せる
+        self.img2img_strength = float(img2img_strength)
         self.verbose = verbose
 
         self._pipe = None
@@ -395,10 +404,17 @@ class ImageGenerator:
         if self.is_loaded:
             return
 
-        from diffusers import (
-            StableDiffusionXLControlNetPipeline,
-            ControlNetModel,
-        )
+        # img2img mode かどうかで pipeline class を切替
+        use_img2img = self.img2img_strength > 0.0
+        from diffusers import ControlNetModel
+        if use_img2img:
+            from diffusers import (
+                StableDiffusionXLControlNetImg2ImgPipeline as PipeClass,
+            )
+        else:
+            from diffusers import (
+                StableDiffusionXLControlNetPipeline as PipeClass,
+            )
 
         if self.verbose:
             print(f"[image_gen] loading {self.controlnet_id} ...")
@@ -436,7 +452,7 @@ class ImageGenerator:
         if self.variant:
             base_kwargs["variant"] = self.variant
         try:
-            self._pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+            self._pipe = PipeClass.from_pretrained(
                 self.base_model_id, **base_kwargs,
             )
         except (OSError, ValueError) as e:
@@ -445,13 +461,15 @@ class ImageGenerator:
                     print(f"[image_gen] base variant={self.variant} not "
                           f"found, retrying without variant: {e}")
                 base_kwargs.pop("variant", None)
-                self._pipe = StableDiffusionXLControlNetPipeline.from_pretrained(
+                self._pipe = PipeClass.from_pretrained(
                     self.base_model_id, **base_kwargs,
                 )
             else:
                 raise
         if self.verbose:
-            print(f"[image_gen] pipeline loaded in {time.time() - t0:.1f}s")
+            mode = "img2img" if use_img2img else "text2img"
+            print(f"[image_gen] pipeline loaded ({mode}) in "
+                  f"{time.time() - t0:.1f}s")
 
         t0 = time.time()
         self._pipe = self._pipe.to(self.device)
@@ -552,17 +570,37 @@ class ImageGenerator:
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         t0 = time.time()
+        # img2img モードでは init_image (=ユーザのスケッチ生画像)、
+        # control_image (=線を太らせた lineart) を別々に渡す。
+        # text2img モードでは image=control_image だけ。
+        use_img2img = self.img2img_strength > 0.0
+        if use_img2img:
+            # init_image は元のユーザ画像 (dilate 前の生画像)。 白背景の
+            # prior を残すため。 control_image は dilate 後の lineart
+            init_image = _normalize_image(guide_image, size=self.resolution)
+            pipe_kwargs = {
+                "prompt": prompt,
+                "negative_prompt": neg,
+                "image": init_image,
+                "control_image": pil_guide,
+                "strength": self.img2img_strength,
+                "num_inference_steps": steps,
+                "guidance_scale": gs,
+                "controlnet_conditioning_scale": cn,
+                "generator": generator,
+            }
+        else:
+            pipe_kwargs = {
+                "prompt": prompt,
+                "negative_prompt": neg,
+                "image": pil_guide,
+                "num_inference_steps": steps,
+                "guidance_scale": gs,
+                "controlnet_conditioning_scale": cn,
+                "generator": generator,
+            }
         # LoRA を有効にする場合は cross_attention_kwargs で scale を渡す
         # (load_lora_weights だけでは fuse されないので、 推論毎に指定が必要)
-        pipe_kwargs = {
-            "prompt": prompt,
-            "negative_prompt": neg,
-            "image": pil_guide,
-            "num_inference_steps": steps,
-            "guidance_scale": gs,
-            "controlnet_conditioning_scale": cn,
-            "generator": generator,
-        }
         if self.lora_path:
             pipe_kwargs["cross_attention_kwargs"] = {"scale": self.lora_scale}
         with torch.no_grad():

@@ -106,6 +106,12 @@ def main() -> int:
     ap.add_argument("--out", type=Path, default=None,
                     help="Output dir. Default: logs/imagegen_comparison_<ts>")
     ap.add_argument("--resolution", type=int, default=1024)
+    ap.add_argument("--strength", type=float, default=None,
+                    help="img2img strength を全 preset で上書き (0.5-0.9 推奨)")
+    ap.add_argument("--lora-scale", type=float, default=None,
+                    help="LoRA scale を全 preset で上書き (0.6-1.2)")
+    ap.add_argument("--dilate", type=int, default=None,
+                    help="guide_dilate_ksize を全 preset で上書き (0/3/5/7)")
     args = ap.parse_args()
 
     # validate preset names
@@ -148,10 +154,18 @@ def main() -> int:
             full_prompt = f"{args.prompt}, {cfg['style_hint']}"
         print(f"[compare]   prompt : {full_prompt}")
 
-        gen = ImageGenerator.from_preset(name,
-                                          negative_prompt=args.negative,
-                                          resolution=args.resolution,
-                                          verbose=True)
+        gen_overrides = {
+            "negative_prompt": args.negative,
+            "resolution": args.resolution,
+            "verbose": True,
+        }
+        if args.strength is not None:
+            gen_overrides["img2img_strength"] = args.strength
+        if args.lora_scale is not None:
+            gen_overrides["lora_scale"] = args.lora_scale
+        if args.dilate is not None:
+            gen_overrides["guide_dilate_ksize"] = args.dilate
+        gen = ImageGenerator.from_preset(name, **gen_overrides)
         t0 = time.time()
         try:
             gen.load()
