@@ -117,7 +117,7 @@
               │        1-phase drag-teach + 描画は実機検証済、2-phase drag-teach は
               │        コード完成・実機検証は次セッション。
               │
-05-25 15:17   ● M12 canvas キャリブ v3 IO + GUI 配線 ★★ 現在地 ★★  [c24438c]
+05-25 15:17   ● M12 canvas キャリブ v3 IO + GUI 配線  [c24438c]
                      └ ~/piper_test/canvas_calibration_io.py 新規(280 行)。
                        v1 (M10 raw) / v2 (M11 GUI) / v3 (5-phase 設計) yaml 全対応の
                        reader + v3 専用 writer。50 checks PASS。
@@ -133,6 +133,54 @@
                        実機 drag-teach は Step 4 で B2 自動サンプリングが入った後に検証予定。
                        設計: docs/20260525_1447_canvas_calibration_v3_design.md
                        進捗: docs/20260525_{1457,1517}_canvas_calibration_v3_step{1,2}_*.md
+              │
+              ├──►  ✗ N5  デバッグ用 image push で orphan branch + git clean -fd し、
+              │           training/ (raw 36 + LoRA + dataset)、 venv/ (torch 等)、
+              │           calibration/*.yaml の local uncommitted 修正、 logs 出力、
+              │           その他 untracked ファイル群を一括 wipe
+              │           原因: orphan branch で .gitignore も untracked になり、 clean が
+              │             全消し (gitignored 含む)
+              │           対処: ① Trash 内 training.zip (708M, 16:54 時点) から
+              │                    raw/ + v0 LoRA + dataset を rsync 復元
+              │                 ② venv は pip install で再構築 (torch 2.5.1+cu121,
+              │                    diffusers 0.38.0, transformers 5.9.0)
+              │                 ③ git fsck --unreachable で dangling blobs 発見
+              │                    panel_frame.yaml と canvas_calibration.yaml の
+              │                    最新版 (uncommitted だった) を recovered_yaml/ に
+              │                    退避 → 採用
+              │           教訓: orphan branch + clean -fd 禁止、 git worktree で隔離
+              │           ┗━ 復旧先 ▶ M13
+              │
+05-28 00:14   ● M13 Plan E (Illustrious + MistoLine + inpaint) で純線画達成  [ce0eefc]
+              │      └ Animagine 3.1 + 自前 LoRA (v0/v1/v2/v3) は全失敗
+              │        (黒テクスチャ + 文字暴走)。 ユーザ提案 「漫画モデルを使えばいい」
+              │        を反映し、 base を Illustrious XL early-release-v0 (Danbooru
+              │        訓練、 monochrome/lineart tag 対応) に乗換、 LoRA off。
+              │        新 preset illustrious_v2_inpaint で 顔保持 + 体描き足し +
+              │        ハッチング/塗り無しの 線画 達成。 ロボット描画適合な strokes 取得。
+              │
+05-28 01:50   ● M14 Vectorizer + Robot 結合 動作確認 (mock + real CAN)  [82cb13b]
+              │      └ Phase 3 生成画像 → Vectorizer.vectorize_to_panel()
+              │        → strokes_mm 107 strokes (panel 107.05 x 197.07 mm)
+              │      Robot(mock=True).draw_stroke_panel 全 stroke で
+              │        travel→descend→trace→pen-up が log で確認可。
+              │      Robot(mock=False).connect/disconnect: 実機電源 OFF で
+              │        CAN 送信 → ERROR-PASSIVE (ACK 無しのため、 正常)。
+              │
+05-28 08:38   ● M15 IP-Adapter two-stage で 松本大洋画風 + 顔保持 同時達成 ★★ 現在地 ★★  [c32c2c1]
+                     └ 自前 LoRA v0-v3 すべて失敗 (dataset 黒/文字暴走) を IP-Adapter
+                       (h94/IP-Adapter sdxl_models/ip-adapter_sdxl) で迂回。
+                       1 段で IP-Adapter 使うと style ref の構図 (顔=頭) と 元 sketch
+                       (中央 face oval) が競合 → 顔が胴体中央に。
+                       Two-stage で解決:
+                         Stage 1: illustrious_v2_inpaint @ 1024res で 構図確定
+                         Stage 2: img2img + IP-Adapter (strength 0.45, ip_scale 0.6,
+                                  768res) で style 転写、 構図維持
+                       Vectorizer 後で 114 strokes / 2542 pts。 松本タッチ
+                       (spiky 髪、 rough/expressive lines、 dynamic body) + 純線画 +
+                       顔保持 を同時に達成。 ロボット描画 ready。
+                       script: scripts/test_ip_adapter_two_stage.py
+                       demo: github phase-e-results-20260528/matsumoto_v2_two_stage/
 ```
 
 ---
@@ -156,6 +204,9 @@
 | M10 | 2026-05-23 18:12 | drag-teach キャンバスキャリブ実機成功(壁面描画スレッド) | `221f0fb` | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X 方向 |
 | M11 | 2026-05-23 21:00 | 壁面描画 GUI 統合(Tkinter wrapper、2-phase drag-teach 実装、speed 分離、Restart GUI、pkexec CAN up) | `f43e8e4` | `~/piper_test/wall_drawing_gui.py` 起動 → GUI 表示 + CAN status 反映、`Connect → Recover → Tune Contact → Draw Square` で四角描画(M10 キャリブのまま)。2-phase drag-teach は実装済・実機未検証(次セッション) |
 | M12 | 2026-05-25 15:17 | canvas_calibration yaml schema v3 (5-phase 設計) IO モジュール + GUI 配線(read/write_v3、_load_calib_defaults、_capture_point、_fit_and_save) | `c24438c` | `~/draw_piper/venv/bin/python ~/piper_test/test_canvas_calibration_io.py` で 50 checks PASS、`~/draw_piper/venv/bin/python ~/piper_test/test_step2_v3_save.py` で 33 checks PASS。GUI 起動時 `_load_calib_defaults` が v1/v2/v3 を自動検出してロード。実機 drag-teach は M11 同様未検証で Step 4 (B2 自動サンプリング実装後) にまとめて検証予定 |
+| M13 | 2026-05-28 00:14 | Plan E (Illustrious XL early-release-v0 + MistoLine + inpaint) で 純線画 + 顔保持 + 体描き足し 達成。 Animagine + 自前 LoRA 路線 (v0-v3 全失敗) を base 乗換で迂回 | `ce0eefc` | `venv/bin/python -m scripts.compare_imagegen_models --guide scripts/test_sketch.jpg --prompt "1boy, solo, young boy with full body, messy hair, surprised expression, simple t-shirt, standing" --presets illustrious_v2_inpaint --seed 42` で 顔保持 + 体描き足し の純線画。 demo: branch phase-e-results-20260528/phase_e_demo/ |
+| M14 | 2026-05-28 01:50 | Vectorizer (strokes_mm 化) + Robot.draw_stroke_panel mock/real CAN 双方で動作確認 | `82cb13b` | `Vectorizer.vectorize_to_panel(panel=PanelFrame)` で 107 strokes_mm 取得 (panel 107.05 x 197.07 mm)。`Robot(mock=True).draw_stroke_panel(strokes_uv)` 完走 + `Robot(mock=False).connect/disconnect` 実 CAN (実機電源 OFF) で OK (ERROR-PASSIVE = ACK 無し正常) |
+| M15 | 2026-05-28 08:38 | IP-Adapter two-stage で 松本大洋画風 + 顔保持 + ロボット適合 同時達成 | `c32c2c1` | `venv/bin/python -m scripts.test_ip_adapter_two_stage --user-sketch scripts/test_sketch.jpg --style-ref training/matsumoto_taiyo/raw/IMG_4311.JPG --output logs/ip_2stage_<ts> --stage1-resolution 1024 --resolution 768 --stage2-strength 0.45 --ip-scale 0.6 --seed 42` で `30_vectorized_strokes.png` に 114 strokes / 2542 pts の松本タッチ純線画。 demo: branch phase-e-results-20260528/matsumoto_v2_two_stage/ |
 
 ---
 
@@ -167,6 +218,7 @@
 | N2 | 2026-05-22 13:00–17:00 | JointCtrl 指令で実機が動かない（音はする） | ① master mode 残留で外部指令を拒否 ② Config Init 未送信 | `MasterSlaveConfig(0xFC,0,0,0)` + 電源完全リセット（AC+USB 抜いて 30 秒）+ Config Init（`ArmParamEnquiryAndConfig(0x01,0x02,0,0,0x02)`） | `docs/20260522_1700_piper_jointctrl_solved.md` |
 | N3 | 再発性 | CAN TX がサイレント失敗、コマンドが届かない | USB-CAN 物理層の不調 | `ip -details -statistics link show can0` でエラーカウンタを確認 → USB-CAN アダプタを抜き差し | `docs/20260522_1700_piper_jointctrl_solved.md`（教訓 5） |
 | N4 | 2026-05-23 17:00 | master mode 中、SDK の `GetArmJointMsgs` / `GetArmJointCtrl` が 0/stale。in-process の `python-can` Bus も同様に starve | 同一プロセス内の socketcan ソケットが master mode 中に受信不能化(原因不明だが再現性あり)。加えて 0x155-0x157 はアームが動いている時だけ broadcast される | `candump -ta can0` を subprocess 起動 → stdout を parse して 0x155-7 を decode。`MasterSlaveConfig(0xFC)` 後は電源リセット必須 | `docs/20260523_1820_master_mode_drag_teach_calibration.md` |
+| N5 | 2026-05-28 00:40 | orphan branch + git clean -fd で untracked file 一括 wipe (training/ raw 36+LoRA+dataset、 venv/ Python パッケージ、 calibration/*.yaml local mods) | orphan branch では .gitignore も untracked となり、 git clean -fd が gitignored 含めて全消去 | ① Trash の training.zip (708M, 16:54 時点) から raw/ + v0 LoRA + dataset を rsync 復元 ② venv は pip install で再構築 (torch 2.5.1+cu121 等) ③ `git fsck --unreachable` で dangling blobs から panel_frame.yaml / canvas_calibration.yaml の uncommitted 最新版を発見、 `recovered_yaml/` に保存後 採用 (M15 への復旧経路) | `docs/20260528_matsumoto_pursuit_plan.md`、 branch `recovered-yaml-20260528` |
 
 ---
 
