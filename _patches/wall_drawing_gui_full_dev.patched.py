@@ -60,6 +60,19 @@ except Exception as _spk_err:
     print(f"[wall_drawing_gui] StrokePicker import 失敗 ({_spk_err}) — "
           "filedialog にフォールバック")
 
+# Frida-inspired smooth drawing (PR #2, claude/frida-smoothness-20260527)。
+# draw_strokes_panel_smooth は draw_piper の Robot に実装済。
+# 既存 'on_strokes_draw' (IK + MOVE J chained) とは独立、 別 Robot
+# インスタンス + EndPoseCtrl (MOVE_L + MOVE_C) 経路で描画する。
+try:
+    from modules.robot import Robot as _DPRobot                # type: ignore
+    from modules.robot import PanelFrame as _DPPanelFrame      # type: ignore
+except Exception as _frida_err:
+    _DPRobot = None
+    _DPPanelFrame = None
+    print(f"[wall_drawing_gui] Frida Robot import 失敗 ({_frida_err}) — "
+          "Frida Smooth Draw 無効")
+
 try:
     from piper_sdk import C_PiperInterface_V2
 except ImportError:
@@ -907,6 +920,12 @@ class WallDrawingGUI:
         self.btn_strokes_abort = ttk.Button(sf_r2,
             text="中止", command=self.on_strokes_abort, width=8)
         self.btn_strokes_abort.pack(side=tk.LEFT, padx=2)
+        # Frida Smooth Draw (PR #2): 多 stroke 最適化 (TSP + 曲率速度 +
+        # look-ahead) 経路で別 Robot インスタンス経由で描画する
+        self.btn_strokes_draw_smooth = ttk.Button(sf_r2,
+            text="✨ Frida Smooth", command=self.on_strokes_draw_smooth,
+            width=14)
+        self.btn_strokes_draw_smooth.pack(side=tk.LEFT, padx=(8, 2))
         self.lbl_strokes_progress = ttk.Label(sf_r2,
             text="進捗: -", font=("Monaco", 9), foreground="gray")
         self.lbl_strokes_progress.pack(side=tk.LEFT, padx=(8, 0))
@@ -4671,6 +4690,128 @@ class WallDrawingGUI:
     def on_strokes_abort(self):
         self.strokes_abort_flag = True
         self.log("⛔ 描画中止を要求 (現在のストロークの終了後に停止)")
+
+    # ------------------------------------------------------------------
+    # Frida Smooth Draw (PR #2, claude/frida-smoothness-20260527)
+    # ------------------------------------------------------------------
+    def on_strokes_draw_smooth(self):
+        """Frida-inspired multi-stroke smooth draw を別 Robot で実行する。
+
+        既存 'on_strokes_draw' (IK + MOVE J chained) とは独立。 別 Robot
+        インスタンスで draw_strokes_panel_smooth() を呼ぶ:
+          - TSP greedy で stroke 順最適化
+          - 曲率連動の 3-region 速度プロファイル (直線部加速 含む)
+          - look-ahead descent height (近い stroke 間は pen-up 浅く)
+
+        既存 GUI の SDK 接続と CAN bus を共有するので、 描画中に他のボタンを
+        押さないこと。 安全のため確認ダイアログを出す。
+        """
+        if _DPRobot is None:
+            messagebox.showerror("Frida 無効",
+                "draw_piper の Robot import 失敗。 起動ログを確認してください。")
+            return
+        path = self.var_strokes_json_path.get()
+        if not path:
+            messagebox.showerror("ファイル未指定",
+                "「選択...」 で strokes.json を指定してください。")
+            return
+        if not os.path.exists(path):
+            messagebox.showerror("ファイルなし", f"見つかりません:\n{path}")
+            return
+        if not self._check_at_home_or_warn("Frida Smooth Draw"):
+            return
+        if not messagebox.askyesno(
+            "Frida Smooth Draw",
+            "Frida 拡張 (TSP + 曲率連動速度 + look-ahead descent) で\n"
+            "別 Robot 経由で実機描画します。\n\n"
+            "既存 GUI の SDK 接続と CAN bus を共有するので、 描画中は\n"
+            "GUI の他のボタンを押さないでください。\n\n続けますか?"):
+            return
+        self.strokes_abort_flag = False
+        self._run_in_thread(self._do_strokes_draw_smooth)
+
+    def _do_strokes_draw_smooth(self):
+        """Worker: draw_piper.Robot.draw_strokes_panel_smooth で描画。"""
+        path = self.var_strokes_json_path.get()
+        # 1. strokes.json をロード (既存 dsw_dev 経由、 px 座標)
+        try:
+            image_shape, strokes_px, meta = dsw_dev.load_strokes_json(path)
+        except Exception as e:
+            self.log_safe(f"[frida] strokes.json 読み込み失敗: {e}")
+            return
+        # 2. panel_frame.yaml から PanelFrame (draw_piper 版)
+        try:
+            panel = _DPPanelFrame.from_yaml(self._PANEL_YAML_PATH)
+        except Exception as e:
+            self.log_safe(f"[frida] panel_frame.yaml 読み込み失敗: {e}")
+            return
+        # 3. px → uv mm 変換 (Vectorizer.vectorize_to_panel と同じロジック、
+        #    画像左上原点 / panel 左下原点で Y 反転)
+        h, w = image_shape
+        wu, hv = panel.size_mm[0], panel.size_mm[1]
+        scale_u = wu / w
+        scale_v = hv / h
+        strokes_mm = []
+        for stroke_px in strokes_px:
+            s_uv = []
+            for (x_px, y_px) in stroke_px:
+                u = x_px * scale_u
+                v = (h - y_px) * scale_v
+                if panel.in_bounds(u, v):
+                    s_uv.append((u, v))
+            if len(s_uv) >= 2:
+                strokes_mm.append(s_uv)
+        self.log_safe(
+            f"[frida] {len(strokes_mm)} strokes after px->mm + bounds filter "
+            f"(input {len(strokes_px)}, image {w}x{h}, "
+            f"panel {wu:.0f}x{hv:.0f}mm)")
+        if not strokes_mm:
+            self.log_safe("[frida] no strokes — abort")
+            return
+        # 4. Robot 接続 → 描画 → 切断
+        robot = _DPRobot(mock=False, panel_frame=panel,
+                          use_feedback_workaround=True)
+        try:
+            robot.connect(enable_motors=True)
+            self.log_safe(
+                "[frida] Robot connected (別 SDK instance、 既存接続と並存)")
+            self.log_safe("[frida] moving to ready pose ...")
+            robot.goto_ready_pose(speed_pct=15, settle_s=10.0)
+            self.log_safe(
+                f"[frida] draw_strokes_panel_smooth start "
+                f"({len(strokes_mm)} strokes) ...")
+            import time as _t
+            t0 = _t.time()
+            diag = robot.draw_strokes_panel_smooth(
+                strokes_mm,
+                draw_speed_base=30, draw_speed_min=10, draw_speed_max=50,
+                travel_speed=60, near_threshold_mm=15.0, step_mm=2.0,
+                reorder=True,
+                settle_s=1.0, arrival_tol_mm=2.0, arrival_timeout_s=15.0,
+            )
+            elapsed = _t.time() - t0
+            self.log_safe(f"[frida] done in {elapsed:.1f}s")
+            self.log_safe(
+                f"[frida]   n_arcs           = {diag.get('n_arcs')}")
+            self.log_safe(
+                f"[frida]   travel saved (mm)= "
+                f"{diag.get('travel_saved_mm', 0):.1f}")
+            self.log_safe(
+                f"[frida]   speed mean (pct) = "
+                f"{diag.get('speed_mean_pct', 0):.1f} "
+                f"(range {diag.get('speed_min_pct')}-"
+                f"{diag.get('speed_max_pct')})")
+            self.log_safe("[frida] returning to ready pose ...")
+            robot.goto_ready_pose(speed_pct=15, settle_s=6.0)
+            self.log_safe("[frida] ✅ 完了")
+        except Exception as e:
+            self.log_safe(f"[frida] ❌ ERROR: {e}")
+        finally:
+            try:
+                robot.disconnect()
+                self.log_safe("[frida] Robot disconnected")
+            except Exception:
+                pass
 
     def on_strokes_live_preview(self):
         """ストローク全体プレビュー + 現在描画中のストロークをハイライト。

@@ -10,9 +10,13 @@
 ## ファイル
 
 - `wall_drawing_gui_full_dev_stroke_picker.patch`
-  unified diff (`patch -p0` で適用可)
+  unified diff、 約 50 行 — Section 5 の strokes select で
+  カード一覧 UI (StrokePicker) を使う
+- ⭐ `wall_drawing_gui_full_dev_frida_smooth.patch` (新規)
+  unified diff、 約 160 行 — Section 5 に `✨ Frida Smooth` ボタンを追加
+  (PR #2 の `Robot.draw_strokes_panel_smooth` を 別 Robot で呼ぶ)
 - `wall_drawing_gui_full_dev.patched.py`
-  パッチ適用後の完全版ファイル (cp で上書き派の人向け)
+  上記 **両方適用済の完全版**。 cp で上書き派の人向け
 
 ## 適用方法 (どちらか好きな方)
 
@@ -20,13 +24,16 @@
 
 ```bash
 cd ~/piper_test
+
+# 順番に当てる (stroke_picker → frida_smooth)
 patch -p0 < ~/draw_piper/_patches/wall_drawing_gui_full_dev_stroke_picker.patch
+patch -p0 < ~/draw_piper/_patches/wall_drawing_gui_full_dev_frida_smooth.patch
 
 # 失敗時は --dry-run で先に確認
-patch -p0 --dry-run < ~/draw_piper/_patches/wall_drawing_gui_full_dev_stroke_picker.patch
+patch -p0 --dry-run < ~/draw_piper/_patches/wall_drawing_gui_full_dev_frida_smooth.patch
 ```
 
-### 方法 B: ファイル丸ごと上書き
+### 方法 B: ファイル丸ごと上書き (両 patch 込み)
 
 ```bash
 cp ~/draw_piper/_patches/wall_drawing_gui_full_dev.patched.py \
@@ -42,34 +49,38 @@ cp ~/draw_piper/_patches/wall_drawing_gui_full_dev.patched.py \
 
 ```bash
 cd ~/piper_test
-git diff wall_drawing_gui_full_dev.py | head -30
-# → import 追加 + on_strokes_select_file の変更が見えるはず
+git diff wall_drawing_gui_full_dev.py | head -50
+# → 新 import + on_strokes_draw_smooth + ✨ Frida Smooth ボタン が見える
 
 # GUI を起動
 ~/draw_piper/venv/bin/python wall_drawing_gui_full_dev.py
-# 「5. 生成画像描画」 セクションの 「選択...」 ボタンを押す →
-# StrokePicker のカード一覧が出るはず
+# Section 5 で 「✨ Frida Smooth」 ボタンが表示される
+# strokes.json 選択後 → ✨ Frida Smooth クリック → 確認 → 実機描画
 ```
 
-`from modules.stroke_picker import StrokePicker` で `~/draw_piper` から
-読まれるので、 draw_piper 側の最新 (claude/smooth-curve-rendering-e88Vb
-ブランチ) が pull 済みであることが前提。
+`from modules.robot import Robot, PanelFrame` で `~/draw_piper` から
+読まれるので、 draw_piper 側の最新 (claude/frida-smoothness-20260527
+ブランチ、 dev 取り込み後は dev/main) が pull 済みであることが前提。
 
-## 変更内容サマリー (約 50 行)
+## 変更内容サマリー
 
-1. 先頭の import 群直後に sys.path に `~/draw_piper` を追加 + `StrokePicker`
-   を try import (失敗時は None で警告)
-2. `on_strokes_select_file()` を 2 段構成に書き直し:
-   - 主経路: `StrokePicker.show(self.root)` でカード一覧 → `strokes_json`
-     パスを取得
-   - フォールバック: StrokePicker import 失敗 / 実行時エラーで従来の
-     `filedialog.askopenfilename`
-   - 共通: `strokes.json` の軽い検証 → `var_strokes_json_path` に set →
-     `_refresh_buttons_safe()`
+### `_stroke_picker.patch` (約 50 行)
 
-機能的にはユーザ体験のみ変わる(OS finder → カードグリッド)。
-state の更新先 (`var_strokes_json_path`) は不変なので後段 (プレビュー /
-draw 実行) は全部そのまま動く。
+1. import 群直後に `from modules.stroke_picker import StrokePicker`
+2. `on_strokes_select_file()` を 2 段構成: 主 = StrokePicker、 fallback = filedialog
+
+### `_frida_smooth.patch` (約 160 行)
+
+1. import: `from modules.robot import Robot as _DPRobot, PanelFrame as _DPPanelFrame`
+2. Section 5 ボタン列に `✨ Frida Smooth` 追加 (中止ボタンの右隣)
+3. メソッド追加:
+   - `on_strokes_draw_smooth()`: 確認ダイアログ + worker thread 起動
+   - `_do_strokes_draw_smooth()`: strokes.json → uv mm 変換 → Robot 接続 →
+     `draw_strokes_panel_smooth()` → 切断
+4. 既存 `on_strokes_draw` (IK + MOVE J chained) と並存。 user が ボタンで使い分け
+
+⚠️ Frida ボタンは別 Robot インスタンスで CAN bus 共有のため、 描画中は他の
+GUI ボタンを押さないこと (確認ダイアログで警告)。
 
 ## なぜ draw_piper の `_patches/` に置くか
 
