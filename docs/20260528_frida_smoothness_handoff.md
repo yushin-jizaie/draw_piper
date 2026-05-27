@@ -62,6 +62,11 @@
 
 ### benchmark (純関数シミュレータ、 mock 不要)
 
+**2026-05-28 更新 v3**: stroke 連続化 (近接 stroke を pen-up せず接続) 追加。
+default OFF、 user 明示 `--merge-mm <N>` で ON (副作用: 接続線が描かれる):
+- face_sketch: merge 10mm で 9→7 strokes、 travel 101→88mm
+- scattered_dots: merge 10mm で 100→8 strokes、 **travel 650→80mm (88% 削減)**
+
 **2026-05-28 更新 v2**: TSP 2-opt 改善 + jerk clipping 追加:
 - scattered_dots: greedy 748mm → 2-opt **650mm** (-13.1% 追加削減)
 - face_sketch: greedy 112mm → 2-opt **101mm** (-9.7% 追加削減)
