@@ -23,3 +23,12 @@ logs/*
 .vscode/
 *.swp
 MILESTONES.md.bak
+
+# Style-LoRA training assets (著作権を含む可能性 / リポに置かない)
+training/*/raw/
+training/lora_runs/
+training/lora/*.safetensors
+training/lora/*.bin
+training/lora/*.pt
+# dataset (リサイズ済み画像 + caption) も漏れ防止のため除外
+training/*/dataset/

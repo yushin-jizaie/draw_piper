@@ -7,3 +7,10 @@ pillow
 # torchvision
 # transformers
 # accelerate
+# 画風 LoRA 学習 (scripts/train_style_lora.py) に必要:
+datasets
+ftfy
+Jinja2
+tensorboard
+peft           # train_text_to_image_lora_sdxl.py が直接 import
+# bitsandbytes  # 8bit Adam を使うなら (今は AdamW 標準)

@@ -359,19 +359,15 @@ def main() -> int:
     from modules.image_gen import load_imagegen_config
     ig_cfg = load_imagegen_config()
     log.info(
-        "imagegen config: steps=%d guidance=%.2f cn=%.2f",
+        "imagegen config: preset=%s steps=%d guidance=%.2f cn=%.2f",
+        ig_cfg.get("preset") or "(none)",
         ig_cfg["num_inference_steps"], ig_cfg["guidance_scale"],
         ig_cfg["controlnet_conditioning_scale"])
     # --steps が指定されていれば yaml を上書き
-    steps_eff = args.steps if args.steps is not None else \
-                int(ig_cfg["num_inference_steps"])
-    image_gen = ImageGenerator(
-        verbose=True,
-        num_inference_steps=steps_eff,
-        guidance_scale=float(ig_cfg["guidance_scale"]),
-        controlnet_conditioning_scale=float(
-            ig_cfg["controlnet_conditioning_scale"]),
-        negative_prompt=str(ig_cfg["negative_prompt"]))
+    if args.steps is not None:
+        ig_cfg["num_inference_steps"] = int(args.steps)
+    from modules.image_gen import build_image_generator_from_config
+    image_gen = build_image_generator_from_config(ig_cfg, verbose=True)
     # vectorizer の binarize 設定を yaml から読み込み (パイプライン GUI の
     # 「閾値キャリブ」 で保存される ~/draw_piper/calibration/vectorizer_config.yaml)
     from modules.vectorizer import load_binarize_config

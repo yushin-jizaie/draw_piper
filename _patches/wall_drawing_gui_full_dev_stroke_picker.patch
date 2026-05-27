@@ -1,0 +1,136 @@
+--- wall_drawing_gui_full_dev.py	2026-05-27 01:08:54.487626258 +0000
++++ wall_drawing_gui_full_dev.py	2026-05-27 01:08:54.489920101 +0000
+@@ -47,6 +47,19 @@
+ import draw_strokes_wall_dev as dsw_dev
+ from tkinter import filedialog
+ 
++# draw_piper 側の StrokePicker (logs/ をパースしてカード一覧で選ぶ Tk ダイアログ)
++# import エラー時はフォールバックで filedialog を使えるよう、 ラップして読む。
++import sys as _sys
++_DRAW_PIPER_ROOT = "/home/jizaiedev2026/draw_piper"
++if _DRAW_PIPER_ROOT not in _sys.path:
++    _sys.path.insert(0, _DRAW_PIPER_ROOT)
++try:
++    from modules.stroke_picker import StrokePicker  # type: ignore
++except Exception as _spk_err:
++    StrokePicker = None
++    print(f"[wall_drawing_gui] StrokePicker import 失敗 ({_spk_err}) — "
++          "filedialog にフォールバック")
++
+ try:
+     from piper_sdk import C_PiperInterface_V2
+ except ImportError:
+@@ -4480,45 +4493,77 @@
+     # Section 5 (full_dev): 生成画像描画ハンドラ
+     # ------------------------------------------------------------------
+     def on_strokes_select_file(self):
+-        # 最新の strokes.json があるディレクトリを推測 (logs 内で
+-        # 最新の vlm_to_image_* や testStroke の cycle_* など)
+-        import glob
+-        candidates = sorted(
+-            glob.glob("/home/jizaiedev2026/draw_piper/logs/"
+-                       "vlm_to_image_*/cycle_*/strokes.json")
+-            + glob.glob("/home/jizaiedev2026/draw_piper/logs/"
+-                         "testStroke/*.json")
+-        )
+-        init_dir = "/home/jizaiedev2026/draw_piper/logs"
+-        if candidates:
+-            init_dir = os.path.dirname(candidates[-1])
+-        path = filedialog.askopenfilename(
+-            title="strokes.json (または panel_uv.json) を選択",
+-            filetypes=[
+-                ("ストローク JSON", "strokes.json"),
+-                ("panel_uv mm JSON", "*_panel_uv.json"),
+-                ("JSON files", "*.json"),
+-                ("All", "*.*")],
+-            initialdir=init_dir)
+-        if path:
+-            # 軽い検証: 'strokes' キーがあるか
++        """ストローク選択。
++
++        StrokePicker (draw_piper の logs/ カード一覧 GUI) が import 出来れば
++        そちらで選択。 失敗時は従来通り filedialog にフォールバック。
++        """
++        path = None
++
++        # 主経路: StrokePicker (生成画像 + strokes.png サムネ + 題材表示)
++        if StrokePicker is not None:
+             try:
+-                import json as _json
+-                with open(path) as f:
+-                    data = _json.load(f)
+-                if "strokes" not in data:
+-                    if not messagebox.askyesno("ファイル形式 ?",
+-                            f"ファイルに 'strokes' キーがありません:\n{path}\n\n"
+-                            "ストロークファイルではない可能性大ですが、 "
+-                            "それでも選択しますか?"):
+-                        return
++                selected = StrokePicker.show(self.root)
+             except Exception as e:
+-                messagebox.showerror("読込失敗", f"JSON 解析失敗:\n{e}")
++                self.log(f"StrokePicker error → filedialog にフォールバック: {e}")
++                selected = "__fallback__"
++            else:
++                if selected is None:
++                    # キャンセル
++                    return
++                sj = selected.get("strokes_json")
++                if sj is None:
++                    messagebox.showwarning("strokes.json なし",
++                        f"{selected.get('cycle_dir')} に strokes.json が "
++                        "ありません (古いログ / 生成途中) — 別のものを選んで "
++                        "ください。")
++                    return
++                path = str(sj)
++                self.log(f"strokes.json 選択 (picker): {path}  "
++                         f"題材={selected.get('subject', '?')}  "
++                         f"ts={selected.get('timestamp', '?')}")
++
++        # フォールバック: 従来 filedialog
++        if path is None:
++            import glob
++            candidates = sorted(
++                glob.glob("/home/jizaiedev2026/draw_piper/logs/"
++                           "vlm_to_image_*/cycle_*/strokes.json")
++                + glob.glob("/home/jizaiedev2026/draw_piper/logs/"
++                             "testStroke/*.json")
++            )
++            init_dir = "/home/jizaiedev2026/draw_piper/logs"
++            if candidates:
++                init_dir = os.path.dirname(candidates[-1])
++            path = filedialog.askopenfilename(
++                title="strokes.json (または panel_uv.json) を選択",
++                filetypes=[
++                    ("ストローク JSON", "strokes.json"),
++                    ("panel_uv mm JSON", "*_panel_uv.json"),
++                    ("JSON files", "*.json"),
++                    ("All", "*.*")],
++                initialdir=init_dir)
++            if not path:
+                 return
+-            self.var_strokes_json_path.set(path)
+-            self.log(f"strokes.json 選択: {path}")
+-            # ボタンを即時 enable
+-            self._refresh_buttons_safe()
++            self.log(f"strokes.json 選択 (filedialog): {path}")
++
++        # 共通: 軽い検証 ('strokes' キーがあるか) + state 更新
++        try:
++            import json as _json
++            with open(path) as f:
++                data = _json.load(f)
++            if "strokes" not in data:
++                if not messagebox.askyesno("ファイル形式 ?",
++                        f"ファイルに 'strokes' キーがありません:\n{path}\n\n"
++                        "ストロークファイルではない可能性大ですが、 "
++                        "それでも選択しますか?"):
++                    return
++        except Exception as e:
++            messagebox.showerror("読込失敗", f"JSON 解析失敗:\n{e}")
++            return
++        self.var_strokes_json_path.set(path)
++        # ボタンを即時 enable
++        self._refresh_buttons_safe()
+ 
+     def on_panel_convert(self):
+         """canvas_calibration.yaml の 4 隅 → panel_frame.yaml の panel: 更新"""

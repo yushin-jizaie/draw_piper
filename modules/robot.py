@@ -319,6 +319,63 @@ class Robot:
             js.joint_6 / 1000.0,
         )
 
+    def wait_for_pose(self, x_mm, y_mm, z_mm, *,
+                      tol_mm=2.0, timeout_s=10.0, poll_s=0.05,
+                      fallback_s=None):
+        """Block until the end-effector is within tol_mm of (x_mm,y_mm,z_mm).
+
+        Uses end-pose feedback polling (works through PiperFeedback 0x3A* or
+        the SDK 0x2A* path — whichever returns non-stuck values). When
+        feedback is unavailable / stuck at zeros, falls back to a fixed sleep
+        of `fallback_s` (default = timeout_s / 4, min 1.5s).
+
+        Returns True on arrival or fallback completion, False only on a hard
+        timeout while feedback IS working (so the caller knows something is
+        wrong).
+        """
+        if self._mock:
+            time.sleep(0.05)
+            return True
+        if fallback_s is None:
+            fallback_s = max(1.5, timeout_s / 4.0)
+        deadline = time.time() + timeout_s
+        tol_sq = tol_mm * tol_mm
+        feedback_seen = False
+        stuck_zero = 0
+        no_feedback = 0
+        last_pose = None
+        while time.time() < deadline:
+            ep = self.get_end_pose()
+            if ep is None:
+                no_feedback += 1
+                if no_feedback >= 8:    # ~0.4s of total silence
+                    time.sleep(fallback_s)
+                    return True
+                time.sleep(poll_s)
+                continue
+            x, y, z = ep[0], ep[1], ep[2]
+            # detect SDK 0x2A path returning all-zero on firmware S-V1.8-2
+            if abs(x) < 0.5 and abs(y) < 0.5 and abs(z) < 0.5:
+                stuck_zero += 1
+                if stuck_zero >= 8:
+                    time.sleep(fallback_s)
+                    return True
+                time.sleep(poll_s)
+                continue
+            feedback_seen = True
+            dx = x - x_mm; dy = y - y_mm; dz = z - z_mm
+            if dx * dx + dy * dy + dz * dz <= tol_sq:
+                return True
+            last_pose = ep
+            time.sleep(poll_s)
+        if not feedback_seen:
+            time.sleep(fallback_s)
+            return True
+        print(f"[robot] wait_for_pose timeout {timeout_s:.1f}s: "
+              f"target=({x_mm:.1f},{y_mm:.1f},{z_mm:.1f}) "
+              f"last=({last_pose[0]:.1f},{last_pose[1]:.1f},{last_pose[2]:.1f})")
+        return False
+
     def _refresh_orientation_cache(self):
         if self._mock:
             return
@@ -422,6 +479,83 @@ class Robot:
         return True
 
     # ------------------------------------------------------------------
+    # arc (MOVE_C) primitive
+    # ------------------------------------------------------------------
+    def goto_arc(self, start_xyz, mid_xyz, end_xyz,
+                 rx_deg=None, ry_deg=None, rz_deg=None,
+                 speed_pct=25):
+        """Move along a circular arc from start through mid to end.
+
+        Uses piper MOVE_C (move_mode=0x03). The arc is fully defined by
+        these 3 points; orientation is held at the cached current value
+        unless rx/ry/rz are passed. The arm MUST already be at `start_xyz`
+        (or very close) — MOVE_C does NOT travel to the start; it interprets
+        the three points as defining a circle on which to interpolate from
+        start to end via mid.
+
+        Returns True on success. In mock mode just logs.
+        """
+        if not self.connected:
+            raise RuntimeError('Robot not connected')
+
+        if self._mock:
+            print(f"[MOCK] goto_arc: start={tuple(round(c,1) for c in start_xyz)} "
+                  f"mid={tuple(round(c,1) for c in mid_xyz)} "
+                  f"end={tuple(round(c,1) for c in end_xyz)} speed={speed_pct}")
+            time.sleep(0.05)
+            return True
+
+        spd = int(max(1, min(100, speed_pct)))
+        try:
+            # switch to MOVE_C mode (CAN ID 0x151)
+            self._conn.ModeCtrl(0x01, 0x03, spd, 0x00)
+            time.sleep(0.005)
+
+            # start
+            X, Y, Z, RX, RY, RZ = self._to_piper_pos(*start_xyz,
+                                                       rx_deg=rx_deg,
+                                                       ry_deg=ry_deg,
+                                                       rz_deg=rz_deg)
+            self._conn.EndPoseCtrl(X, Y, Z, RX, RY, RZ)
+            self._conn.MoveCAxisUpdateCtrl(0x01)
+            time.sleep(0.005)
+
+            # mid
+            X, Y, Z, RX, RY, RZ = self._to_piper_pos(*mid_xyz,
+                                                       rx_deg=rx_deg,
+                                                       ry_deg=ry_deg,
+                                                       rz_deg=rz_deg)
+            self._conn.EndPoseCtrl(X, Y, Z, RX, RY, RZ)
+            self._conn.MoveCAxisUpdateCtrl(0x02)
+            time.sleep(0.005)
+
+            # end (triggers execution)
+            X, Y, Z, RX, RY, RZ = self._to_piper_pos(*end_xyz,
+                                                       rx_deg=rx_deg,
+                                                       ry_deg=ry_deg,
+                                                       rz_deg=rz_deg)
+            self._conn.EndPoseCtrl(X, Y, Z, RX, RY, RZ)
+            self._conn.MoveCAxisUpdateCtrl(0x03)
+            time.sleep(0.005)
+        except Exception as e:
+            print('[robot] goto_arc error:', e)
+            return False
+        return True
+
+    def goto_arc_panel(self, start_uvw, mid_uvw, end_uvw, speed_pct=25):
+        """Circular-arc move on the panel. Coordinates are (u_mm, v_mm, w_mm).
+
+        Pen orientation is held at the panel frame's configured pen pose.
+        """
+        panel = self._require_panel()
+        rx, ry, rz = panel.pen_orientation_deg
+        return self.goto_arc(panel.to_base(*start_uvw),
+                              panel.to_base(*mid_uvw),
+                              panel.to_base(*end_uvw),
+                              rx_deg=rx, ry_deg=ry, rz_deg=rz,
+                              speed_pct=speed_pct)
+
+    # ------------------------------------------------------------------
     # pen up / down + stroke helpers
     # ------------------------------------------------------------------
     def pen_up(self, x_mm=None, y_mm=None, z_up_mm=30.0, speed_pct=60, wait_s=0.0):
@@ -436,28 +570,47 @@ class Robot:
 
     def draw_stroke(self, points_mm, z_down_mm=5.0, z_up_mm=30.0,
                     travel_speed=80, draw_speed=30,
-                    inter_point_delay=0.02, settle_s=2.0):
+                    inter_point_delay=0.02, settle_s=2.0,
+                    arrival_tol_mm=2.0, arrival_timeout_s=15.0):
         """Draw a stroke defined by a list of (x_mm, y_mm) points.
 
-        settle_s is the blocking wait after pen-up / pen-down transitions —
-        needed on real hardware because EndPoseCtrl returns immediately.
+        Waits for end-pose feedback at each pen-up / pen-down transition so
+        the descent command doesn't pre-empt the lateral travel (which would
+        cause the pen to touch the surface before reaching the target XY).
+        Falls back to a fixed sleep of `settle_s` when feedback is broken.
         inter_point_delay is per-waypoint while drawing.
         """
         if not points_mm:
             return
         x0, y0 = points_mm[0]
+        x_last, y_last = points_mm[-1]
+
         # travel to first point at safe height
-        self.goto_xyz(x0, y0, z_up_mm, speed_pct=travel_speed, move_mode=0x02, wait_s=settle_s)
+        self.goto_xyz(x0, y0, z_up_mm, speed_pct=travel_speed,
+                      move_mode=0x02, wait_s=0.0)
+        self.wait_for_pose(x0, y0, z_up_mm,
+                           tol_mm=arrival_tol_mm,
+                           timeout_s=arrival_timeout_s,
+                           fallback_s=settle_s)
         # pen down
-        self.goto_xyz(x0, y0, z_down_mm, speed_pct=draw_speed, move_mode=0x02, wait_s=settle_s)
+        self.goto_xyz(x0, y0, z_down_mm, speed_pct=draw_speed,
+                      move_mode=0x02, wait_s=0.0)
+        self.wait_for_pose(x0, y0, z_down_mm,
+                           tol_mm=arrival_tol_mm,
+                           timeout_s=arrival_timeout_s,
+                           fallback_s=settle_s)
 
         for (x, y) in points_mm[1:]:
-            self.goto_xyz(x, y, z_down_mm, speed_pct=draw_speed, move_mode=0x02,
-                          wait_s=inter_point_delay)
+            self.goto_xyz(x, y, z_down_mm, speed_pct=draw_speed,
+                          move_mode=0x02, wait_s=inter_point_delay)
 
         # pen up at end
-        self.goto_xyz(points_mm[-1][0], points_mm[-1][1], z_up_mm,
-                      speed_pct=travel_speed, move_mode=0x02, wait_s=settle_s)
+        self.goto_xyz(x_last, y_last, z_up_mm, speed_pct=travel_speed,
+                      move_mode=0x02, wait_s=0.0)
+        self.wait_for_pose(x_last, y_last, z_up_mm,
+                           tol_mm=arrival_tol_mm,
+                           timeout_s=arrival_timeout_s,
+                           fallback_s=settle_s)
 
     # ------------------------------------------------------------------
     # panel (drawing-surface) coordinate layer
@@ -511,12 +664,20 @@ class Robot:
 
     def draw_stroke_panel(self, points_uv, w_contact=None, w_clear=None,
                           travel_speed=60, draw_speed=25,
-                          inter_point_delay=0.02, settle_s=2.0):
+                          inter_point_delay=0.02, settle_s=2.0,
+                          arrival_tol_mm=2.0, arrival_timeout_s=15.0):
         """Draw a stroke on the panel from a list of (u, v) points (mm).
 
         Panel-space counterpart of draw_stroke(): travel above the first point
         with the pen clear of the panel, pen down, trace the path, pen up.
         w_contact / w_clear default to the panel frame's configured values.
+
+        Critical transitions (travel-to-first-point, descent, final pen-up)
+        wait for end-pose feedback to confirm arrival before issuing the next
+        EndPoseCtrl. Without this, the descent command can pre-empt the
+        lateral travel and the pen contacts the canvas *before* reaching the
+        target u,v (because base-frame linear interpolation from a partial
+        position is diagonal in panel uvw coords).
         """
         panel = self._require_panel()
         if not points_uv:
@@ -524,18 +685,131 @@ class Robot:
         wc = panel.w_contact_mm if w_contact is None else w_contact
         wu = panel.w_clear_mm if w_clear is None else w_clear
         u0, v0 = points_uv[0]
-        # travel to the first point with the pen clear of the panel
+        u_last, v_last = points_uv[-1]
+
+        # 1. lateral travel to (u0, v0) at pen-up offset
         self.goto_panel(u0, v0, wu, speed_pct=travel_speed, move_mode=0x02,
-                        wait_s=settle_s)
-        # pen down onto the panel
+                        wait_s=0.0)
+        bx, by, bz = panel.to_base(u0, v0, wu)
+        self.wait_for_pose(bx, by, bz,
+                           tol_mm=arrival_tol_mm,
+                           timeout_s=arrival_timeout_s,
+                           fallback_s=settle_s)
+
+        # 2. descend straight down to canvas
         self.goto_panel(u0, v0, wc, speed_pct=draw_speed, move_mode=0x02,
-                        wait_s=settle_s)
+                        wait_s=0.0)
+        bx, by, bz = panel.to_base(u0, v0, wc)
+        self.wait_for_pose(bx, by, bz,
+                           tol_mm=arrival_tol_mm,
+                           timeout_s=arrival_timeout_s,
+                           fallback_s=settle_s)
+
+        # 3. trace path
         for (u, v) in points_uv[1:]:
             self.goto_panel(u, v, wc, speed_pct=draw_speed, move_mode=0x02,
                             wait_s=inter_point_delay)
-        # pen up at the end
-        self.goto_panel(points_uv[-1][0], points_uv[-1][1], wu,
-                        speed_pct=travel_speed, move_mode=0x02, wait_s=settle_s)
+
+        # 4. pen up at end
+        self.goto_panel(u_last, v_last, wu,
+                        speed_pct=travel_speed, move_mode=0x02, wait_s=0.0)
+        bx, by, bz = panel.to_base(u_last, v_last, wu)
+        self.wait_for_pose(bx, by, bz,
+                           tol_mm=arrival_tol_mm,
+                           timeout_s=arrival_timeout_s,
+                           fallback_s=settle_s)
+
+    def draw_stroke_panel_arcs(self, points_uv,
+                                w_contact=None, w_clear=None,
+                                travel_speed=60, draw_speed=25,
+                                arc_speed=None,
+                                settle_s=2.0,
+                                smooth=True, step_mm=2.0, smooth_lambda=0.0,
+                                arrival_tol_mm=2.0, arrival_timeout_s=15.0):
+        """Draw a stroke as a chain of MOVE_C circular arcs.
+
+        Pipeline:
+          input polyline → (optional) spline smoothing + uniform resample
+                         → grouped into 3-point arc triplets
+                         → MOVE_L travel to first point at pen-up offset
+                         → MOVE_L descent straight down to canvas
+                         → MOVE_C for each arc (waits for arrival between arcs)
+                         → MOVE_L pen-up at end
+
+        smooth, step_mm, smooth_lambda are passed to trajectory.smooth_polyline.
+        With smooth=False the input points are used as-is (grouped into triplets);
+        useful when the caller has already smoothed.
+
+        Falls back to draw_stroke_panel (MOVE_L only) when the input has <3
+        points (no arc can be defined).
+        """
+        from .trajectory import smooth_polyline, polyline_to_arc_triplets
+
+        panel = self._require_panel()
+        if not points_uv or len(points_uv) < 2:
+            return
+        wc = panel.w_contact_mm if w_contact is None else w_contact
+        wu = panel.w_clear_mm if w_clear is None else w_clear
+        if arc_speed is None:
+            arc_speed = draw_speed
+
+        pts = list(points_uv)
+        if smooth:
+            pts = smooth_polyline(pts, step_mm=step_mm,
+                                   smooth_lambda=smooth_lambda)
+        if len(pts) < 3:
+            # not enough points for an arc — fall back to MOVE_L
+            return self.draw_stroke_panel(
+                pts, w_contact=wc, w_clear=wu,
+                travel_speed=travel_speed, draw_speed=draw_speed,
+                inter_point_delay=0.02, settle_s=settle_s,
+                arrival_tol_mm=arrival_tol_mm,
+                arrival_timeout_s=arrival_timeout_s)
+        triplets = polyline_to_arc_triplets(pts)
+        if not triplets:
+            return
+
+        u0, v0 = pts[0]
+        u_last, v_last = pts[-1]
+
+        # 1. lateral travel to first point at pen-up offset (MOVE_L)
+        self.goto_panel(u0, v0, wu, speed_pct=travel_speed, move_mode=0x02,
+                        wait_s=0.0)
+        bx, by, bz = panel.to_base(u0, v0, wu)
+        self.wait_for_pose(bx, by, bz,
+                           tol_mm=arrival_tol_mm,
+                           timeout_s=arrival_timeout_s,
+                           fallback_s=settle_s)
+
+        # 2. descend straight down to canvas (MOVE_L)
+        self.goto_panel(u0, v0, wc, speed_pct=draw_speed, move_mode=0x02,
+                        wait_s=0.0)
+        bx, by, bz = panel.to_base(u0, v0, wc)
+        self.wait_for_pose(bx, by, bz,
+                           tol_mm=arrival_tol_mm,
+                           timeout_s=arrival_timeout_s,
+                           fallback_s=settle_s)
+
+        # 3. arc chain (MOVE_C)
+        for (a, b, c) in triplets:
+            self.goto_arc_panel((a[0], a[1], wc),
+                                 (b[0], b[1], wc),
+                                 (c[0], c[1], wc),
+                                 speed_pct=arc_speed)
+            bx, by, bz = panel.to_base(c[0], c[1], wc)
+            self.wait_for_pose(bx, by, bz,
+                               tol_mm=arrival_tol_mm,
+                               timeout_s=arrival_timeout_s,
+                               fallback_s=settle_s)
+
+        # 4. pen up at end (MOVE_L)
+        self.goto_panel(u_last, v_last, wu,
+                        speed_pct=travel_speed, move_mode=0x02, wait_s=0.0)
+        bx, by, bz = panel.to_base(u_last, v_last, wu)
+        self.wait_for_pose(bx, by, bz,
+                           tol_mm=arrival_tol_mm,
+                           timeout_s=arrival_timeout_s,
+                           fallback_s=settle_s)
 
 
 if __name__ == '__main__':
