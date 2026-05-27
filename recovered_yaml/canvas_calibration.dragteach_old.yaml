@@ -1,0 +1,73 @@
+# Canvas calibration -- drag-teach (hand-guided) via master mode.
+# Robot base_link coords (mm). End-pose computed by URDF FK from
+# joint angles read via candump subprocess (0x155-0x157).
+canvas:
+  measured: 2026-05-23 20:12
+  method: drag-teach via master mode + candump subprocess (wall_drawing_gui.py)
+  n_points: 5
+  points_mm:
+  - - 212.47
+    - 77.6
+    - 193.11
+  - - 210.72
+    - -74.89
+    - 199.71
+  - - 190.96
+    - -50.52
+    - 437.15
+  - - 192.25
+    - 57.21
+    - 446.08
+  - - 196.08
+    - 0.1
+    - 316.61
+  joints_deg:
+  - - 22.008
+    - 85.048
+    - -13.9
+    - 5.149
+    - -70.0
+    - -0.403
+  - - -20.824
+    - 83.281
+    - -13.788
+    - -3.298
+    - -70.0
+    - 0.0
+  - - -14.059
+    - 53.917
+    - -49.362
+    - 3.877
+    - -25.234
+    - 0.0
+  - - 16.08
+    - 54.92
+    - -51.474
+    - -2.535
+    - -25.327
+    - 0.0
+  - - -3.087
+    - 55.943
+    - -25.319
+    - -9.848
+    - -43.258
+    - 3.887
+  plane_fit:
+    normal:
+    - -0.9966
+    - 0.0121
+    - -0.0811
+    centroid_mm:
+    - 200.5
+    - 1.9
+    - 318.53
+    rms_residual_mm: 2.288
+  bounds_yz_mm:
+    y_min: -74.9
+    y_max: 77.6
+    z_min: 193.1
+    z_max: 446.1
+  center_yz_mm:
+  - 1.9
+  - 318.5
+  contact_x_mm: 200.5

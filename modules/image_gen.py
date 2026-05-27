@@ -193,6 +193,51 @@ MODEL_PRESETS: dict[str, dict] = {
         "img2img_strength": 0.85,
         # LoRA は意図的に未指定 (Plan E 第一段階は素の base を見る)
     },
+    # Plan E + LineAniRedmond LoRA (artificialguybr/LineAniRedmond-LinearMangaSDXL-V2)
+    # Manga lineart 用の汎用 LoRA。 松本特定じゃないが manga 寄りに引き寄せる。
+    "illustrious_v2_inpaint_lineani": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "LineAniAF, lineart, monochrome, manga, "
+            "white_background, simple_background"
+        ),
+        "lora_path": "training/lora/LineAniRedmond_v2.safetensors",
+        "lora_scale": 0.4,
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": True,
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        "inpaint_strength": 1.0,
+    },
+    # Plan E + v4 LoRA (2026-05-28 学習予定、 厳格 binarize dataset 学習版)
+    # 過去 v0-v3 の失敗原因 (grayscale lineart の VAE hatching 化) への対処。
+    # threshold=50 で完全 2 値化、 rank 8 / lr 5e-5 / 600 step で過学習回避。
+    # 学習が完走するまでは v0 LoRA が training/lora/matsumoto_taiyo.safetensors
+    # にいるので、 完走後 自動的にこの preset が v4 を読む。
+    "illustrious_v2_inpaint_v4": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "mt_taiyo_style, monochrome, lineart, "
+            "white_background, simple_background"
+        ),
+        "lora_path": "training/lora/matsumoto_taiyo.safetensors",
+        "lora_scale": 0.8,    # v4 学習完走後 sweep で振る
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": True,
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        "inpaint_strength": 1.0,
+    },
     # Plan E + 松本タッチ: Illustrious + v0 LoRA 軽載せ。
     # v0 LoRA (panel 学習版、 89MB) は Animagine 単体だと黒テクスチャ暴走したが、
     # Illustrious base + 低 scale なら「松本らしさ」 だけ抽出できる仮説。
