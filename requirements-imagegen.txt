@@ -12,5 +12,5 @@ datasets
 ftfy
 Jinja2
 tensorboard
-# peft       # diffusers >=0.30 が pull in、 明示不要
+peft           # train_text_to_image_lora_sdxl.py が直接 import
 # bitsandbytes  # 8bit Adam を使うなら (今は AdamW 標準)

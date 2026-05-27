@@ -44,7 +44,7 @@ DIFFUSERS_REPO = "https://github.com/huggingface/diffusers"
 TRAIN_SCRIPT_REL = Path("examples") / "text_to_image" / "train_text_to_image_lora_sdxl.py"
 
 # diffusers training 例が import する追加依存 (venv に最初から入ってない場合あり)
-TRAINING_DEPS = ["datasets", "ftfy", "Jinja2", "tensorboard"]
+TRAINING_DEPS = ["datasets", "ftfy", "Jinja2", "tensorboard", "peft"]
 
 
 def _check_training_deps() -> None:
@@ -200,9 +200,12 @@ def main() -> int:
     ]
     if args.checkpointing:
         cmd.append("--gradient_checkpointing")
-    # Animagine 等 fp16 variant 無しモデル対応
-    if "animagine" in args.base.lower() or "lightning" in args.base.lower():
-        cmd.append("--variant=fp32")
+    # base モデルの variant 指定。 fp16 variant がある SDXL Turbo 等は
+    # --variant=fp16 を渡して VRAM 節約。 Animagine は variant 無いので
+    # 何も渡さない (デフォルト = fp32 weights をロード)
+    if "sdxl-turbo" in args.base.lower():
+        cmd.append("--variant=fp16")
+    # Animagine / Lightning は変数指定なし (script デフォルト = None)
 
     print(f"[train] launching:\n  {' '.join(cmd)}")
     if args.dry_run:
