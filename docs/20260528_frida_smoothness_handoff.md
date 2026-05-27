@@ -22,13 +22,21 @@
 ### 新規ファイル
 | ファイル | 内容 |
 |---|---|
-| `modules/stroke_planner.py` | TSP 並べ替え / 曲率計算 / 3-region 速度マップ / look-ahead clear heights / 真の弧長 の純関数群 |
-| `scripts/benchmark_stroke_smoothness.py` | 3 strategy (naive/arcs/smooth) の軌道メトリクス比較 (mock 不要、 純関数) |
+| `modules/stroke_planner.py` | TSP / 曲率 / 3-region 速度マップ / look-ahead clear / 真の弧長 / jerk metric / curvature histogram |
+| `modules/stroke_visualizer.py` | strokes_mm → PNG レンダリング (TSP 比較 grid 含む) |
+| `scripts/benchmark_stroke_smoothness.py` | 3 strategy の軌道メトリクス + jerk + curvature histogram (mock 不要) |
 | `scripts/test_frida_smoothness.py` | mock Robot で `draw_strokes_panel_smooth` を E2E smoke |
-| `scripts/test_pipeline_smooth.py` | **画像 → Vectorizer → Robot smooth** 通し E2E (mock/real) |
+| `scripts/test_pipeline_smooth.py` | **画像 → Vectorizer → Robot smooth** 通し E2E + `--render-out` preview |
 | `scripts/test_draw_strokes_smooth.py` | **実機テスト用** (face_lite / scattered / zigzag 3 シーン) |
+| `scripts/preflight_check.py` | 実機描画前の dry-run チェック (in_bounds / TSP / 推定 timing) |
+| `scripts/bench_robot_timing.py` | naive vs arcs vs smooth の **実機 A/B/C timing 比較** |
 | `docs/20260528_0030_frida_smoothness_design.md` | 設計ドキュメント |
 | `docs/20260528_frida_smoothness_handoff.md` | 本ファイル |
+
+### 既存ファイル変更
+| ファイル | 変更内容 |
+|---|---|
+| `modules/robot.py` | `Robot.draw_strokes_panel_smooth()` + `PanelFrame.from_base()` 逆変換 |
 
 ### 既存ファイル変更
 - `modules/robot.py`: `Robot.draw_strokes_panel_smooth()` メソッド追加 (約 200 行)
@@ -99,6 +107,21 @@ OK — smoke test passed.
 
 ### P1: 実機検証 (要 Piper アーム + can0 接続)
 
+**事前推奨フロー**:
+
+```bash
+# step 0: 任意 scene の preflight check (描画せず安全性検証)
+python3 -m scripts.preflight_check --scene face_lite
+python3 -m scripts.preflight_check --image scripts/test_sketch.jpg
+# 推定 timing と TSP 効果が出る、 "OK — safe to draw" なら次へ
+
+# step 1: 視覚 preview (実機描画 と同じものを画像化、 視認確認)
+python3 -m scripts.test_pipeline_smooth \
+    --image scripts/test_sketch.jpg --vectorize-only --render-out /tmp/preview.png
+xdg-open /tmp/preview.png
+```
+
+
 mock では accel/decel/MOVE_C overhead は反映されない。 実機での「本当に滑らかか」 は要計測:
 
 ```bash
@@ -132,6 +155,11 @@ xdg-open /tmp/preview.png
 python3 -m scripts.test_pipeline_smooth \
     --image logs/imagegen_comparison_*/illustrious_v2_inpaint.png \
     --real
+
+# 5. (定量比較) A/B/C ベンチマーク — naive vs arcs vs smooth の壁時計時間
+python3 -m scripts.bench_robot_timing \
+    --scene face_lite --real --countdown 5    # 紙交換 5 秒
+# 結果は logs/robot_timing_<ts>/timing_face_lite.json に保存
 ```
 
 実機テスト時の **確認ポイント**:
