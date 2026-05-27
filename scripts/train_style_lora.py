@@ -43,6 +43,35 @@ DEFAULT_DIFFUSERS_CACHE = Path.home() / ".cache" / "draw_piper" / "diffusers"
 DIFFUSERS_REPO = "https://github.com/huggingface/diffusers"
 TRAIN_SCRIPT_REL = Path("examples") / "text_to_image" / "train_text_to_image_lora_sdxl.py"
 
+# diffusers training 例が import する追加依存 (venv に最初から入ってない場合あり)
+TRAINING_DEPS = ["datasets", "ftfy", "Jinja2", "tensorboard"]
+
+
+def _check_training_deps() -> None:
+    """学習スクリプトが import する追加 pip 依存を pre-flight チェック。
+
+    欠けているものがあれば エラーで止め、 インストール手順を表示する。
+    """
+    import importlib
+    missing = []
+    for mod in TRAINING_DEPS:
+        try:
+            importlib.import_module(mod.lower())
+        except ImportError:
+            missing.append(mod)
+    if missing:
+        print(f"[train] ERROR: 学習に必要な pip パッケージが未インストール: "
+              f"{', '.join(missing)}", file=sys.stderr)
+        print(f"[train] 解決: pip install {' '.join(missing)}",
+              file=sys.stderr)
+        # diffusers 例の requirements_sdxl.txt があればそちらも案内
+        req_sdxl = (DEFAULT_DIFFUSERS_CACHE / "examples"
+                    / "text_to_image" / "requirements_sdxl.txt")
+        if req_sdxl.exists():
+            print(f"[train] または: pip install -r {req_sdxl}",
+                  file=sys.stderr)
+        raise SystemExit(2)
+
 
 def _resolve_diffusers_path() -> Path:
     """Locate a diffusers checkout (env var > project-cache); clone if missing."""
@@ -130,6 +159,9 @@ def main() -> int:
     if not args.dataset.exists():
         print(f"[train] dataset not found: {args.dataset}", file=sys.stderr)
         return 2
+
+    # 0. pre-flight: 学習スクリプト依存チェック (--dry-run も実行前に)
+    _check_training_deps()
 
     # 1. metadata.jsonl 作成
     _build_metadata_jsonl(args.dataset)
