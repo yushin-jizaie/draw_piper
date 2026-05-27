@@ -159,27 +159,22 @@ MODEL_PRESETS: dict[str, dict] = {
         "controlnet_id": "TheMistoAI/MistoLine",
         "variant": None,
         "num_inference_steps": 32,
-        "guidance_scale": 7.0,            # 6.5 → 7.0 で negative の押し込み強化
+        "guidance_scale": 7.0,
         "controlnet_conditioning_scale": 0.85,
-        # style_hint:
-        # - mt_taiyo_style: trigger
-        # - 描いてほしいもの: messy hair, body, clothes (= キャラ線)
-        # - スタイル: clean black line art on white (← 線画モード強制)
-        # - 否定: no shading, no texture (= negative の補強)
+        # 線画 LoRA で学習済の trigger + 描く対象。 短く (77 token 内)。
+        # 「white background」 は DEFAULT_NEGATIVE 側に既にある類語で抑制
+        # 済なので positive で重ねず、 描く対象に集中
         "style_hint": (
-            "mt_taiyo_style, character with body and messy hair, "
-            "clean black line art on pure white background, "
-            "no shading, no texture"
+            "mt_taiyo_style, character with body, messy hair, ink line art"
         ),
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
-        "lora_scale": 1.0,                # 1.3 だと暴走、 1.0 で松本ぽさ保ちつつ抑制
+        "lora_scale": 1.4,                # 1.0 → 1.4 (lineart LoRA は控えめ気味)
         "guide_dilate_ksize": 5,
         "inpaint_mode": True,
         "inpaint_line_threshold": 200,
         "inpaint_keep_dilate": 4,
-        # 0.9: mask 内に init (白) の prior を 10% 残す。 LoRA の背景埋めを
-        # 弱く抑制しつつ、 線画 (体・髪) を描く自由は ほぼ残す
-        "inpaint_strength": 0.9,
+        "inpaint_strength": 1.0,          # 0.9 → 1.0 (mask 内は完全再生成、
+                                          #   init の白背景 prior を捨てる)
     },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
