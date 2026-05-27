@@ -72,6 +72,9 @@ def main() -> int:
                     help="Vectorizer の中間 PNG を保存するディレクトリ")
     ap.add_argument("--out-json", type=Path, default=None,
                     help="strokes + diagnostics の JSON 保存先")
+    ap.add_argument("--render-out", type=Path, default=None,
+                    help="strokes を画像化して保存 (TSP 比較 grid)。 "
+                         "実機なしで 「ロボットが何を描くか」 を視覚確認")
     ap.add_argument("--countdown", type=int, default=3,
                     help="real 時の描画前カウントダウン秒数")
     args = ap.parse_args()
@@ -116,6 +119,20 @@ def main() -> int:
     if not strokes_mm:
         print("[pipeline] no strokes after mm conversion — exiting")
         return 3
+
+    # --- render preview (optional) ---
+    if args.render_out:
+        from modules.stroke_visualizer import render_comparison_grid
+        from modules.stroke_planner import reorder_strokes_tsp
+        reordered_mm, _ = reorder_strokes_tsp(strokes_mm, start_point=None)
+        preview = render_comparison_grid(
+            strokes_mm, tuple(panel.size_mm),
+            reordered_strokes_mm=reordered_mm,
+            out_size_px=(1600, 800),
+        )
+        args.render_out.parent.mkdir(parents=True, exist_ok=True)
+        preview.save(args.render_out)
+        print(f"[pipeline] preview saved -> {args.render_out}")
 
     # --- save stroke JSON ---
     if args.out_json:
