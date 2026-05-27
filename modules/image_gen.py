@@ -48,16 +48,17 @@ DEFAULT_CONTROLNET_SCALE = 1.0
 # 2026-05-27: 「中央クリーンな絵 + 周辺スクラッチ noise」 への対処として
 # noise / hatching / scribble 系を強化。
 DEFAULT_NEGATIVE_PROMPT = (
-    "color, shading, photo, photorealistic, complex background, "
-    "scribble, sketchy, crosshatch, hatching, pencil texture, "
-    "scratch marks, noise, multiple overlapping lines, "
-    "duplicate strokes, dirty background, paper grain, paper texture, "
-    "sepia tone, aged paper, brown background, beige background, "
-    "gray background, dark background, filled background, busy background, "
-    "background pattern, background texture, ink splatter, "
-    "manga panel border, halftone, screentone, dot pattern, "
-    "fabric texture, smudge, blurry, watermark, signature, "
-    "text, frame, border"
+    # 色味系: monochrome に絞る
+    "color, photo, photorealistic, "
+    # 雑乱系: 線が gritty すぎる方向は許容するが crosshatch / scribble は抑制
+    "scribble, pencil texture, scratch marks, noise, "
+    "duplicate strokes, smudge, blurry, "
+    # 商業データ汚れ
+    "watermark, signature, text, frame, border, "
+    "manga panel border, page number, "
+    # NOTE: 「ハッチング・gray 背景・背景パターン」 は許容する
+    # (松本タッチの自然な属性なので negative に入れない)
+    "blurry, jpeg artifacts"
 )
 DEFAULT_RESOLUTION = 1024
 
@@ -137,16 +138,14 @@ MODEL_PRESETS: dict[str, dict] = {
         "guide_dilate_ksize": 5,
         "img2img_strength": 0.85,
     },
-    # 同上 matsumoto LoRA を inpainting で使う preset
-    # ユーザの線(黒画素) は exact 保持、 白背景部分を完全再生成。
-    # img2img と違って 「線をなぞる」 制限が無く LoRA が髪・rough stroke を
-    # 自由に書ける。 ただし mask 境界に切れ目が出やすいので keep_dilate で
-    # 数 px 余裕を取る。
+    # matsumoto LoRA inpaint preset。
+    # 方針: ユーザの黒線 (顔輪郭・目) は 100% 保持、 周辺の白部分には
+    # LoRA に **完全な自由を与えて** 松本タッチで肉付けさせる
+    # (体・髪・服・ハッチング背景など)。 顔自体に関与せず周辺だけ
+    # 描き足すゴール。
     #
-    # 注意: matsumoto LoRA は漫画パネル中心の dataset で学習しているので
-    # inpaint で自由を与えると 背景全体にハッチング・グレー塗りで埋める
-    # 暴走傾向あり。 scale を 1.0 に抑え、 style_hint に
-    # "isolated, white background" を強調して抑制。
+    # 「白背景を残す」 系の抑制は OFF。 LoRA が漫画パネル風に
+    # 背景埋めするのも本志向では許容 (むしろ歓迎)。
     "matsumoto_taiyo_inpaint": {
         "base_model_id": "cagliostrolab/animagine-xl-3.1",
         "controlnet_id": "TheMistoAI/MistoLine",
@@ -154,19 +153,20 @@ MODEL_PRESETS: dict[str, dict] = {
         "num_inference_steps": 32,
         "guidance_scale": 6.5,
         "controlnet_conditioning_scale": 0.85,
+        # キャラの全身/シチュエーション を 描かせるための style_hint。
+        # 顔だけだと LoRA に描く対象が見えず gray でしか塗れない。
+        # body / clothes / hair で 「ここ描き足してね」 と明示。
         "style_hint": (
-            "mt_taiyo_style, isolated character, pure white background, "
-            "monochrome ink lineart, no background pattern"
+            "mt_taiyo_style, full body, messy hair, casual clothes, "
+            "rough ink lineart, dynamic strokes"
         ),
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
-        "lora_scale": 1.0,               # 1.3 → 1.0 (背景埋め暴走を抑制)
+        "lora_scale": 1.3,
         "guide_dilate_ksize": 5,
         "inpaint_mode": True,
         "inpaint_line_threshold": 200,
         "inpaint_keep_dilate": 4,
-        # 0.75 = mask 領域に init (白) の prior を 25% 残す。 LoRA の
-        # 背景埋め暴走を抑制しつつ、 顔ディテール追加の自由は残る
-        "inpaint_strength": 0.75,
+        "inpaint_strength": 1.0,   # 完全再生成、 LoRA に余地を最大化
     },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
