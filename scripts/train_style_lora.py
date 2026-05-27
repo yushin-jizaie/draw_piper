@@ -246,7 +246,9 @@ def main() -> int:
         f"--mixed_precision={args.mixed_precision}",
         f"--seed={args.seed}",
         "--caption_column=text",
-        "--image_column=file_name",
+        # imagefolder loader は metadata.jsonl の file_name を PIL に変換して
+        # "image" 列にリネームするので、 --image_column は "image" が正
+        "--image_column=image",
         "--center_crop",
         "--random_flip",
     ]
