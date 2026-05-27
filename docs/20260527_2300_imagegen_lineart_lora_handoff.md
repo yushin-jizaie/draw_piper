@@ -122,17 +122,68 @@ LoRA 3 連続失敗 (v0/v1/v2)。 次の選択肢:
 
 ### P0: 路線判断 (まずユーザに確認)
 
-LoRA は 3 連続詰まり中。 2 択を提案して決めてもらう:
+LoRA は 3 連続詰まり中。 ユーザから新提案 **「そもそも漫画を描くようなモデルを
+使えばいいのでは?」** あり (2026-05-27 23:50)。 正しい指摘 — Animagine XL 3.1 は
+anime/celluloid 寄りで manga (印刷物) 寄りじゃない。 ベースモデル変えれば
+LoRA 不要 or 軽い LoRA で済む可能性大。 これを **最有力 (E 路線)** とする:
 
-- **A 路線**: 「松本タッチ LoRA」 を諦めずに v3 を作る → P1 (dataset 精選 +
-  hyperparameter 緩め)
-- **B 路線**: LoRA を捨てて 素の Animagine + ControlNet で project 先に進める
-  → P2 (ロボット描画統合)
+- **E 路線**: ベースモデルを manga 寄り SDXL に乗り換え (新規、 これを推奨)
+  → 後述
+- **A 路線**: 既存 Animagine XL 3.1 で dataset 精選 + hyperparam 緩めて v3 → P1
+- **B 路線**: LoRA を捨てて Animagine 素のまま test_vlm_to_image 通しテスト → P2
 
-時間 / モチベ / 完成度の優先度次第。 「松本タッチは絶対要」 なら A、 「とりあえず
-ホワイトボードに何か描けるロボットを動かすのが先」 なら B。
+時間 / モチベ / 完成度の優先度次第。 ただ E が構造的にクリーンなので、
+時間あれば E → 結果次第で A/B、 が筋良い。
 
-### P1 (A 路線): dataset 精選 + hyperparameter 緩めて v3 学習
+### P_E (新提案、 manga base 乗り換え)
+
+調査 + 試行手順:
+
+1. **manga 寄り SDXL base モデルを探す** (HuggingFace で):
+   - `cagliostrolab/animagine-xl-4.0` (もし出てれば、 3.1 の後継)
+   - `OnomaAIResearch/Illustrious-xl-early-release-v0` 系 (NoobAI 系)
+   - `Laxhar/noobai-XL-1.1` 等の NoobAI XL 系
+   - `John6666/manga-style-models-XYZ` (個人配布の SDXL manga 派生)
+   - Civitai (HuggingFace 経由 mirror あり) で 「manga」 「lineart」 タグの
+     SDXL チェックポイント
+   - 確実な ID は Web 版で `huggingface-cli search` or huggingface.co 検索
+
+2. **MODEL_PRESETS に追加** (`modules/image_gen.py`):
+   ```python
+   "manga_base_mistoline": {
+       "base_model_id": "<found-id>",
+       "controlnet_id": "TheMistoAI/MistoLine",
+       "variant": "fp16" if has_fp16 else None,
+       "num_inference_steps": 28,
+       "guidance_scale": 6.5,
+       "controlnet_conditioning_scale": 0.85,
+       "style_hint": "manga style, ink line art, monochrome, white background",
+       "guide_dilate_ksize": 5,
+       "img2img_strength": 0.85,
+       # まず LoRA 無しで試す
+       # "lora_path": None,
+   },
+   ```
+
+3. **LoRA 無しで推論テスト** (manga base の素の出力をまず見る):
+   ```bash
+   python3 -m scripts.compare_imagegen_models \
+       --guide scripts/test_sketch.jpg \
+       --prompt "young boy with messy hair, surprised expression" \
+       --presets manga_base_mistoline --seed 42
+   ```
+
+4. **結果分岐**:
+   - 既に十分 manga タッチ + 白背景キープ + 線のみ → 🎉 これで採用、 LoRA 不要、
+     P3 (ロボット統合) へ
+   - manga タッチ出るが弱い → 既存の `matsumoto_taiyo.safetensors` (v2 黒暴走版)
+     を LoRA scale 0.5 程度で軽く乗せる(暴走しない範囲で松本らしさ補強)
+   - 全然違う(リアル写真風 etc) → 別 base 探す
+
+5. **既存 ControlNet + LoRA 互換性**: SDXL ファミリ間は互換。 MistoLine も SDXL
+   ControlNet なので動く。 LoRA も SDXL LoRA であれば 別 base 上でも乗る。
+
+### P1 (A 路線、 E がダメだった場合のフォールバック): dataset 精選 + hyperparam 緩めて v3
 
 3 連続失敗の真因は **dataset 含有の大面積黒**。 LoRA がそれを獲得 → 推論で
 ハッチング暴走。 物理的に排除する。
