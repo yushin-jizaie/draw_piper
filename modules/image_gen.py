@@ -83,11 +83,8 @@ MODEL_PRESETS: dict[str, dict] = {
         "guidance_scale": 0.0,                # strength で減るので 4 → 6 に増やす
         "controlnet_conditioning_scale": 1.0,
         "style_hint": (
-            "line art, black ink on white, simple clean lines, "
-            "minimal detail, no shading, white background, "
-            # 余白を強調 — img2img の白背景 prior を補強
-            "small character in the center of large empty white canvas, "
-            "lots of white space around"
+            "line art, black ink on white, clean lines, "
+            "white background, small character, lots of white space"
         ),
         "guide_dilate_ksize": 5,
         # img2img + ControlNet で空間レイアウト維持。 0.85 = 強めに denoise
@@ -104,12 +101,9 @@ MODEL_PRESETS: dict[str, dict] = {
         "guidance_scale": 6.5,
         "controlnet_conditioning_scale": 0.9,
         "style_hint": (
-            # Animagine 推奨の quality タグ + 線画指示
-            "masterpiece, best quality, monochrome lineart, "
-            "thick clean lines, no shading, white background, "
-            "simple composition, "
-            "small character in center of empty white canvas, "
-            "lots of white space around the subject"
+            # Animagine 推奨の quality タグ + 線画指示 (短く)
+            "masterpiece, monochrome lineart, thick clean lines, "
+            "white background, small character, lots of white space"
         ),
         "guide_dilate_ksize": 5,
         # img2img: 0.7 で init 画像(白背景含む) と SDXL 生成の中間
@@ -126,12 +120,10 @@ MODEL_PRESETS: dict[str, dict] = {
         "guidance_scale": 6.5,
         "controlnet_conditioning_scale": 0.85,
         # trigger word は学習時に caption へ挿入したものを使う
+        # 短く保つ (CLIP 77 token 制限、 prompt と合わせて余裕持たせる)
         "style_hint": (
-            "mt_taiyo_style, rough ink lineart, expressive faces, "
-            "loose dynamic strokes, monochrome, white background, "
-            "no shading, "
-            "small character in center of empty white canvas, "
-            "lots of white space around the subject"
+            "mt_taiyo_style, rough ink lineart, expressive face, "
+            "monochrome, white background, lots of white space"
         ),
         # 学習結果。 path は project_root 相対 (相対パスは load() 時解決)
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
