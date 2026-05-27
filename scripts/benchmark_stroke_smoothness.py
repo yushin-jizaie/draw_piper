@@ -40,6 +40,7 @@ from modules.stroke_planner import (
     speed_profile_for_stroke,
     compute_arc_curvature,
     compute_arc_length,
+    merge_near_strokes,
     total_travel_distance,
     stroke_set_diagnostics,
 )
@@ -236,6 +237,7 @@ def simulate_strategy_smooth(
     two_opt: bool = True,
     speed_smooth_window: int = 3,
     max_jerk_per_step=None,
+    merge_threshold_mm: float = 0.0,
 ) -> Dict:
     """Frida-inspired: arcs + TSP reorder + curvature speed + look-ahead descent."""
     if not strokes:
@@ -248,6 +250,12 @@ def simulate_strategy_smooth(
     else:
         strokes_o = list(strokes)
         indices = list(range(len(strokes)))
+
+    # 1b. optional stroke merge (近接 stroke を pen-up せず連続化)
+    merge_group_sizes = [1] * len(strokes_o)
+    if merge_threshold_mm and merge_threshold_mm > 0:
+        strokes_o, merge_group_sizes = merge_near_strokes(
+            strokes_o, merge_threshold_mm)
 
     # 2. look-ahead clear heights
     clear_heights = plan_clear_heights(

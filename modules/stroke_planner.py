@@ -176,6 +176,62 @@ def reorder_strokes_tsp(
     return reordered_2, indices_2
 
 
+def merge_near_strokes(
+    strokes: Sequence[Stroke],
+    merge_threshold_mm: float,
+) -> Tuple[List[Stroke], List[int]]:
+    """近接する隣接 stroke を pen-up せずに直接接続 (連続化)。
+
+    並べ替え後 (TSP) の stroke 列に対し、 各 stroke[i] の終端と stroke[i+1] の
+    始端の距離が `merge_threshold_mm` 以下なら、 両者を **1 つの連続 stroke**
+    として結合する。 接続部の点は補間せず、 stroke[i+1] の先頭をそのまま
+    結合する (=ロボットは pen-down のまま MOVE_L で gap を走る)。
+
+    効果:
+      - pen-up/down z 移動 が消える (= travel/z time 削減)
+      - travel xy 移動 も合体先の draw 経路に取り込まれる
+      - ただし gap 部分も pen が描いてしまうので、 細い接続線が現れる
+        (元の絵に意図しない線が乗る)
+
+    使い時:
+      - merge_threshold_mm 小さく (例 2-3mm) → 接続線目立たない、 効果大
+      - 大きく (10mm+) → 接続線目立つので注意、 主に "速度優先" 用途
+
+    Parameters
+    ----------
+    strokes : TSP 後の stroke list を推奨 (raw だと連続化効果が少ない)
+    merge_threshold_mm : 結合する距離閾値
+
+    Returns
+    -------
+    (merged_strokes, group_sizes)
+        merged_strokes : 結合後の stroke list
+        group_sizes    : 各 merged stroke が何本の元 stroke を含むか
+                         (デバッグ用、 1=単独、 N=結合)
+    """
+    if len(strokes) <= 1 or merge_threshold_mm <= 0:
+        return [list(s) for s in strokes], [1] * len(strokes)
+    merged: List[Stroke] = []
+    sizes: List[int] = []
+    cur = list(strokes[0])
+    cur_size = 1
+    for i in range(1, len(strokes)):
+        nxt = strokes[i]
+        gap = _dist(cur[-1], nxt[0])
+        if gap <= merge_threshold_mm:
+            # 接続 — pen-down のまま gap を走り、 続けて nxt を描く
+            cur = cur + list(nxt)
+            cur_size += 1
+        else:
+            merged.append(cur)
+            sizes.append(cur_size)
+            cur = list(nxt)
+            cur_size = 1
+    merged.append(cur)
+    sizes.append(cur_size)
+    return merged, sizes
+
+
 def total_travel_distance(
     strokes: Sequence[Stroke],
     start_point: Optional[Point] = None,

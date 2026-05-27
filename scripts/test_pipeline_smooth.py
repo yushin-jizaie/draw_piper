@@ -68,6 +68,9 @@ def main() -> int:
     ap.add_argument("--travel-speed", type=int, default=60)
     ap.add_argument("--near-threshold-mm", type=float, default=15.0)
     ap.add_argument("--step-mm", type=float, default=2.0)
+    ap.add_argument("--merge-mm", type=float, default=0.0,
+                    help="近接 stroke を pen-up せず連続化する距離閾値 "
+                         "(default 0 = OFF、 副作用で接続線が描かれる)")
     ap.add_argument("--debug-dir", type=Path, default=None,
                     help="Vectorizer の中間 PNG を保存するディレクトリ")
     ap.add_argument("--out-json", type=Path, default=None,
@@ -189,6 +192,7 @@ def main() -> int:
             near_threshold_mm=args.near_threshold_mm,
             step_mm=args.step_mm,
             reorder=not args.no_reorder,
+            merge_threshold_mm=args.merge_mm,
         )
         elapsed = time.time() - t0
         print(f"[pipeline] draw completed in {elapsed:.2f}s")

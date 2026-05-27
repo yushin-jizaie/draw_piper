@@ -4787,6 +4787,7 @@ class WallDrawingGUI:
                 draw_speed_base=30, draw_speed_min=10, draw_speed_max=50,
                 travel_speed=60, near_threshold_mm=15.0, step_mm=2.0,
                 reorder=True,
+                merge_threshold_mm=0.0,   # 接続線描画は default OFF
                 settle_s=1.0, arrival_tol_mm=2.0, arrival_timeout_s=15.0,
             )
             elapsed = _t.time() - t0
