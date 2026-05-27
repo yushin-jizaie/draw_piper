@@ -1,16 +1,19 @@
-# Frida Smoothness 拡張 引き継ぎ (翌朝再開用)
+# Frida Smoothness 拡張 引き継ぎ
 
 > ブランチ: `claude/frida-smoothness-20260527` (dev ベース、 全 push 済)
-> 作成 commit: `(this push)`
+> 最新 HEAD: `6cd000a` (午前作業含む 6 commit)
 > 設計: `docs/20260528_0030_frida_smoothness_design.md`
+> 親プロジェクト目的: Piper アームでホワイトボードに描く (M9 の先の探索)
 
 ---
 
-## TL;DR (3 行)
+## TL;DR (5 行)
 
-1. **実装完了**: Frida ヒント 3 つ (TSP ordering + 曲率連動速度 + look-ahead descent) を `Robot.draw_strokes_panel_smooth()` に統合
-2. **mock テスト全 PASS**: travel 49% 削減 (5 stroke 例)、 ベンチマークで scattered_dots は 82% 削減 / 2.78x speedup
-3. **次セッションは実機検証**: `scripts/test_frida_smoothness.py` を mock=True から real mode に切り替えて Piper 実機で確認
+1. **コア実装完了**: Frida ヒント 3 つ (TSP + 3-region 速度プロファイル + look-ahead descent) を `Robot.draw_strokes_panel_smooth()` に統合
+2. **E2E パイプライン完成**: 画像 → Vectorizer → Robot.smooth まで通る (`scripts/test_pipeline_smooth.py`)
+3. **視覚化ツール追加**: 実機なしで「ロボットが何を描くか」 確認可 (`--render-out` で TSP 効果も可視化)
+4. **ベンチマーク** (純関数 sim): face 1.71x / scattered **2.98x** / zigzag 1.38x speedup (旧 1.45/2.78/1.04)
+5. **次の最優先**: 実機検証 (P1)。 P2 (Vectorizer 連携) と P3 (改善 3 つ) は実装済
 
 ---
 
@@ -107,18 +110,28 @@ git pull
 # CAN bring-up (必要に応じて)
 sudo ip link set can0 up type can bitrate 1000000
 
-# 1. ready pose に行く (前回セッションで動作確認済の手順)
+# 1. ready pose
 python3 -m scripts.test_ready_pose move
 
-# 2. test_frida_smoothness.py の mock=True を mock=False or 削除 して
-#    実機で軽く 5 stroke 描画 (panel 上に何か小さい絵が出るはず)
-# 編集箇所: scripts/test_frida_smoothness.py L25 あたり
-#   r = Robot(mock=True)  →  r = Robot()    # auto-detect (SDK あれば実機)
-python3 -m scripts.test_frida_smoothness
+# 2. 一番小さい face_lite (5 stroke、 ~30秒) で初動確認
+#    実機モードは --inspect/--scene で制御 (mock=False 内蔵)
+python3 -m scripts.test_draw_strokes_smooth --inspect
+python3 -m scripts.test_draw_strokes_smooth --scene face_lite
 
-# 3. (任意) face_sketch シーンを実機で
-#    benchmark_stroke_smoothness.py 内の scene_face_sketch() を取り出して
-#    新しい test スクリプト or wall_drawing_gui に組み込む
+# 3. 動けば scattered で TSP 効果実感 (~2 分)
+python3 -m scripts.test_draw_strokes_smooth --scene scattered
+# --no-reorder と切替えて A/B 比較するとさらに分かりやすい
+python3 -m scripts.test_draw_strokes_smooth --scene scattered --no-reorder
+
+# 4. (本命) 生成画像を実機で描く
+#    user 環境にある logs/imagegen_comparison_*/illustrious_v2_inpaint.png 等を渡す
+python3 -m scripts.test_pipeline_smooth \
+    --image logs/imagegen_comparison_*/illustrious_v2_inpaint.png \
+    --render-out /tmp/preview.png    # 描画前に preview 確認
+xdg-open /tmp/preview.png
+python3 -m scripts.test_pipeline_smooth \
+    --image logs/imagegen_comparison_*/illustrious_v2_inpaint.png \
+    --real
 ```
 
 実機テスト時の **確認ポイント**:
@@ -167,17 +180,19 @@ VLM → ImageGen 部分は test_vlm_to_image.py を別途使い、 その出力�
 ### P4: PR 作成 (実機検証 PASS 後)
 
 ```bash
-gh pr create --title "Frida-inspired multi-stroke smoothness" \
+gh pr create --base dev --title "Frida-inspired multi-stroke smoothness" \
   --body "$(cat docs/20260528_frida_smoothness_handoff.md)"
 ```
 
 dev or main にマージで M13 提案候補:
 
 ```
-● M13  Frida-inspired multi-stroke smoothness (TSP + curvature speed +
-       look-ahead descent) 実機検証 PASS
-       └ scattered_dots benchmark で travel 82% 削減 / 2.78x speedup
-       └ Robot.draw_strokes_panel_smooth() 実装、 Vectorizer 出力連携
+● M13  Frida-inspired multi-stroke smoothness 実機検証 PASS
+       └ stroke_planner (TSP + 3-region curvature speed + look-ahead descent)
+       └ Robot.draw_strokes_panel_smooth() + Vectorizer → Robot E2E
+       └ stroke_visualizer で実機なし preview 可
+       └ scattered_dots benchmark で travel 82% 削減 / 2.98x speedup
+       └ face_sketch 1.71x / zigzag 1.38x speedup
 ```
 
 ---
