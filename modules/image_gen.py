@@ -51,7 +51,9 @@ DEFAULT_NEGATIVE_PROMPT = (
     "color, shading, photo, photorealistic, complex background, "
     "scribble, sketchy, crosshatch, hatching, pencil texture, "
     "scratch marks, noise, multiple overlapping lines, "
-    "duplicate strokes, dirty background, paper grain, "
+    "duplicate strokes, dirty background, paper grain, paper texture, "
+    "sepia tone, aged paper, brown background, beige background, "
+    "manga panel border, halftone, "
     "fabric texture, smudge, blurry, watermark, signature, "
     "text, frame, border"
 )
@@ -133,9 +135,13 @@ MODEL_PRESETS: dict[str, dict] = {
         ),
         # 学習結果。 path は project_root 相対 (相対パスは load() 時解決)
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
-        "lora_scale": 1.0,            # LoRA がちゃんと効くよう 0.85 → 1.0
+        # 2026-05-27 確定値 (方針 B: 白背景キープ + 顔ディテール追加):
+        # - lora_scale 1.3: 線質・表情が松本タッチに乗る最低ライン
+        # - img2img_strength 0.85: init 寄与 15% で oval スケールを残しつつ
+        #   LoRA が紙質感や追加 stroke を出せる余地を確保
+        "lora_scale": 1.3,
         "guide_dilate_ksize": 5,
-        "img2img_strength": 0.7,
+        "img2img_strength": 0.85,
     },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
