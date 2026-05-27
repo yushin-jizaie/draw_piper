@@ -76,105 +76,146 @@ inpaint mode で v0 LoRA を使うと、 学習データが漫画パネル全体
 
 詳細: docs に書いてないけど、 学習データ `training/matsumoto_taiyo/lineart_b_bold/` の中身が「線画」 ではなく「黒い塊 + 線」 になっていた。
 
-### 9. → 現在: LoRA v2 (lineart grayscale、 bolden 無し) 学習中
+### 9. ❌ LoRA v2 (lineart grayscale、 bolden 無し) も失敗
 
-`--bolden` 削除して grayscale 出力で学習。 弱い線は淡いまま、 強い線は濃い、 塗り境界程度では検出されない。 これで「線だけ」 を LoRA に学ばせる狙い。
+`--bolden` 削除して grayscale 出力で 1500 step 再学習 → 推論結果が **更に悪化**
+(黒テクスチャ + RGB カラーノイズ点描の暴走)。
 
-開始時刻: 22:50 頃、 完走予定: ~23:30 (1500 step × 1.66s = 41 分)
-ログ: `training/lora_runs/lineart_v2_grayscale_*.log`
-PID: 203679
+実出力サンプル: `logs/imagegen_comparison_20260527_234800/matsumoto_taiyo_inpaint.png`
+
+**確定診断**: lineart-anime 検出器の grayscale 出力を SDXL 学習データに直接
+使うアプローチが **構造的に間違い**。
+
+理由: SDXL は VAE で latent 化して学習する。 grayscale lineart (中間グレー値の
+分布) を VAE エンコードすると 「ハッチング的高周波 latent」 として表現される。
+LoRA はそれを「松本らしさ」 として獲得 → 推論で全画面ハッチング暴走。
+
+bolden 有無 (v1/v2) に関係なく LoRA は「黒テクスチャ pattern」 を学んでいる。
+原因が dataset 表現形式の根本にある。
+
+### 10. → 次セッションの本命: Plan D
+
+v0 (panel)、 v1 (lineart + bolden)、 v2 (lineart grayscale) で 3 連続失敗。
+別アプローチが必要。 最有力候補は **dataset を 「線が細く塗り少ない画像」 だけに
+精選 → hyperparameter を緩めて再学習** (引き継ぎ §「次の手 D」)。
 
 ---
 
-## 走っているもの (引き継ぎ時点で活きてるプロセス)
+## 走っているプロセス (なし)
 
-```bash
-# 確認
-ps -p 203679 -o pid,etime,cmd
-tail -3 training/lora_runs/lineart_v2_grayscale_*.log
+v2 学習は完走済 (23:30 頃)。 PID 203679 は消えてる。 推論 1 枚走らせて
+結果 (上記 §9) を確認済。
 
-# 完走サイン
-ls -lh training/lora/matsumoto_taiyo.safetensors    # 89M で 23:30 過ぎに更新されれば完走
-ls -lt training/lora_runs/matsumoto_taiyo/           # checkpoint-1500 の存在
-```
+LoRA 退避状況:
+- `training/lora/matsumoto_taiyo.safetensors` = v2 (失敗、 黒+カラーノイズ暴走)
+- `training/lora/matsumoto_taiyo_bold_v1.safetensors` = v1 (失敗、 黒テクスチャ)
+- v0 (panel 学習) は上書き済で残ってない
 
-完走したら PID 203679 は消える。 LoRA v2 が `training/lora/matsumoto_taiyo.safetensors` に書き出される。
-
-旧 LoRA は `training/lora/matsumoto_taiyo_bold_v1.safetensors` に退避済 (黒テクスチャ暴走版)。
+次セッションで作るなら v3 として `matsumoto_taiyo_v3_*.safetensors` 命名推奨。
 
 ---
 
 ## 次セッションの最優先タスク
 
-### P0: 学習データの目視確認 (5 分)
+v2 完走 + 推論結果確認済 → **失敗** (黒テクスチャ + RGB カラーノイズ暴走)。
+LoRA 3 連続失敗 (v0/v1/v2)。 次の選択肢:
 
-学習が始まる前に **確認しそびれた**。 完走前でも構わないので確認。
+### P0: 路線判断 (まずユーザに確認)
+
+LoRA は 3 連続詰まり中。 2 択を提案して決めてもらう:
+
+- **A 路線**: 「松本タッチ LoRA」 を諦めずに v3 を作る → P1 (dataset 精選 +
+  hyperparameter 緩め)
+- **B 路線**: LoRA を捨てて 素の Animagine + ControlNet で project 先に進める
+  → P2 (ロボット描画統合)
+
+時間 / モチベ / 完成度の優先度次第。 「松本タッチは絶対要」 なら A、 「とりあえず
+ホワイトボードに何か描けるロボットを動かすのが先」 なら B。
+
+### P1 (A 路線): dataset 精選 + hyperparameter 緩めて v3 学習
+
+3 連続失敗の真因は **dataset 含有の大面積黒**。 LoRA がそれを獲得 → 推論で
+ハッチング暴走。 物理的に排除する。
+
+1. **手動精選**: raw/ から「黒塊が多い画像」 を除外。 残し方の目安
+   (preview を見て主観で振り分け):
+   - 除外候補 (黒髪・黒服が画面の大半): `IMG_4326` (シロ夜空)、 `IMG_4324`
+     (ゴーグル)、 `EdvzOK7VAAAoA9G` (黒シャツ)、 `1.png` (4 コマ黒線多)、
+     `2.png` (鉄コン、 影濃い)、 `69d7496` (シロクロ近接、 黒髪)、
+     `8f640a63` (シロ青シャツ、 黒髪)
+   - 残し候補 (線細め・塗り少なめ): `1090748_300` (海辺、 アニメ調)、
+     `IMG_4311` (花男表紙、 線細い)、 `IMG_4321` (ナンバーファイブ表紙)、
+     `5e4f3e756cefd41aaf5a88da14f2020c` (バットマン)、 `feccbf...` (Peco)、
+     `o0600045013450720343` (5 人並び)、 `f341cbadd...` (3 人正面)
+   - 目安: **約 12-15 枚に精選**
+
+2. **lineart 再抽出** (extract_lineart は bolden 無しで OK):
+   ```bash
+   python3 -m scripts.extract_lineart \
+       --input training/matsumoto_taiyo/raw \
+       --output training/matsumoto_taiyo \
+       --apply b \
+       --exclude "IMG_4310,IMG_4316,IMG_4318,desktop-0519+(2),images,IMG_4312,20061104011427,IMG_4326,IMG_4324,EdvzOK7VAAAoA9G,1,2,69d7496db867374debb24b8f46387853,8f640a63f5520f466b5ba1560d2e89dc"
+   ```
+   (除外を 7 → 14 に増やす、 残り 22 枚 → さらに preview 見て手で絞る)
+
+3. **dataset 再構築 + LoRA 退避**:
+   ```bash
+   mv training/matsumoto_taiyo/dataset training/matsumoto_taiyo/dataset_v2_failed
+   mv training/lora/matsumoto_taiyo.safetensors training/lora/matsumoto_taiyo_v2_failed.safetensors
+   python3 -m scripts.prepare_style_dataset \
+       --input training/matsumoto_taiyo/lineart_b \
+       --output training/matsumoto_taiyo/dataset \
+       --trigger mt_taiyo_style --no-caption
+   cp training/matsumoto_taiyo/dataset_v2_failed/*.txt training/matsumoto_taiyo/dataset/
+   # 除外した画像の .txt は残るので、 dataset/ の .png に対応する .txt のみ残すよう掃除:
+   for txt in training/matsumoto_taiyo/dataset/*.txt; do
+     png=${txt%.txt}.png
+     [ -f "$png" ] || rm "$txt"
+   done
+   ls training/matsumoto_taiyo/dataset/ | wc -l  # 12-15 * 2 (png+txt) になる
+   ```
+
+4. **hyperparameter を緩めて学習** (LoRA が「テクスチャ暗記」 しにくくする):
+   ```bash
+   nohup python3 -m scripts.train_style_lora \
+       --dataset training/matsumoto_taiyo/dataset \
+       --name matsumoto_taiyo \
+       --base cagliostrolab/animagine-xl-3.1 \
+       --rank 16 --steps 800 --lr 5e-5 \
+       > training/lora_runs/lineart_v3_$(date +%Y%m%d_%H%M%S).log 2>&1 &
+   disown
+   ```
+   - rank 16 (32 から半減): LoRA の表現容量を絞ってテクスチャ暗記を防ぐ
+   - steps 800 (1500 から短縮): overfit 前に止める
+   - lr 5e-5 (1e-4 から半減): 浅く学習させる
+   - 完走 ~20 分
+
+5. 完走後 推論テスト → 結果次第で更に調整 or B 路線へ転戦
+
+### P2 (B 路線): LoRA 捨てて Animagine + ControlNet でロボット統合へ
+
+過去テストで `animagine_xl_31_mistoline` preset (LoRA 無し) は:
+- ✅ 白背景キープ (img2img + ControlNet)
+- ✅ 顔 oval スケール保持
+- ✅ Clean lineart (Animagine 自体が anime 線画学習済)
+- ❌ 「松本タッチ」 はほぼ無し (Animagine の素の絵)
+
+これで M9 の test_vlm_to_image を回す。 「ホワイトボードに線画描く」 という
+project 目標は達成可能。 松本タッチは将来課題。
 
 ```bash
-xdg-open ~/draw_piper/training/matsumoto_taiyo/lineart_b/IMG_4326.png  # シロ夜空 (黒髪)
-xdg-open ~/draw_piper/training/matsumoto_taiyo/lineart_b/2.png         # 鉄コン
-xdg-open ~/draw_piper/training/matsumoto_taiyo/lineart_b/8f640a63f5520f466b5ba1560d2e89dc.png  # シロ青シャツ
-```
-
-**判定基準**:
-- ✅ 髪・服が「淡いグレー線」 中心 (背景は白) → 健全、 v2 LoRA に期待できる
-- ❌ 髪・服が依然「黒い塊」 → grayscale でも塗り境界が強く検出されている。 別アプローチ要 (§次の手 D)
-
-caption 確認:
-```bash
-head ~/draw_piper/training/matsumoto_taiyo/dataset/1.txt
-# 期待: "mt_taiyo_style, a cartoon strip shows a man looking at a computer"
-# "mt_taiyo_style" だけなら cp 失敗 → 旧 caption を再 cp 後 学習やり直し
-```
-
-### P1: v2 学習完走確認 + 推論テスト
-
-```bash
-cd ~/draw_piper
-
-# 完走確認
-ls -lh training/lora/matsumoto_taiyo.safetensors
-
-# 推論 (1 seed で動作確認)
-python3 -m scripts.compare_imagegen_models \
-    --guide scripts/test_sketch.jpg \
-    --prompt "young boy with messy hair, surprised expression" \
-    --presets matsumoto_taiyo_inpaint --seed 42
-
-# 結果が良ければ 6 seed で安定性
-for s in 0 1 7 13 42 100; do
-  python3 -m scripts.compare_imagegen_models \
-    --guide scripts/test_sketch.jpg \
-    --prompt "young boy with messy hair, surprised expression" \
-    --presets matsumoto_taiyo_inpaint --seed $s
-done
-```
-
-**期待される良い出力** (方針 B + lineart):
-- 白背景キープ ✓
-- 顔の oval / 目 が exact 保持 ✓
-- 顔周辺に **線のみで** 体・髪・服 が追加 ← ここが本命
-- 紙質感・ハッチング・グレー塗りは出ない
-
-### P2: 結果分岐
-
-| 出力パターン | 次の手 |
-|---|---|
-| 期待通り (線で体・髪が追加) | 🎉 完成 → MILESTONES.md に新 ● を提案、 推論側 preset を確定、 ロボット描画統合テストへ |
-| 顔周辺に何も描かれない (静止) | LoRA scale を 1.5 / 1.7 / 2.0 で振る (`--lora-scale N`) |
-| また黒テクスチャ暴走 | §次の手 D へ (dataset 精選 / rank 下げ) |
-| 線は出るが ぐちゃぐちゃ | rank 32 → 16、 lr 5e-5、 steps 800 で再学習 |
-
-### P3: ロボット描画統合 (v2 LoRA OK 後)
-
-推論結果が良ければ、 次の段階で **Vectorizer → strokes → アーム描画** までテスト:
-```bash
-# VLM → ImageGen → Vectorizer の通し試験 (M9 の検証スクリプト流用)
+# 通し試験 (VLM → ImageGen → Vectorizer)
 python3 -m scripts.test_vlm_to_image --steps 4 --cycles 1
 # cycle_NN/strokes.json と vec_debug/06_strokes.png を確認
+
+# matsumoto 系 preset 指定でなく、 default (animagine_xl_31_mistoline?)
+# あるいは スクリプトの内部 preset 指定を確認、 必要なら animagine 指定。
+grep -n "ImageGenerator" scripts/test_vlm_to_image.py
 ```
 
-→ matsumoto preset を test_vlm_to_image に組み込む変更が要るかも (現状 default の preset を使ってる可能性)。
+ロボット描画まで通せば本来の MILESTONE 完成。 M9 から先の正常地点 ● を
+MILESTONES.md に追記提案。
 
 ---
 
