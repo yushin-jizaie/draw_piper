@@ -419,25 +419,41 @@ class ImageGenerator:
         if self.verbose:
             print(f"[image_gen] loading {self.controlnet_id} ...")
         t0 = time.time()
-        cn_kwargs = {"torch_dtype": self.torch_dtype}
-        if self.variant:
-            cn_kwargs["variant"] = self.variant
-        try:
-            self._controlnet = ControlNetModel.from_pretrained(
-                self.controlnet_id, **cn_kwargs,
-            )
-        except (OSError, ValueError) as e:
-            # variant not available -> retry without variant
-            if self.variant and "variant" in cn_kwargs:
-                if self.verbose:
-                    print(f"[image_gen] controlnet variant={self.variant} "
-                          f"not found, retrying without variant: {e}")
-                cn_kwargs.pop("variant", None)
+        # ControlNet の variant は base model とは独立。 MistoLine は
+        # fp16 variant のみ提供 (.fp16.safetensors) なので、 base が
+        # Animagine (variant=None) でも ControlNet 側は fp16 で読む。
+        # 段階的に fp16 -> None -> .bin 形式 と試行錯誤
+        cn_load_attempts = ["fp16", None]
+        last_err = None
+        self._controlnet = None
+        for cn_variant in cn_load_attempts:
+            cn_kwargs = {"torch_dtype": self.torch_dtype,
+                         "use_safetensors": True}
+            if cn_variant:
+                cn_kwargs["variant"] = cn_variant
+            try:
                 self._controlnet = ControlNetModel.from_pretrained(
                     self.controlnet_id, **cn_kwargs,
                 )
-            else:
-                raise
+                if self.verbose and cn_variant != "fp16":
+                    print(f"[image_gen] controlnet loaded with "
+                          f"variant={cn_variant}")
+                break
+            except (OSError, ValueError) as e:
+                last_err = e
+                if self.verbose:
+                    print(f"[image_gen] controlnet variant={cn_variant} "
+                          f"not found, trying next: {e}")
+        if self._controlnet is None:
+            # 最後の手段: use_safetensors を外して .bin も許可
+            try:
+                self._controlnet = ControlNetModel.from_pretrained(
+                    self.controlnet_id, torch_dtype=self.torch_dtype,
+                )
+                if self.verbose:
+                    print(f"[image_gen] controlnet loaded as .bin fallback")
+            except Exception:
+                raise last_err
         if self.verbose:
             print(f"[image_gen] controlnet loaded in {time.time() - t0:.1f}s")
 
