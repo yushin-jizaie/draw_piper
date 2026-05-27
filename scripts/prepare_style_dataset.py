@@ -129,6 +129,10 @@ def main() -> int:
                     help="出力フォルダ (画像 + .txt キャプションが並ぶ)")
     ap.add_argument("--trigger", type=str, default="mt_taiyo_style",
                     help="caption 先頭に挿入する trigger word")
+    ap.add_argument("--grayscale", action="store_true",
+                    help="入力画像をグレースケール化してから保存 "
+                         "(モノクロ画風 LoRA で色情報のノイズを除去)。 "
+                         "二値化はしない (SDXL の VAE が連続値前提のため)")
     ap.add_argument("--no-caption", action="store_true",
                     help="BLIP-2 を使わずキャプションは trigger word のみ")
     ap.add_argument("--device", default="cuda")
@@ -154,22 +158,30 @@ def main() -> int:
 
     args.output.mkdir(parents=True, exist_ok=True)
 
-    # 1. resize + bucket
-    from PIL import Image
+    # 1. resize + bucket (+ optional grayscale)
+    from PIL import Image, ImageOps
     processed = []
     bucket_counts = {b: 0 for b in SDXL_BUCKETS}
+    grayscale_count = 0
     for p in raw_paths:
         try:
             img = Image.open(p).convert("RGB")
         except Exception as e:
             print(f"[prep] skip {p.name}: {e}", file=sys.stderr)
             continue
+        # カラー → グレースケール (3 ch RGB のまま値だけ desaturate)
+        if args.grayscale:
+            gray = ImageOps.grayscale(img)         # L mode (1ch)
+            img = Image.merge("RGB", (gray, gray, gray))   # back to 3ch
+            grayscale_count += 1
         bucket = _closest_bucket(*img.size)
         fitted = _fit_to_bucket(img, *bucket)
         out_name = p.stem + ".png"
         fitted.save(args.output / out_name)
         processed.append((out_name, fitted))
         bucket_counts[bucket] += 1
+    if args.grayscale:
+        print(f"[prep] grayscale-converted: {grayscale_count} images")
     print(f"[prep] bucket distribution:")
     for b, c in bucket_counts.items():
         print(f"[prep]   {b[0]:4d}x{b[1]:4d}: {c}")
