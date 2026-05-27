@@ -101,13 +101,18 @@ def _get_detector():
 def method_b_anime_lineart(rgb: np.ndarray) -> np.ndarray:
     """controlnet_aux LineartAnimeDetector。 anime/manga 線画抽出。
     出力: 黒線 on 白背景 (uint8 grayscale)。
+    元画像と同 shape で返す (detector は内部で 64 倍数に resize するので
+    最後に元 shape へ戻す)。
     """
     detector = _get_detector()
     pil = Image.fromarray(rgb)
-    # detector は白線 on 黒背景 で返すので invert
     out_pil = detector(pil,
                        detect_resolution=min(rgb.shape[:2]),
                        image_resolution=min(rgb.shape[:2]))
+    # detector は 64 の倍数に勝手 resize するので 元 shape (W, H) に戻す
+    h, w = rgb.shape[:2]
+    if out_pil.size != (w, h):
+        out_pil = out_pil.resize((w, h), Image.LANCZOS)
     out = np.array(out_pil)
     if out.ndim == 3:
         out = cv2.cvtColor(out, cv2.COLOR_RGB2GRAY)
