@@ -1,8 +1,12 @@
 # StrokePicker 組み込み手順 (wall_drawing_gui.py 側)
 
-> 日時: 2026-05-26 23:30 (JST)
-> ステータス: ✅ **picker モジュール側完成 (`modules/stroke_picker.py`)**
-> 対象: `~/piper_test/wall_drawing_gui.py`(別リポ、 手動で組み込み)
+> 日時: 2026-05-26 23:30 (JST) / 2026-05-27 01:10 patch 自動生成済み
+> ステータス: ✅ **picker モジュール完成 + piper_test 側 patch 生成済み**
+> 対象: `~/piper_test/wall_drawing_gui_full_dev.py`(別リポ)
+>
+> patch は `_patches/wall_drawing_gui_full_dev_stroke_picker.patch`、
+> 完全置換版は `_patches/wall_drawing_gui_full_dev.patched.py`。
+> 適用方法は `_patches/README.md` を参照。 以下は仕組みの説明。
 
 ## 概要
 
