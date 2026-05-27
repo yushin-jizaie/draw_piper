@@ -116,7 +116,55 @@ M12 (現在地) → M14 (このセッション終了点に移す案)
 
 ## 採用したら MILESTONES.md に書き込む位置
 
-- M12 行の直下に M13、 M14 を追加
+- M12 行の直下に M13、 M14、 **M15** を追加
 - N4 行の直下に N5 を追加
-- ポジティブ詳細表に M13、 M14 の行追加
+- ポジティブ詳細表に M13、 M14、 **M15** の行追加
 - ネガティブ詳細表に N5 の行追加
+
+---
+
+## 追加: M15 (2026-05-28 朝)
+
+### M15: IP-Adapter で 松本大洋画風 獲得 + ロボット適合 strokes 達成
+
+```
+05-28 08:14   ● M15 IP-Adapter (h94/IP-Adapter sdxl_models) で松本大洋
+              │      画風 style transfer 成功
+              │      └ LoRA 学習路線 (v0-v3 + v4 計画) は全失敗 → IP-Adapter で
+              │        迂回。 dataset preprocessing 不要、 学習時間ゼロ、 raw
+              │        画像を直接 style ref として使える
+              │      パイプライン: Illustrious XL v0.1 + MistoLine ControlNet +
+              │        Inpaint + IP-Adapter (sdxl_models/ip-adapter_sdxl)
+              │      VRAM 16GB 制約のため resolution=768 + VAE tiling/slicing
+              │      生成画像は 黒塗り (松本signature ink) 含むが、
+              │      Vectorizer で黒領域の輪郭線として抽出 → 純線画 + ロボット
+              │      描画適合 を同時達成
+              │      best: IMG_4311.JPG style ref + ip_scale 0.5 で 松本ライン
+              │      強め、 ip_scale 0.25 で 顔輪郭保持
+```
+
+**コミット**: `82cb13b` (feature branch claude/smooth-curve-rendering-e88Vb)
+**正常確認方法**:
+```bash
+venv/bin/python -m scripts.test_ip_adapter_style \
+    --user-sketch scripts/test_sketch.jpg \
+    --style-ref training/matsumoto_taiyo/raw/IMG_4311.JPG \
+    --prompt "1boy, solo, young boy with full body, messy hair, surprised expression, simple t-shirt" \
+    --ip-scale 0.5 --resolution 768 --seed 42 \
+    --output logs/m15_verify_$(date +%Y%m%d_%H%M%S)
+# 出力 03_result_ip0.50.png に 松本タッチ + 黒髪 ink + 構図が見える
+# 後段 Vectorizer に通せば 純線画 strokes 取得
+```
+
+**参考画像 (GitHub branch)**:
+https://github.com/yushin-jizaie/draw_piper/tree/phase-e-results-20260528/matsumoto_v1_ip_adapter
+
+### 「現在地」 マーカー移動提案
+
+```
+M12 (現在地) → M15 (このセッション最終達成点)
+```
+
+M15 は完全に検証済 (IP-Adapter 推論 + Vectorizer 出力 双方を視認確認)。
+M13 (Plan E preset 追加) と M14 (Robot 結合 mock+CAN) も済んでいる。
+3 つ纏めて「現在地」 を M15 に進める案。
