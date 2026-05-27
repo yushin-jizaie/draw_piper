@@ -84,8 +84,15 @@ MODEL_PRESETS: dict[str, dict] = {
             # prompt_builder と組み合わせる用の追加スタイル指示。 caller が
             # 既存 prompt の前後に挿す。 不要なら "" にする。
             "line art, black ink on white, simple clean lines, "
-            "minimal detail, no shading, white background"
+            "minimal detail, no shading, white background, "
+            # 構図 hint: SDXL の "subject fills frame" prior を抑制
+            "head and shoulders portrait, centered composition, "
+            "head occupies center of frame with margin around it, "
+            "head does not touch top or bottom edges"
         ),
+        # 入力スケッチが細線だと MistoLine の conditioning が弱く、 顔が
+        # 画面はみ出すまで拡大される問題。 dilate で線を太らせて signal 強化
+        "guide_dilate_ksize": 5,
     },
     # アニメ線画ベース (cagliostrolab/animagine-xl-3.1)
     # 線が太く clean、 影が少なめ。 ストローク描画と相性◎
@@ -95,13 +102,15 @@ MODEL_PRESETS: dict[str, dict] = {
         "variant": None,    # Animagine は fp16 variant なし
         "num_inference_steps": 28,
         "guidance_scale": 7.0,
-        "controlnet_conditioning_scale": 0.8,
+        "controlnet_conditioning_scale": 0.9,
         "style_hint": (
             # Animagine 推奨の quality タグ + 線画指示
             "masterpiece, best quality, monochrome lineart, "
             "thick clean lines, no shading, white background, "
-            "simple composition"
+            "simple composition, "
+            "head and shoulders portrait, centered with margin"
         ),
+        "guide_dilate_ksize": 5,
     },
     # 松本大洋風 LoRA (Animagine ベース + 自前学習 LoRA)
     # 学習: scripts/train_style_lora.py (training/matsumoto_taiyo/ の画像から)
@@ -112,16 +121,18 @@ MODEL_PRESETS: dict[str, dict] = {
         "variant": None,
         "num_inference_steps": 30,
         "guidance_scale": 6.5,
-        "controlnet_conditioning_scale": 0.75,
+        "controlnet_conditioning_scale": 0.85,
         # trigger word は学習時に caption へ挿入したものを使う
         "style_hint": (
             "mt_taiyo_style, rough ink lineart, expressive faces, "
             "loose dynamic strokes, monochrome, white background, "
-            "no shading"
+            "no shading, "
+            "head and shoulders portrait, centered with margin around head"
         ),
         # 学習結果。 path は project_root 相対 (相対パスは load() 時解決)
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
         "lora_scale": 0.85,
+        "guide_dilate_ksize": 5,
     },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
@@ -278,6 +289,40 @@ def _normalize_image(image: ImageLike, size: Optional[int] = None) -> Image.Imag
     return img
 
 
+def _dilate_guide_lines(img: Image.Image,
+                         ksize: int,
+                         line_threshold: int = 128) -> Image.Image:
+    """Lineart guide の線を太らせる。 sparse / 細い入力で ControlNet が
+    空間情報を保持できず SDXL が「被写体は全画面」 prior に支配されて
+    顔が画面はみ出す問題への対処。
+
+    Parameters
+    ----------
+    img : PIL.Image
+        guide image (黒線 on 白背景 想定、 RGB)
+    ksize : int
+        cv2.dilate のカーネルサイズ (1 以下なら no-op)。 推奨 3-7。
+    line_threshold : int
+        線とみなす階調 (< threshold = 線、 0-255)
+
+    Returns
+    -------
+    PIL.Image (RGB)
+    """
+    if ksize <= 1:
+        return img
+    try:
+        import cv2 as _cv2
+    except ImportError:
+        return img
+    arr = np.array(img.convert("L"))
+    line_mask = (arr < int(line_threshold)).astype(np.uint8) * 255
+    kernel = np.ones((int(ksize), int(ksize)), np.uint8)
+    dilated = _cv2.dilate(line_mask, kernel, iterations=1)
+    result = 255 - dilated
+    return Image.fromarray(result).convert("RGB")
+
+
 class ImageGenerator:
     """SDXL Turbo + MistoLine ControlNet ラッパー。
 
@@ -301,6 +346,7 @@ class ImageGenerator:
         style_hint: str = "",
         lora_path: Optional[str] = None,
         lora_scale: float = 1.0,
+        guide_dilate_ksize: int = 0,
         verbose: bool = False,
     ):
         self.base_model_id = base_model_id
@@ -321,6 +367,9 @@ class ImageGenerator:
         # 相対パスは project_root 起点で解決される (load() で resolve)。
         self.lora_path = lora_path
         self.lora_scale = float(lora_scale)
+        # 入力線が細すぎて ControlNet が空間保持できない問題への対処。
+        # 1 以下 = 無効、 推奨 3-7 (5 が標準)
+        self.guide_dilate_ksize = int(guide_dilate_ksize)
         self.verbose = verbose
 
         self._pipe = None
@@ -489,6 +538,12 @@ class ImageGenerator:
         neg = negative_prompt if negative_prompt is not None else self.negative_prompt
 
         pil_guide = _normalize_image(guide_image, size=self.resolution)
+        if self.guide_dilate_ksize > 1:
+            pil_guide = _dilate_guide_lines(pil_guide,
+                                              ksize=self.guide_dilate_ksize)
+            if self.verbose:
+                print(f"[image_gen] guide dilated (ksize="
+                      f"{self.guide_dilate_ksize})")
 
         generator = None
         if seed is not None:
