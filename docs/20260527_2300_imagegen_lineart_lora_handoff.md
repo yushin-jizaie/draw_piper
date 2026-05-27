@@ -270,7 +270,65 @@ MILESTONES.md に追記提案。
 
 ---
 
-## 触らない方がいいもの (落とし穴)
+## 戦略レビュー候補 (ユーザ提案、 2026-05-27 24:00)
+
+ユーザから 「現状まぁまぁ動いてる、 一旦ベンチマークとして別視点で考える」 提案。
+画像生成側 (本ドキュメント) とは別の軸で、 ロボット動作の **スムーズさ** に
+着目。 次セッションで深掘り候補:
+
+### A. Frida (CMU robotics painting) — https://github.com/cmubig/Frida
+
+物理筆ロボットの参考 project。 取れそうなヒント (工数順):
+
+1. **Bezier stroke 表現**: Vectorizer の polyline を Bezier 曲線 fit、
+   アーム側で MOVE_C 系列 or Cartesian spline で実行。 折れ線のカクつき解消
+2. **曲率連動の速度プロファイル**: 緩い曲線=速く / 鋭い曲線=遅く、 jerk 削減
+3. **Stroke ordering 最適化**: 近い stroke を連続実行で travel 時間削減
+   (TSP 近似で greedy nearest-neighbor 程度で十分)
+4. **Look-ahead descent height**: 次 stroke が近ければ pen-up を低く
+5. **カメラフィードバック loop**: 撮影 → 差分検出 → 補正 stroke 追加
+
+**現状 draw_piper との接続**: 軌道実行は M5/M6/M11/M12 で OK。 ストローク
+**表現** が polyline のまま → 上記 1 (Bezier 化) が最大の改善ポイント。
+
+調査タスク (次セッション):
+- Frida リポの `src/` 構造を読んで Bezier renderer の実装を把握
+- draw_piper の `modules/vectorizer.py` (or 該当) を Bezier 出力に拡張可能か
+- `modules/robot.py` の `draw_stroke_panel` を Bezier 入力対応に拡張する設計
+
+### B. MoveIt2 再検討
+
+過去に検討した可能性あり (docs/ で要確認)。 再度の検討論点:
+
+**Pros**:
+- jerk-limited time parameterization で物理的にスムーズな速度
+- Cartesian path planning (compute_cartesian_path) で平面経路保証
+- 衝突回避 (押し付けすぎ防止)
+
+**Cons**:
+- 工数大 (ros2_control hardware interface で Piper SDK と接続、 1-2 週間)
+- 既存 wall_drawing_gui / drag-teach キャリブの大幅書き直し
+- N4 (master mode feedback ダウン) が MoveIt 層でも再発する可能性
+
+調査タスク (次セッション):
+- `agilex-robotics/piper_ros` などの MoveIt2 統合状況を確認
+- 既存 Piper SDK と ros2_control の薄い hardware interface だけ書く案
+  (full ROS2 化せず MoveIt の planning だけ流用) の実現性
+- Frida 案 (Bezier + 速度プロファイル) で十分か、 MoveIt が必要か の評価軸を
+  決める (= 「スムーズさ」 の定量基準)
+
+### 推奨進め方
+
+時間予算次第:
+- **短期** (1-2 日): Frida 案 1 + 2 (Bezier + 速度プロファイル) だけ実装。
+  軌道がどれだけ滑らかになるかベンチマーク
+- **中期** (1 週): Frida 案 3 + 4 (ordering + look-ahead) 追加
+- **長期** (2-4 週): MoveIt2 移行検討、 Piper ROS2 driver 統合
+
+短期だけで体感大きく改善する可能性が高いので、 そっちから始めるのが筋。
+MoveIt2 はその後 「Bezier では足りない領域」 が見つかってから判断。
+
+---
 
 ### 1. `--bolden` を再有効化しない
 
