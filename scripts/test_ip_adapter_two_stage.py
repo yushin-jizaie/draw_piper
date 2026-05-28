@@ -33,12 +33,49 @@ _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
 
 
+# カテゴリ別 style ref pool (松本作品の raw 画像から curate)
+STYLE_REF_POOLS = {
+    "character": [
+        "training/matsumoto_taiyo/raw/IMG_4311.JPG",       # 花男表紙 2 選手
+        "training/matsumoto_taiyo/raw/f341cbadd1aede96e2fdef7bc84cc3c6.jpg",  # 3 人正面
+        "training/matsumoto_taiyo/raw/feccbf2756d31b496b18e31694969146.jpg",  # Peco
+        "training/matsumoto_taiyo/raw/IMG_4324.JPG",       # ゴーグル少年
+        "training/matsumoto_taiyo/raw/o0600045013450720343.jpg",  # 5 人並び
+    ],
+    "urban": [
+        "training/matsumoto_taiyo/raw/IMG_4321.JPG",       # ナンバーファイブ街並
+        "training/matsumoto_taiyo/raw/IMG_4315.JPG",       # 蒸気の街 + 2 人
+        "training/matsumoto_taiyo/raw/IMG_4314.JPG",       # 落下キャラ + ビル
+    ],
+    "other": [],   # IP-Adapter off, Plan E のみで clean lineart
+}
+
+
+def _resolve_style_ref(args) -> Path:
+    """--style-ref が指定されてればそれ、 なければ category から ランダム選択。"""
+    if args.style_ref is not None:
+        return args.style_ref
+    if args.category not in STYLE_REF_POOLS:
+        raise ValueError(f"unknown category: {args.category}")
+    pool = STYLE_REF_POOLS[args.category]
+    if not pool:
+        return None    # other = IP-Adapter off
+    import random
+    rng = random.Random(args.seed)
+    chosen = rng.choice(pool)
+    return Path(chosen)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--user-sketch", type=Path, required=True)
-    ap.add_argument("--style-ref", type=Path, required=True)
+    ap.add_argument("--style-ref", type=Path, default=None,
+                    help="明示指定の style ref。 未指定なら --category から ランダム選択")
+    ap.add_argument("--category", type=str, default="character",
+                    choices=["character", "urban", "other"],
+                    help="入力 sketch のカテゴリ。 ref pool 選択に使う。 other = IP-Adapter off")
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--stage1-preset", type=str, default="illustrious_v2_inpaint",
                     help="Stage 1 (構図確定) で使う preset")
@@ -59,6 +96,16 @@ def main() -> int:
 
     args.output.mkdir(parents=True, exist_ok=True)
     res = args.resolution
+
+    # style ref 解決 (--style-ref 直指定 or --category から ランダム選択)
+    style_ref = _resolve_style_ref(args)
+    if style_ref is None:
+        print(f"[2stage] category='other': IP-Adapter off, Stage 2 skip")
+    else:
+        if not style_ref.exists():
+            print(f"[2stage] style ref not found: {style_ref}")
+            return 2
+        print(f"[2stage] style ref ({args.category}): {style_ref}")
 
     from PIL import Image
     import torch
@@ -90,7 +137,24 @@ def main() -> int:
 
     # ============================================================
     # Stage 2: img2img + IP-Adapter で style 転写 (構図維持)
+    # other category なら Stage 2 skip (Plan E のみで clean lineart)
     # ============================================================
+    if style_ref is None:
+        # Stage 2 skip mode: Stage 1 の出力をそのまま 最終結果に
+        from modules.vectorizer import Vectorizer
+        from modules.stroke_render import render_strokes_to_image
+        final = Image.open(s1_out).convert("RGB").resize((res, res))
+        final.save(args.output / f"20_final_other_mode.png")
+        vec = Vectorizer()
+        user_full = Image.open(args.user_sketch).convert("RGB").resize((res, res))
+        r = vec.vectorize(generated_image=final, user_image=user_full)
+        rendered = render_strokes_to_image(
+            r.strokes, width=r.image_shape[1], height=r.image_shape[0],
+            line_width=2)
+        rendered.save(args.output / "30_vectorized_strokes.png")
+        print(f"[2stage] other mode: {r.n_strokes} strokes, {r.n_points} pts")
+        return 0
+
     print(f"[2stage] Stage 2: IP-Adapter style transfer")
     from diffusers import StableDiffusionXLImg2ImgPipeline
 
@@ -120,9 +184,9 @@ def main() -> int:
     pipe.set_ip_adapter_scale(args.ip_scale)
 
     init = Image.open(s1_out).convert("RGB").resize((res, res))
-    style_ref = Image.open(args.style_ref).convert("RGB").resize((res, res))
+    style_ref_img = Image.open(style_ref).convert("RGB").resize((res, res))
     init.save(args.output / "10_init_from_stage1.png")
-    style_ref.save(args.output / "11_style_ref.png")
+    style_ref_img.save(args.output / "11_style_ref.png")
 
     stage2_prompt = args.stage2_prompt or args.stage1_prompt
     style_hint = (", monochrome, greyscale, lineart, sketch, "
@@ -141,7 +205,7 @@ def main() -> int:
         prompt=full,
         negative_prompt=negative,
         image=init,
-        ip_adapter_image=style_ref,
+        ip_adapter_image=style_ref_img,
         strength=args.stage2_strength,
         num_inference_steps=28,
         guidance_scale=6.5,
