@@ -488,7 +488,7 @@ class WallDrawingGUI:
     # ------------------------------------------------------------------
     def _build_ui(self):
         # ---- ステータスバー (上部、 横幅いっぱい) ----
-        status_frame = ttk.LabelFrame(self.root, text="ステータス", padding=6)
+        status_frame = ttk.LabelFrame(self.root, text="📊 ステータス", padding=6)
         status_frame.pack(fill=tk.X, padx=6, pady=4)
         ttk.Button(status_frame, text="GUI 終了",
             command=self.on_quit, width=10
@@ -521,7 +521,7 @@ class WallDrawingGUI:
 
         # ---- 接続セクション: タブ外、 常時表示 (上部固定) ----
         # ヘルプボタンは接続セクションの右端に配置
-        conn_frame = ttk.LabelFrame(self.root, text="接続", padding=6)
+        conn_frame = ttk.LabelFrame(self.root, text="🔌 接続", padding=6)
         conn_frame.pack(fill=tk.X, padx=6, pady=2)
         self._build_conn_section(conn_frame)
 
@@ -548,7 +548,7 @@ class WallDrawingGUI:
 
         # ---- リーチ確認 ----
         probe_frame = ttk.LabelFrame(tab_reach,
-            text="リーチ確認 (キャリブ前に限界点へ移動してマーク)",
+            text="🔍 リーチ確認 (キャリブ前に限界点へ移動してマーク)",
             padding=6)
         probe_frame.pack(fill=tk.X, padx=2, pady=2)
         probe_row1 = ttk.Frame(probe_frame)
@@ -590,7 +590,7 @@ class WallDrawingGUI:
 
         # ---- 2. キャンバスキャリブ (B1 四隅 + B2 外周 + B3 対角 + B5 内側) ----
         dt_frame = ttk.LabelFrame(tab_calib,
-            text="2. キャンバスキャリブレーション "
+            text="📐 キャンバスキャリブレーション "
                  "(四隅 → 外周 → 対角線 → 任意 内側ジグザグ)",
             padding=6)
         dt_frame.pack(fill=tk.X, padx=2, pady=2)
@@ -727,7 +727,7 @@ class WallDrawingGUI:
 
         # ---- 3. 中央調整 (キャンバス中央で X 押し付け量を確定) ----
         tune_frame = ttk.LabelFrame(tab_center,
-            text="3. 中央調整 (キャンバス中央で X 押し付け量を確定)",
+            text="✏ 中央押し付け 調整 (キャンバス中央で X 押し付け量を確定)",
             padding=8)
         tune_frame.pack(fill=tk.X, padx=2, pady=2)
         # 上段: 大きめ spinbox を 3 つ並べる (▲▼ クリックで即アーム移動)
@@ -787,7 +787,7 @@ class WallDrawingGUI:
 
         # ---- 四つ角微調整 (B4 中央調整の代わり) ----
         ca_frame = ttk.LabelFrame(tab_center,
-            text="四つ角微調整 (各 隅へ移動 → Y/Z spinbox で位置補正 → "
+            text="🔧 四つ角微調整 (各 隅へ移動 → Y/Z spinbox で位置補正 → "
                  "確定で yaml 更新)", padding=6)
         ca_frame.pack(fill=tk.X, padx=2, pady=2)
         # 4 隅選択ボタン
@@ -839,7 +839,7 @@ class WallDrawingGUI:
 
         # ---- 4. テスト描画 ----
         draw_frame = ttk.LabelFrame(tab_draw,
-            text="テスト描画", padding=6)
+            text="🧪 テスト描画 (図形)", padding=6)
         draw_frame.pack(fill=tk.X, padx=2, pady=2)
 
         side_row = ttk.Frame(draw_frame)
@@ -931,7 +931,7 @@ class WallDrawingGUI:
 
         # ---- 5. 生成画像描画 ----
         strokes_frame = ttk.LabelFrame(tab_draw,
-            text="5. 生成画像描画 (strokes.json を実機描画)", padding=6)
+            text="🎨 生成画像描画 (strokes.json を実機描画)", padding=6)
         strokes_frame.pack(fill=tk.X, padx=2, pady=2)
         # 1 行目: JSON ファイル選択 + プレビュー
         sf_r1 = ttk.Frame(strokes_frame)
@@ -996,7 +996,7 @@ class WallDrawingGUI:
         ).pack(side=tk.RIGHT, padx=2)
 
         # ---- 右ペイン: ログ (大きく取る) ----
-        log_frame = ttk.LabelFrame(right_frame, text="ログ", padding=6)
+        log_frame = ttk.LabelFrame(right_frame, text="📋 ログ", padding=6)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         self.log_text = scrolledtext.ScrolledText(log_frame,
                                                   font=("Monaco", 9),
