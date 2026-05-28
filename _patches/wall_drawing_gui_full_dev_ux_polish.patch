@@ -1,6 +1,31 @@
 --- wall_drawing_gui_full_dev.py	2026-05-28 00:31:18.138271313 +0000
-+++ wall_drawing_gui_full_dev.py	2026-05-28 00:57:08.122363449 +0000
-@@ -555,12 +555,20 @@
++++ wall_drawing_gui_full_dev.py	2026-05-28 01:11:14.090028426 +0000
+@@ -242,6 +242,11 @@
+         self.root.title("Piper 壁面描画コンソール")
+         self.root.geometry("1080x940")
+ 
++        # log の絵文字 ON/OFF。 環境変数 WALL_GUI_NO_EMOJI=1 で OFF。
++        # 起動後 UI checkbutton でも変更可。 font 無し環境や log を
++        # grep 等で機械処理する時に絵文字邪魔な場合 OFF。
++        self._use_emoji = (os.environ.get("WALL_GUI_NO_EMOJI", "0") != "1")
++
+         self.piper = None
+         self.connected = False
+         self.in_master = False
+@@ -491,6 +496,12 @@
+         ttk.Button(status_frame, text="GUI 再起動",
+             command=self.on_restart_gui, width=12
+         ).pack(side=tk.RIGHT, padx=4)
++        # log の絵文字 ON/OFF (環境変数 WALL_GUI_NO_EMOJI=1 でも OFF 可)
++        self.var_use_emoji = tk.BooleanVar(value=self._use_emoji)
++        ttk.Checkbutton(status_frame, text="log に絵文字",
++            variable=self.var_use_emoji,
++            command=self._on_toggle_emoji
++        ).pack(side=tk.RIGHT, padx=4)
+         self.lbl_can = ttk.Label(status_frame, text="CAN: ?",
+                                  foreground="gray")
+         self.lbl_can.pack(side=tk.LEFT, padx=4)
+@@ -555,12 +566,20 @@
              self.btn_probe_corners[name] = btn
          probe_row2 = ttk.Frame(probe_frame)
          probe_row2.pack(fill=tk.X, pady=(4, 0))
@@ -26,7 +51,7 @@
          self.btn_probe_pen_up.pack(side=tk.LEFT, padx=2)
          # IK 候補選択モード
          self.var_probe_ik_select = tk.BooleanVar(value=False)
-@@ -577,9 +585,14 @@
+@@ -577,9 +596,14 @@
          dt_frame.pack(fill=tk.X, padx=2, pady=2)
          row_a = ttk.Frame(dt_frame)
          row_a.pack(fill=tk.X)
@@ -44,7 +69,7 @@
          self.btn_start_drag.pack(side=tk.LEFT, padx=2)
          self.lbl_phase = ttk.Label(dt_frame,
              text="(ティーチ未開始)", font=("Monaco", 10),
-@@ -603,13 +616,20 @@
+@@ -603,13 +627,20 @@
          attach_tooltip(btn_motor_help,
                         "クリックで モーター番号 ↔ アーム関節 の対応図を "
                         "別ウィンドウで表示")
@@ -71,7 +96,7 @@
          self.btn_abort_drag.pack(side=tk.RIGHT, padx=2)
  
          # 個別やり直し行: 既に B1 完了 + B2/B3/B5 やった後で、 特定の
-@@ -635,7 +655,10 @@
+@@ -635,7 +666,10 @@
                    font=("Monaco", 9)).pack(side=tk.LEFT, padx=(0, 4))
          make_spinbox(row_c, self.var_sampling_interval, 2, 50, 1, width=4,
                       fmt="%.0f").pack(side=tk.LEFT, padx=(0, 8))
@@ -83,7 +108,7 @@
              command=self.on_b2_start_trace, width=20)
          self.btn_b2_start.pack(side=tk.LEFT, padx=2)
          self.btn_trace_stop = ttk.Button(row_c, text="トレース停止",
-@@ -726,10 +749,17 @@
+@@ -726,10 +760,17 @@
              text="中央へ移動 (ペン上げ) -- 初回",
              command=self.on_go_center, width=28)
          self.btn_go_center.pack(side=tk.LEFT, padx=2)
@@ -104,7 +129,7 @@
              command=self.on_lift_pen, width=10)
          self.btn_lift_pen.pack(side=tk.LEFT, padx=(0, 12))
          # 中央調整値 (X 押し付け補正 / 中央 Y / 中央 Z) を yaml に保存
-@@ -845,21 +875,32 @@
+@@ -845,21 +886,32 @@
  
          action_row = ttk.Frame(draw_frame)
          action_row.pack(fill=tk.X, pady=4)
@@ -144,7 +169,7 @@
          self.btn_triangle.pack(side=tk.LEFT, padx=2)
  
          # 四隅合わせ正方形 (キャンバスの各隅に square の対応する角を一致させる)
-@@ -910,21 +951,31 @@
+@@ -910,21 +962,31 @@
                                                  padx=(8, 4))
          make_spinbox(sf_r2, self.var_strokes_max, 0, 999, 1, width=4,
                       fmt="%.0f").pack(side=tk.LEFT, padx=(0, 8))
@@ -182,7 +207,44 @@
          self.btn_strokes_draw_smooth.pack(side=tk.LEFT, padx=(8, 2))
          self.lbl_strokes_progress = ttk.Label(sf_r2,
              text="進捗: -", font=("Monaco", 9), foreground="gray")
-@@ -1327,7 +1378,7 @@
+@@ -962,12 +1024,36 @@
+     # ------------------------------------------------------------------
+     def log(self, msg):
+         ts = time.strftime("%H:%M:%S")
++        # 絵文字 ON/OFF (環境変数 WALL_GUI_NO_EMOJI=1 で OFF、
++        # default ON)。 OFF 時は log メッセージから既知の絵文字を strip
++        # して、 font 無し環境や機械処理用途に対応
++        if getattr(self, "_use_emoji", None) is False:
++            msg = self._strip_emoji(msg)
+         self.log_text.insert(tk.END, f"[{ts}] {msg}\n")
+         self.log_text.see(tk.END)
+ 
+     def log_safe(self, msg):
+         self.root.after(0, lambda: self.log(msg))
+ 
++    def _on_toggle_emoji(self):
++        """log の絵文字 ON/OFF を切り替え (Checkbutton から呼ばれる)。"""
++        self._use_emoji = bool(self.var_use_emoji.get())
++        state = "ON" if self._use_emoji else "OFF"
++        self.log(f"log の絵文字を {state} に切り替えました")
++
++    @staticmethod
++    def _strip_emoji(s):
++        """log で使う既知の絵文字を strip。 全 unicode 絵文字対応ではない。"""
++        for ch in ("✓", "✅", "❌", "⚠", "ℹ", "▶", "■", "✏", "⬆",
++                    "🏠", "📦", "🖋", "🔴", "🟢", "🟡", "🟠",
++                    "📖", "📊", "🔒", "🔓", "🔄", "⚙", "✨",
++                    "⛔"):
++            s = s.replace(ch, "")
++        # 連続スペース整理
++        while "  " in s:
++            s = s.replace("  ", " ")
++        return s.strip()
++
+     # ------------------------------------------------------------------
+     # button-state refresh
+     # ------------------------------------------------------------------
+@@ -1327,7 +1413,7 @@
      # ------------------------------------------------------------------
      def _run_in_thread(self, fn, *args):
          if self.gui_restart_required:
@@ -191,7 +253,7 @@
                  "GUI がアームを正常に制御できなくなりました "
                  "(マスター後の状態など)。\n\n"
                  "① 必要ならアームの電源リセット\n"
-@@ -1524,7 +1575,10 @@
+@@ -1524,7 +1610,10 @@
          """接続セクション (タブ外、 常時表示)。"""
          conn_r1 = ttk.Frame(parent)
          conn_r1.pack(fill=tk.X)
@@ -203,7 +265,7 @@
              command=self.on_can_up, width=16)
          self.btn_can_up.pack(side=tk.LEFT, padx=(0, 8))
          ttk.Label(conn_r1, text="関節速度(%):").pack(side=tk.LEFT)
-@@ -1538,16 +1592,28 @@
+@@ -1538,16 +1627,28 @@
                       fmt="%.0f").pack(side=tk.LEFT, padx=(2, 8))
          conn_r2 = ttk.Frame(parent)
          conn_r2.pack(fill=tk.X, pady=(4, 0))
@@ -236,7 +298,7 @@
              command=self.on_pen_exchange, width=18)
          self.btn_pen_exchange.pack(side=tk.LEFT, padx=2)
          self.btn_grip_home = ttk.Button(conn_r2,
-@@ -1560,10 +1626,16 @@
+@@ -1560,10 +1661,16 @@
          self.btn_grip_release = ttk.Button(conn_r2, text="🔓 ゆるめる",
              command=self.on_grip_release, width=12)
          self.btn_grip_release.pack(side=tk.LEFT, padx=2)
@@ -255,7 +317,7 @@
              command=self.on_recover_connection, width=16)
          self.btn_recover_conn.pack(side=tk.LEFT, padx=2)
          # 「操作の流れを開く」 ボタンを接続の右端に配置
-@@ -2084,7 +2156,7 @@
+@@ -2084,7 +2191,7 @@
      def on_restart_gui(self):
          """Spawn a fresh GUI process and quit this one."""
          if self.in_master:
@@ -264,7 +326,7 @@
                  "先にティーチを保存 or 中止してください。")
              return
          if not messagebox.askyesno("GUI 再起動",
-@@ -2218,7 +2290,7 @@
+@@ -2218,7 +2325,7 @@
      def on_can_up(self):
          which = subprocess.run(["which", "pkexec"], capture_output=True)
          if which.returncode != 0:
@@ -273,7 +335,7 @@
                  "pkexec (PolicyKit) is not installed. Either:\n"
                  "  sudo apt install policykit-1\n"
                  "or run CAN up manually in a terminal:\n"
-@@ -2265,7 +2337,7 @@
+@@ -2265,7 +2372,7 @@
  
      def on_connect(self):
          if self.gui_restart_required:
@@ -282,7 +344,7 @@
                  "この GUI は以前マスターモードに入った状態です。 "
                  "SDK が安定して再接続できません。 「GUI 終了」 して "
                  "再起動してください。")
-@@ -2498,7 +2570,7 @@
+@@ -2498,7 +2605,7 @@
              err = max(abs(c - r) for c, r in zip(cur, target))
              self.log_safe(f"  到着。 最大関節誤差 {err:.2f}°")
          except Exception as e:
@@ -291,7 +353,7 @@
              self.log_safe(
                  "  → 再度 「ホーム/撮影位置へ」 を押すと改善することが "
                  "あります。 駄目なら 「収納ポーズへ」 で安全姿勢に。")
-@@ -2605,7 +2677,9 @@
+@@ -2605,7 +2712,9 @@
          angle=0 = 閉じ位置として扱われる。
          """
          if self.piper is None:
@@ -302,7 +364,7 @@
              return
          if not messagebox.askyesno("グリッパー ホーミング",
                  "現在のグリッパー位置を 「0」 (= 完全に閉じた位置) として "
-@@ -2631,10 +2705,10 @@
+@@ -2631,10 +2740,10 @@
              self.piper.GripperCtrl(0, 1000, 0x01, 0)
              time.sleep(0.5)
          except Exception as e:
@@ -315,7 +377,7 @@
          if state_after and not state_after.get("homed"):
              self.log_safe(
                  "  ⚠ status_code に homed bit が立っていません。 "
-@@ -2657,7 +2731,9 @@
+@@ -2657,7 +2766,9 @@
      def on_grip_strong(self):
          """グリッパーを最大トルクで閉じる (ペンを強く掴む)。"""
          if self.piper is None:
@@ -326,7 +388,7 @@
              return
          self._run_in_thread(self._do_grip_strong)
  
-@@ -2670,12 +2746,14 @@
+@@ -2670,12 +2781,14 @@
          self._send_gripper(angle=0, effort=3000, code=0x01)
          time.sleep(0.5)
          state_after = self._gripper_state()
@@ -343,7 +405,7 @@
              return
          self._run_in_thread(self._do_grip_release)
  
-@@ -2688,7 +2766,7 @@
+@@ -2688,7 +2801,7 @@
          self._send_gripper(angle=70000, effort=1000, code=0x01)
          time.sleep(0.5)
          state_after = self._gripper_state()
@@ -352,7 +414,7 @@
  
      # ------------------------------------------------------------------
      # Reach Probe (pre-calibration: drive arm to 4 reach-corner
-@@ -2723,7 +2801,7 @@
+@@ -2723,7 +2836,7 @@
          # configurations even with the same cartesian pose, so a strict
          # joint-pose check is too restrictive once chaining has started.
          if not self._at_ready_pose() and not self.probe_active:
@@ -361,7 +423,7 @@
                  "リーチ確認を始める前に 「ホーム/撮影位置へ」 を "
                  "押してください。")
              return
-@@ -2770,7 +2848,7 @@
+@@ -2770,7 +2883,7 @@
                  f"{actual[2]:.1f})  目標 (-, {y:.1f}, {z:.1f})  "
                  f"YZ 誤差 {err:.1f}mm")
          except Exception as e:
@@ -370,7 +432,7 @@
          self._refresh_buttons_safe()
  
      def _do_probe_corner(self, name, y, z):
-@@ -2828,7 +2906,7 @@
+@@ -2828,7 +2941,7 @@
                      "(リーチ限界の最寄り点)。 キャンバスをアームに近づけるか "
                      "サイズを調整してください。")
          except Exception as e:
@@ -379,7 +441,14 @@
          self.log_safe(f"リーチ確認 {name}: ペン上げで到着。 「ペン下げ」 "
                        "で印を付けるか、 次のコーナーを選択。")
          self._refresh_buttons_safe()
-@@ -2854,9 +2932,9 @@
+@@ -2848,15 +2961,15 @@
+     def _do_probe_pen_down(self):
+         actual = self._read_endpose()
+         draw_x = self._draw_x()
+-        self.log_safe(f"ペン下げ (IK 低速): X={draw_x:.1f} "
++        self.log_safe(f"✏ ペン下げ (IK 低速): X={draw_x:.1f}"
+                       f"Y={actual[1]:.1f} Z={actual[2]:.1f} "
+                       f"[X 補正 {self._xoff():+.1f}]")
          try:
              self._move_xyz_via_ik(draw_x, actual[1], actual[2])
              self.probe_pen_down = True
@@ -391,7 +460,7 @@
          self._refresh_buttons_safe()
  
      def on_probe_pen_up(self):
-@@ -2877,9 +2955,9 @@
+@@ -2877,9 +2990,9 @@
          try:
              self._move_xyz_via_ik(pen_up_x, actual[1], actual[2])
              self.probe_pen_down = False
@@ -403,7 +472,7 @@
          self._refresh_buttons_safe()
  
      # ------------------------------------------------------------------
-@@ -2887,7 +2965,7 @@
+@@ -2887,7 +3000,7 @@
      # ------------------------------------------------------------------
      def on_start_drag(self):
          if not self._at_ready_pose():
@@ -412,7 +481,7 @@
                  "ティーチを始める前に 「ホーム/撮影位置へ」 を "
                  "押してください。")
              return
-@@ -2945,7 +3023,7 @@
+@@ -2945,7 +3058,7 @@
          try:
              parsed = read_calibration(OUTPUT_YAML)
          except Exception as e:
@@ -421,7 +490,7 @@
              return
          raw = parsed.get("raw") or {}
          wb_records = raw.get("whiteboard_corners_mm") or {}
-@@ -3019,7 +3097,7 @@
+@@ -3019,7 +3132,7 @@
              self._refresh_buttons_safe()
          self.log_safe("*** WIGGLE THE ARM by hand to start 0x155-7 broadcast ***")
          if load_prev and self.dt_phase == "b2_idle":
@@ -430,7 +499,7 @@
                            "特定の隅だけ再記録可能。 トレース系も既存値を "
                            "保持。 完了したら 「保存して終了」 で yaml 上書き。")
          else:
-@@ -3179,7 +3257,7 @@
+@@ -3179,7 +3292,7 @@
          if self.redo_corner_key is not None:
              p = self._capture_point()
              if p is None:
@@ -439,7 +508,7 @@
                      "アームの関節値がまだ全てゼロです。\n"
                      "アームを少し手で揺らしてから再度押してください。")
                  return
-@@ -3202,7 +3280,7 @@
+@@ -3202,7 +3315,7 @@
              return
          p = self._capture_point()
          if p is None:
@@ -448,7 +517,7 @@
                  "アームの関節値がまだ全てゼロです。\n"
                  "アームを少し手で揺らして 0x155-7 ブロードキャストを "
                  "起動してから記録してください。")
-@@ -3256,7 +3334,7 @@
+@@ -3256,7 +3369,7 @@
          その隅が上書きされる。
          """
          if self.listener is None or not self.in_master:
@@ -457,7 +526,7 @@
                  "個別やり直しはティーチ中 (マスターモード) のみ可。")
              return
          if corner_key not in self.CORNER_ORDER:
-@@ -3295,7 +3373,7 @@
+@@ -3295,7 +3408,7 @@
  
      def on_save_drag(self):
          if len(self.dt_corners) != 4:
@@ -466,7 +535,7 @@
                  f"記録済み {len(self.dt_corners)}/4 隅。 B1 (四隅) を "
                  "全て記録してから保存してください。")
              return
-@@ -3392,12 +3470,12 @@
+@@ -3392,12 +3505,12 @@
      def _start_trace(self, target):
          """Start a DragSamplingThread that fills dt_traces[target]."""
          if self.listener is None or not self.in_master:
@@ -481,7 +550,7 @@
                  f"先に 4 隅を全部記録してください "
                  f"(現在 {len(self.dt_corners)}/4)。")
              return
-@@ -3461,7 +3539,7 @@
+@@ -3461,7 +3574,7 @@
          """Snapshot current master-mode joints as the ready/capture pose
          and persist to panel_frame.yaml's panel.ready_pose_deg."""
          if not self.in_master or self.listener is None:
@@ -490,7 +559,16 @@
                  "撮影/ホーム位置の記録には マスターモード "
                  "(ティーチ中) が必要です。\n\n"
                  "先に 「ティーチ開始」 でマスターモードに入り、 "
-@@ -3981,7 +4059,7 @@
+@@ -3843,7 +3956,7 @@
+ 
+     def _do_tune_pen_down(self):
+         draw_x = self._draw_x()
+-        self.log_safe(f"ペン下げ (IK 低速): X={draw_x:.1f} (押し付け量 "
++        self.log_safe(f"✏ ペン下げ (IK 低速): X={draw_x:.1f}(押し付け量 "
+                       f"{MAX_PUSH_MM}mm + 補正 {self._xoff():+.1f}mm)")
+         q = self._move_xyz_via_ik(draw_x, self.tune_y, self.tune_z,
+                                    warm_start_q=self.tune_warm_q)
+@@ -3981,7 +4094,7 @@
              self.corner_adj_warm_q = q
              self.log_safe("  到着。 Y/Z spinbox で微調整 → 「yaml 更新」。")
          except Exception as e:
@@ -499,7 +577,7 @@
              self.corner_adj_key = None
          self._refresh_buttons_safe()
  
-@@ -4171,7 +4249,7 @@
+@@ -4171,7 +4284,7 @@
              self.log_safe(f"中央調整 保存: xoff={xoff:+.2f}, "
                            f"center=({cy:.2f}, {cz:.2f})")
          except Exception as e:
@@ -508,7 +586,25 @@
              self.root.after(0, lambda m=str(e): messagebox.showerror(
                  "保存失敗", f"yaml 書き込み失敗:\n{m}"))
  
-@@ -4612,11 +4690,13 @@
+@@ -4229,7 +4342,7 @@
+         self._run_in_thread(self._do_draw_square, corners, xoff)
+ 
+     def _do_draw_square(self, corners, xoff):
+-        self.log_safe(f"正方形描画 (IK + MOVE J 低速): "
++        self.log_safe(f"▶ 正方形描画 (IK + MOVE J 低速): "
+                       f"関節速度 {self._speed_joint()}%, X offset {xoff:+.2f}")
+         self._ensure_wall_facing()
+         pen_up_x = self.contact_x_mm - PEN_UP_CLEAR_MM + xoff
+@@ -4443,7 +4556,7 @@
+         IK で高速収束。
+         """
+         speed = self._speed_joint()
+-        self.log_safe(f"Drawing {label}: IK + MOVE J 低速描画 関節速度="
++        self.log_safe(f"▶ Drawing {label}: IK + MOVE J 低速描画 関節速度="
+                       f"{speed}%, X offset {xoff:+.2f}, {len(points)} 点")
+         self._ensure_wall_facing()
+         pen_up_x = self.contact_x_mm - PEN_UP_CLEAR_MM + xoff
+@@ -4612,11 +4725,13 @@
      def on_strokes_draw(self):
          path = self.var_strokes_json_path.get()
          if not path:
@@ -524,7 +620,7 @@
              return
          if not self.connected:
              messagebox.showerror("未接続",
-@@ -4624,13 +4704,17 @@
+@@ -4624,13 +4739,17 @@
              return
          if not self._check_at_home_or_warn("ストローク描画"):
              return
@@ -549,7 +645,7 @@
              return
          self.strokes_abort_flag = False
          # 新規開始: 再開状態リセット
-@@ -4643,11 +4727,13 @@
+@@ -4643,11 +4762,13 @@
          プレビュー表示。 ペン軌跡 + 開始/終点マーカー。"""
          path = self.var_strokes_json_path.get()
          if not path:
@@ -565,7 +661,7 @@
              return
          try:
              image_shape, strokes_px, meta = dsw_dev.load_strokes_json(path)
-@@ -4712,11 +4798,13 @@
+@@ -4712,11 +4833,13 @@
              return
          path = self.var_strokes_json_path.get()
          if not path:
@@ -581,7 +677,7 @@
              return
          if not self._check_at_home_or_warn("Frida Smooth Draw"):
              return
-@@ -4821,7 +4909,7 @@
+@@ -4821,7 +4944,7 @@
          """
          path = self.var_strokes_json_path.get()
          if not path or not os.path.exists(path):
@@ -590,7 +686,7 @@
                  "「選択...」 で strokes.json を指定してください。")
              return
          try:
-@@ -4890,7 +4978,7 @@
+@@ -4890,7 +5013,7 @@
          """中断した描画を続きから再開。"""
          path = self.var_strokes_json_path.get()
          if not path:
@@ -599,3 +695,12 @@
                  "「選択...」 で strokes.json を指定してください。")
              return
          idx = int(self.strokes_last_completed_idx)
+@@ -5039,7 +5162,7 @@
+         warm = None
+         last_completed_idx = start_from - 1  # 再開時の起点
+         if start_from > 0:
+-            self.log_safe(f"再開: ストローク {start_from + 1}/{n_total} から")
++            self.log_safe(f"▶ 再開: ストローク {start_from + 1}/{n_total} から")
+         for i in range(start_from, n_total):
+             stroke_uv = strokes_uv[i]
+             if self.strokes_abort_flag:

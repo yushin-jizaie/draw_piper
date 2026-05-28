@@ -133,7 +133,14 @@ GUI ボタンを押さないこと (確認ダイアログで警告)。
   リーチ確認失敗、 移動失敗、 yaml 読込失敗、 保存失敗 等)
 - 完了系 → 先頭に ✓ (ペン下げ完了、 ペン上げ完了、 ホーミング完了、
   グリップ動作完了 等)
+- 描画進捗系 → 先頭に ▶ (正方形描画 / Drawing label / 再開) や ✏ (ペン下げ)
 - 既に絵文字 ある log (⚙ ホーミング 開始、 🔒 強く掴む) はそのまま
+
+⭐ 絵文字 ON/OFF 切替可:
+- ステータスバーに 「log に絵文字」 Checkbutton (default ON、 即時反映)
+- 環境変数 `WALL_GUI_NO_EMOJI=1` で起動時 OFF
+- log() 内で `_strip_emoji` ヘルパが既知の絵文字を strip
+- font 無し環境や log を grep 等で機械処理する用途に対応
 
 機能変更なし、 純粋に UX 改善。 ttk.Button → tk.Button は state/font 等
 の API 互換、 既存 callback はそのまま動く。

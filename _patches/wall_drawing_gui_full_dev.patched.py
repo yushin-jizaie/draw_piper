@@ -242,6 +242,11 @@ class WallDrawingGUI:
         self.root.title("Piper 壁面描画コンソール")
         self.root.geometry("1080x940")
 
+        # log の絵文字 ON/OFF。 環境変数 WALL_GUI_NO_EMOJI=1 で OFF。
+        # 起動後 UI checkbutton でも変更可。 font 無し環境や log を
+        # grep 等で機械処理する時に絵文字邪魔な場合 OFF。
+        self._use_emoji = (os.environ.get("WALL_GUI_NO_EMOJI", "0") != "1")
+
         self.piper = None
         self.connected = False
         self.in_master = False
@@ -490,6 +495,12 @@ class WallDrawingGUI:
         ).pack(side=tk.RIGHT, padx=4)
         ttk.Button(status_frame, text="GUI 再起動",
             command=self.on_restart_gui, width=12
+        ).pack(side=tk.RIGHT, padx=4)
+        # log の絵文字 ON/OFF (環境変数 WALL_GUI_NO_EMOJI=1 でも OFF 可)
+        self.var_use_emoji = tk.BooleanVar(value=self._use_emoji)
+        ttk.Checkbutton(status_frame, text="log に絵文字",
+            variable=self.var_use_emoji,
+            command=self._on_toggle_emoji
         ).pack(side=tk.RIGHT, padx=4)
         self.lbl_can = ttk.Label(status_frame, text="CAN: ?",
                                  foreground="gray")
@@ -1013,11 +1024,35 @@ class WallDrawingGUI:
     # ------------------------------------------------------------------
     def log(self, msg):
         ts = time.strftime("%H:%M:%S")
+        # 絵文字 ON/OFF (環境変数 WALL_GUI_NO_EMOJI=1 で OFF、
+        # default ON)。 OFF 時は log メッセージから既知の絵文字を strip
+        # して、 font 無し環境や機械処理用途に対応
+        if getattr(self, "_use_emoji", None) is False:
+            msg = self._strip_emoji(msg)
         self.log_text.insert(tk.END, f"[{ts}] {msg}\n")
         self.log_text.see(tk.END)
 
     def log_safe(self, msg):
         self.root.after(0, lambda: self.log(msg))
+
+    def _on_toggle_emoji(self):
+        """log の絵文字 ON/OFF を切り替え (Checkbutton から呼ばれる)。"""
+        self._use_emoji = bool(self.var_use_emoji.get())
+        state = "ON" if self._use_emoji else "OFF"
+        self.log(f"log の絵文字を {state} に切り替えました")
+
+    @staticmethod
+    def _strip_emoji(s):
+        """log で使う既知の絵文字を strip。 全 unicode 絵文字対応ではない。"""
+        for ch in ("✓", "✅", "❌", "⚠", "ℹ", "▶", "■", "✏", "⬆",
+                    "🏠", "📦", "🖋", "🔴", "🟢", "🟡", "🟠",
+                    "📖", "📊", "🔒", "🔓", "🔄", "⚙", "✨",
+                    "⛔"):
+            s = s.replace(ch, "")
+        # 連続スペース整理
+        while "  " in s:
+            s = s.replace("  ", " ")
+        return s.strip()
 
     # ------------------------------------------------------------------
     # button-state refresh
@@ -2926,7 +2961,7 @@ class WallDrawingGUI:
     def _do_probe_pen_down(self):
         actual = self._read_endpose()
         draw_x = self._draw_x()
-        self.log_safe(f"ペン下げ (IK 低速): X={draw_x:.1f} "
+        self.log_safe(f"✏ ペン下げ (IK 低速): X={draw_x:.1f}"
                       f"Y={actual[1]:.1f} Z={actual[2]:.1f} "
                       f"[X 補正 {self._xoff():+.1f}]")
         try:
@@ -3921,7 +3956,7 @@ class WallDrawingGUI:
 
     def _do_tune_pen_down(self):
         draw_x = self._draw_x()
-        self.log_safe(f"ペン下げ (IK 低速): X={draw_x:.1f} (押し付け量 "
+        self.log_safe(f"✏ ペン下げ (IK 低速): X={draw_x:.1f}(押し付け量 "
                       f"{MAX_PUSH_MM}mm + 補正 {self._xoff():+.1f}mm)")
         q = self._move_xyz_via_ik(draw_x, self.tune_y, self.tune_z,
                                    warm_start_q=self.tune_warm_q)
@@ -4307,7 +4342,7 @@ class WallDrawingGUI:
         self._run_in_thread(self._do_draw_square, corners, xoff)
 
     def _do_draw_square(self, corners, xoff):
-        self.log_safe(f"正方形描画 (IK + MOVE J 低速): "
+        self.log_safe(f"▶ 正方形描画 (IK + MOVE J 低速): "
                       f"関節速度 {self._speed_joint()}%, X offset {xoff:+.2f}")
         self._ensure_wall_facing()
         pen_up_x = self.contact_x_mm - PEN_UP_CLEAR_MM + xoff
@@ -4521,7 +4556,7 @@ class WallDrawingGUI:
         IK で高速収束。
         """
         speed = self._speed_joint()
-        self.log_safe(f"Drawing {label}: IK + MOVE J 低速描画 関節速度="
+        self.log_safe(f"▶ Drawing {label}: IK + MOVE J 低速描画 関節速度="
                       f"{speed}%, X offset {xoff:+.2f}, {len(points)} 点")
         self._ensure_wall_facing()
         pen_up_x = self.contact_x_mm - PEN_UP_CLEAR_MM + xoff
@@ -5127,7 +5162,7 @@ class WallDrawingGUI:
         warm = None
         last_completed_idx = start_from - 1  # 再開時の起点
         if start_from > 0:
-            self.log_safe(f"再開: ストローク {start_from + 1}/{n_total} から")
+            self.log_safe(f"▶ 再開: ストローク {start_from + 1}/{n_total} から")
         for i in range(start_from, n_total):
             stroke_uv = strokes_uv[i]
             if self.strokes_abort_flag:
