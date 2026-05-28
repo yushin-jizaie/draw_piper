@@ -1,21 +1,16 @@
-"""Tkinter GUI for Frida-inspired smooth drawing.
+"""Tkinter GUI for Frida-inspired smooth drawing (UX 重視リライト版)。
 
-`wall_drawing_gui` (M11、 ~/piper_test/) とは別の独立した薄い GUI。
-画像 → Vectorizer → preflight → preview → 実機描画 のワンストップ操作。
+`wall_drawing_gui` (M11、 ~/piper_test/) とは独立した薄い Tkinter GUI。
+画像選択 → 安全確認 → プレビュー → 描画 の 4 ステップ ワンストップ。
 
-ボタン構成:
-  [画像選択...]  [シーン: face_lite ▼]
-  [Preflight 確認]   ← bounds / TSP / 推定 timing を log に表示
-  [Preview 画像生成] ← strokes を画像化、 別ウィンドウで表示
-  [Mock 描画 (dry)]  ← mock=True で描画コマンド発行のみ (sandbox 動作確認)
-  [実機描画 (REAL)]  ← Piper SDK + can0 で本描画 (確認ダイアログあり)
-  [中止]            ← 進行中の描画スレッドへ flag を立てる
-
-設定 (調整可、 デフォルト 既存推奨値):
-  draw_speed_base / min / max / travel_speed
-  near_threshold_mm / step_mm / reorder
-
-ログ Area で実行ログ表示、 結果 JSON は logs/gui_frida/<ts>/ に保存。
+UX 設計:
+  - セクション (LabelFrame) で「入力 / パラメータ / 実行 / ログ」 を区別
+  - 危険ボタン (実機描画) は赤背景、 安全ボタン (Mock/Preview) は通常色
+  - 描画中は全ボタン無効化 → 二重実行 / 誤操作 防止
+  - パラメータは折りたたみ可能 (default 折りたたみ、 advanced user 向け)
+  - tooltip で各パラメータの意味を hover 表示
+  - 状態バー (アイドル / 描画中 / エラー) を常時表示
+  - 最後に開いたディレクトリ / 描画パラメータを ~/.gui_frida_state.json に保存
 
 使い方:
   python3 -m scripts.gui_frida_draw
@@ -23,14 +18,16 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import threading
 import time
 from pathlib import Path
 from tkinter import (Tk, Frame, Button, Label, Entry, StringVar, IntVar,
                       OptionMenu, BooleanVar, Checkbutton, Text, Scrollbar,
-                      filedialog, messagebox, Toplevel, Canvas)
+                      Toplevel, DISABLED, NORMAL)
 from tkinter import ttk
+from tkinter import filedialog, messagebox
 
 _ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_ROOT))
@@ -41,133 +38,381 @@ from modules.stroke_planner import (                                 # noqa: E40
     reorder_strokes_tsp, plan_clear_heights, total_travel_distance,
     stroke_set_diagnostics,
 )
-from modules.stroke_visualizer import render_comparison_grid         # noqa: E402
+from modules.stroke_visualizer import (                              # noqa: E402
+    render_comparison_grid, render_stroke_animation,
+)
 
 
-# scenes (test_draw_strokes_smooth と同じ)
 SCENES_AVAILABLE = ["face_lite", "scattered", "zigzag"]
+STATE_PATH = Path.home() / ".gui_frida_state.json"
 
 
+# ============================================================ tooltip
+class Tooltip:
+    """Simple hover tooltip for any widget. Tk 標準のみ、 依存追加なし。"""
+    def __init__(self, widget, text: str, delay_ms: int = 500):
+        self.widget = widget
+        self.text = text
+        self.delay = delay_ms
+        self.tip = None
+        self._after_id = None
+        widget.bind("<Enter>", self._schedule)
+        widget.bind("<Leave>", self._hide)
+        widget.bind("<ButtonPress>", self._hide)
+
+    def _schedule(self, _evt=None):
+        self._cancel()
+        self._after_id = self.widget.after(self.delay, self._show)
+
+    def _show(self):
+        if self.tip or not self.text:
+            return
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 4
+        self.tip = Toplevel(self.widget)
+        self.tip.wm_overrideredirect(True)
+        self.tip.wm_geometry(f"+{x}+{y}")
+        Label(self.tip, text=self.text, justify="left",
+              bg="#ffffe0", fg="#000", relief="solid", borderwidth=1,
+              font=("Monaco", 9), wraplength=380).pack(ipadx=4, ipady=2)
+
+    def _hide(self, _evt=None):
+        self._cancel()
+        if self.tip:
+            self.tip.destroy()
+            self.tip = None
+
+    def _cancel(self):
+        if self._after_id:
+            self.widget.after_cancel(self._after_id)
+            self._after_id = None
+
+
+# ============================================================ main GUI
 class FridaGui:
     def __init__(self, root: Tk):
         self.root = root
         root.title("Frida Smooth Draw")
-        root.geometry("760x680")
-        self._abort = False
+        root.geometry("820x780")
+        root.minsize(720, 640)
         self._worker = None
+        self._is_busy = False
         self.panel = None
-        self.strokes_mm = None    # 最後にロードした strokes
+        self.strokes_mm = None
+        self._action_widgets = []     # 描画中 disable する widget
+        self._last_dir = str(Path.home())   # 画像選択履歴
+
+        self._load_state()
         self._build_ui()
         self._load_panel()
+        self._set_status("起動完了", "ok")
 
-    # ------------------------------------------------------------------ UI
+    # ---------------------------------------------------------- state I/O
+    def _load_state(self):
+        if not STATE_PATH.exists():
+            self._state = {}
+            return
+        try:
+            self._state = json.loads(STATE_PATH.read_text())
+        except Exception:
+            self._state = {}
+
+    def _save_state(self):
+        state = {
+            "last_image": self.var_image.get(),
+            "last_scene": self.var_scene.get(),
+            "last_dir": self._last_dir,
+            "params": {
+                "speed_base": self.var_speed_base.get(),
+                "speed_min": self.var_speed_min.get(),
+                "speed_max": self.var_speed_max.get(),
+                "travel_speed": self.var_travel_speed.get(),
+                "near_mm": self.var_near_mm.get(),
+                "step_mm": self.var_step_mm.get(),
+                "merge_mm": self.var_merge_mm.get(),
+                "merge_lift_mm": self.var_merge_lift_mm.get(),
+                "reorder": self.var_reorder.get(),
+            },
+        }
+        try:
+            STATE_PATH.write_text(json.dumps(state, indent=2))
+        except Exception:
+            pass    # 設定保存失敗は致命的じゃないので silent
+
+    # ---------------------------------------------------------- UI build
     def _build_ui(self):
-        # row 0: input source
-        row0 = Frame(self.root)
-        row0.pack(fill="x", padx=8, pady=4)
-        Label(row0, text="入力:").pack(side="left")
-        self.var_image = StringVar(value="")
-        Entry(row0, textvariable=self.var_image, width=50).pack(
-            side="left", padx=4)
-        Button(row0, text="画像選択...", command=self._on_pick_image).pack(
-            side="left", padx=2)
-        Label(row0, text="または scene:").pack(side="left", padx=(10, 2))
-        self.var_scene = StringVar(value="")
-        OptionMenu(row0, self.var_scene, "", *SCENES_AVAILABLE).pack(
-            side="left")
+        # status bar (top)
+        self.status_frame = Frame(self.root, bg="#333", height=26)
+        self.status_frame.pack(fill="x")
+        self.status_label = Label(self.status_frame, text="...",
+                                   bg="#333", fg="#fff",
+                                   font=("Monaco", 10), anchor="w", padx=10)
+        self.status_label.pack(side="left", fill="x", expand=True)
 
-        # row 1: parameters
-        row1 = Frame(self.root)
-        row1.pack(fill="x", padx=8, pady=4)
-        self.var_speed_base = IntVar(value=30)
-        self.var_speed_min = IntVar(value=10)
-        self.var_speed_max = IntVar(value=50)
-        self.var_travel_speed = IntVar(value=60)
-        self.var_near_mm = IntVar(value=15)
-        self.var_step_mm = StringVar(value="2.0")
-        self.var_merge_mm = StringVar(value="0")
-        self.var_merge_lift_mm = StringVar(value="0")
-        self.var_reorder = BooleanVar(value=True)
-        for lab, var, w in [
-            ("draw base", self.var_speed_base, 4),
-            ("min", self.var_speed_min, 4),
-            ("max", self.var_speed_max, 4),
-            ("travel", self.var_travel_speed, 4),
-            ("near_mm", self.var_near_mm, 4),
-            ("step_mm", self.var_step_mm, 5),
-            ("merge_mm", self.var_merge_mm, 5),
-            ("merge_lift", self.var_merge_lift_mm, 5),
+        # main content
+        main = Frame(self.root, padx=10, pady=6)
+        main.pack(fill="both", expand=True)
+
+        # ---- Section: 入力 ----
+        sec_in = ttk.LabelFrame(main, text="1. 入力", padding=8)
+        sec_in.pack(fill="x", pady=(0, 6))
+        row = Frame(sec_in)
+        row.pack(fill="x")
+        Label(row, text="画像ファイル:").pack(side="left")
+        self.var_image = StringVar(value=self._state.get("last_image", ""))
+        e_img = Entry(row, textvariable=self.var_image, width=50)
+        e_img.pack(side="left", padx=4, fill="x", expand=True)
+        Tooltip(e_img,
+                "VLM/ImageGen の出力画像 (PNG/JPG)。\n"
+                "Vectorizer で線画を抽出して描画 strokes に変換します。")
+        b = Button(row, text="📁 選択...", command=self._on_pick_image)
+        b.pack(side="left", padx=2)
+        self._action_widgets.append(b)
+        row2 = Frame(sec_in)
+        row2.pack(fill="x", pady=(4, 0))
+        Label(row2, text="または内蔵シーン:").pack(side="left")
+        self.var_scene = StringVar(value=self._state.get("last_scene", ""))
+        opt = OptionMenu(row2, self.var_scene, "", "", *SCENES_AVAILABLE)
+        opt.pack(side="left", padx=4)
+        self._action_widgets.append(opt)
+        Tooltip(opt,
+                "テスト用の内蔵 stroke set。 画像なしで動作確認用。\n"
+                "  face_lite  : 顔のスケッチ (5 strokes)\n"
+                "  scattered : 64 個の小 stroke (TSP 効果大)\n"
+                "  zigzag    : 1 stroke の zigzag (速度プロファイル可視化)")
+
+        # ---- Section: パラメータ (collapsible) ----
+        self._params_visible = BooleanVar(value=False)
+        sec_p = ttk.LabelFrame(main, text="2. パラメータ (advanced)",
+                                padding=4)
+        sec_p.pack(fill="x", pady=(0, 6))
+        toggle_row = Frame(sec_p)
+        toggle_row.pack(fill="x")
+        toggle_btn = Button(toggle_row, text="▶ 表示",
+                             command=self._toggle_params, width=8)
+        toggle_btn.pack(side="left", padx=4)
+        self._params_toggle_btn = toggle_btn
+        Label(toggle_row,
+              text="速度・距離閾値・stroke 連続化など (default で実用範囲)",
+              fg="#666", font=("Monaco", 9)).pack(side="left", padx=4)
+        self._params_frame = Frame(sec_p)
+        # 折りたたみ default — pack はあとから条件付き
+
+        # parameters (cached state or defaults)
+        ps = self._state.get("params", {})
+        self.var_speed_base = IntVar(value=ps.get("speed_base", 30))
+        self.var_speed_min = IntVar(value=ps.get("speed_min", 10))
+        self.var_speed_max = IntVar(value=ps.get("speed_max", 50))
+        self.var_travel_speed = IntVar(value=ps.get("travel_speed", 60))
+        self.var_near_mm = IntVar(value=ps.get("near_mm", 15))
+        self.var_step_mm = StringVar(value=str(ps.get("step_mm", "2.0")))
+        self.var_merge_mm = StringVar(value=str(ps.get("merge_mm", "0")))
+        self.var_merge_lift_mm = StringVar(
+            value=str(ps.get("merge_lift_mm", "0")))
+        self.var_reorder = BooleanVar(value=ps.get("reorder", True))
+
+        # parameter rows inside collapsible frame
+        speed_lf = ttk.LabelFrame(self._params_frame, text="速度 (%)", padding=4)
+        speed_lf.pack(fill="x", pady=2)
+        for lab, var, tip in [
+            ("緩い曲線", self.var_speed_base,
+             "曲率の小さい (= 緩い R) 部分の描画速度 %"),
+            ("鋭い曲線", self.var_speed_min,
+             "鋭い曲線で減速する最低速度 % (jerk 抑制)"),
+            ("直線部上限", self.var_speed_max,
+             "ほぼ直線部で加速する上限速度 %"),
+            ("travel", self.var_travel_speed,
+             "stroke 間 travel の速度 % (pen-up 状態)"),
         ]:
-            Label(row1, text=lab).pack(side="left", padx=(8, 1))
-            Entry(row1, textvariable=var, width=w).pack(side="left")
-        Checkbutton(row1, text="TSP reorder",
-                     variable=self.var_reorder).pack(side="left", padx=8)
+            self._param_row(speed_lf, lab, var, 5, tip)
 
-        # row 2: action buttons
-        row2 = Frame(self.root)
-        row2.pack(fill="x", padx=8, pady=6)
-        Button(row2, text="Preflight 確認",
-                command=self._on_preflight).pack(side="left", padx=2)
-        Button(row2, text="Preview 画像",
-                command=self._on_preview).pack(side="left", padx=2)
-        Button(row2, text="GIF アニメ",
-                command=self._on_render_anim).pack(side="left", padx=2)
-        Button(row2, text="Mock 描画 (dry)",
-                command=lambda: self._start_draw(use_real=False)).pack(
-            side="left", padx=2)
-        Button(row2, text="実機描画 (REAL)", bg="#e7a",
-                command=lambda: self._start_draw(use_real=True)).pack(
-            side="left", padx=2)
-        Button(row2, text="中止",
-                command=self._on_abort).pack(side="left", padx=8)
+        dist_lf = ttk.LabelFrame(self._params_frame, text="距離 (mm)", padding=4)
+        dist_lf.pack(fill="x", pady=2)
+        for lab, var, tip in [
+            ("near 閾値", self.var_near_mm,
+             "次 stroke までの距離がこれ以下なら pen-up を浅くする (mm)"),
+            ("step", self.var_step_mm,
+             "smooth_polyline のリサンプル間隔 (mm)、 小さいほど滑らか"),
+        ]:
+            self._param_row(dist_lf, lab, var, 6, tip)
 
-        # row 3: panel info
-        row3 = Frame(self.root)
-        row3.pack(fill="x", padx=8)
-        self.lbl_panel = Label(row3, text="panel: (loading...)",
-                                fg="#555")
+        merge_lf = ttk.LabelFrame(self._params_frame,
+                                   text="stroke 連続化 (任意、 default OFF)",
+                                   padding=4)
+        merge_lf.pack(fill="x", pady=2)
+        self._param_row(merge_lf, "merge 閾値", self.var_merge_mm, 6,
+                         "この距離以下の隣接 stroke を pen-up せず接続。\n"
+                         "0 = OFF (default)。 ON だと travel 削減大、 副作用で\n"
+                         "接続線が描かれる。")
+        self._param_row(merge_lf, "pen 浮かし", self.var_merge_lift_mm, 6,
+                         "merge 接続時に pen を w_contact から N mm 持ち上げる。\n"
+                         "0 = pen-down (接続線描画)、 0.3-1.0 = 軽量化\n"
+                         "(実機のペン圧 / spring 次第)。")
+
+        misc_lf = Frame(self._params_frame)
+        misc_lf.pack(fill="x", pady=2)
+        cb = Checkbutton(misc_lf, text="TSP で stroke 順を最適化",
+                          variable=self.var_reorder)
+        cb.pack(side="left", padx=4)
+        Tooltip(cb,
+                "ON (default): TSP greedy + 2-opt で stroke 順を距離最短に\n"
+                "OFF: 元の Vectorizer 出力順 (比較用)")
+
+        # ---- Section: 実行 ----
+        sec_run = ttk.LabelFrame(main, text="3. 実行", padding=8)
+        sec_run.pack(fill="x", pady=(0, 6))
+        run_row1 = Frame(sec_run)
+        run_row1.pack(fill="x")
+        b1 = Button(run_row1, text="🔍 安全性チェック (描画なし)",
+                     command=self._on_preflight, width=22)
+        b1.pack(side="left", padx=2)
+        self._action_widgets.append(b1)
+        Tooltip(b1,
+                "全 stroke が panel 内に収まるか、 TSP の効果、 推定 timing を\n"
+                "ログに表示。 描画コマンドは発行しない。 実機接続も不要。")
+        b2 = Button(run_row1, text="🖼  描画プレビュー画像",
+                     command=self._on_preview, width=22)
+        b2.pack(side="left", padx=2)
+        self._action_widgets.append(b2)
+        Tooltip(b2,
+                "raw 順 vs TSP 後の比較 grid を PNG で生成して別 window で表示。\n"
+                "logs/gui_frida/preview_<ts>.png に保存。 実機接続不要。")
+        b3 = Button(run_row1, text="🎬 GIF アニメ (描画順)",
+                     command=self._on_render_anim, width=22)
+        b3.pack(side="left", padx=2)
+        self._action_widgets.append(b3)
+        Tooltip(b3,
+                "1 stroke ずつ累積描画する GIF アニメを生成。\n"
+                "現 stroke が赤強調、 「どの順で何を描くか」 を視覚確認可。\n"
+                "logs/gui_frida/anim_<ts>.gif に保存。")
+
+        run_row2 = Frame(sec_run)
+        run_row2.pack(fill="x", pady=(6, 0))
+        b4 = Button(run_row2, text="🧪 Mock 描画 (動作確認)",
+                     command=lambda: self._start_draw(use_real=False),
+                     width=22)
+        b4.pack(side="left", padx=2)
+        self._action_widgets.append(b4)
+        Tooltip(b4,
+                "mock Robot で描画コマンドを発行。 実機なし、 sandbox 動作確認用。\n"
+                "実機の動きはしないが、 戻り値の diagnostics を確認できる。")
+        b5 = Button(run_row2, text="⚠️  実機で描画 (REAL)",
+                     command=lambda: self._start_draw(use_real=True),
+                     width=22, bg="#fee", fg="#a00",
+                     activebackground="#fcc", activeforeground="#900")
+        b5.pack(side="left", padx=2)
+        self._action_widgets.append(b5)
+        Tooltip(b5,
+                "Piper 実機で描画します。\n"
+                "事前に: panel に紙、 CAN bus UP、 アーム通電を確認。\n"
+                "クリック後 確認ダイアログが出ます。")
+
+        # ---- panel info row ----
+        info_row = Frame(main)
+        info_row.pack(fill="x", pady=(0, 4))
+        self.lbl_panel = Label(info_row, text="panel: (loading...)",
+                                fg="#555", font=("Monaco", 9))
         self.lbl_panel.pack(side="left")
+        Button(info_row, text="ログクリア",
+                command=self._clear_log,
+                font=("Monaco", 8)).pack(side="right", padx=2)
 
-        # log area
-        log_frame = Frame(self.root)
-        log_frame.pack(fill="both", expand=True, padx=8, pady=8)
-        sb = Scrollbar(log_frame)
+        # ---- Section: log ----
+        sec_log = ttk.LabelFrame(main, text="4. ログ", padding=4)
+        sec_log.pack(fill="both", expand=True)
+        sb = Scrollbar(sec_log)
         sb.pack(side="right", fill="y")
-        self.log = Text(log_frame, wrap="word", yscrollcommand=sb.set,
-                        font=("Monaco", 10), bg="#111", fg="#cfc")
+        self.log = Text(sec_log, wrap="word", yscrollcommand=sb.set,
+                        font=("Monaco", 10), bg="#111", fg="#cfc",
+                        height=12)
         self.log.pack(side="left", fill="both", expand=True)
         sb.config(command=self.log.yview)
         self._log("[gui] Frida Smooth Draw 起動")
+        self._log(f"[gui] 設定ファイル: {STATE_PATH}")
+
+        # window close: save state
+        self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+
+    def _param_row(self, parent, label, var, width, tooltip):
+        row = Frame(parent)
+        row.pack(fill="x", pady=1)
+        lbl = Label(row, text=label, width=12, anchor="w")
+        lbl.pack(side="left")
+        ent = Entry(row, textvariable=var, width=width)
+        ent.pack(side="left", padx=2)
+        Tooltip(lbl, tooltip)
+        Tooltip(ent, tooltip)
+
+    # ---------------------------------------------------------- UI helpers
+    def _toggle_params(self):
+        if self._params_visible.get():
+            self._params_frame.pack_forget()
+            self._params_toggle_btn.config(text="▶ 表示")
+            self._params_visible.set(False)
+        else:
+            self._params_frame.pack(fill="x", padx=2, pady=2)
+            self._params_toggle_btn.config(text="▼ 隠す")
+            self._params_visible.set(True)
 
     def _log(self, msg: str):
         t = time.strftime("%H:%M:%S")
         self.log.insert("end", f"{t}  {msg}\n")
         self.log.see("end")
 
-    # ------------------------------------------------------------------ panel
+    def _clear_log(self):
+        self.log.delete("1.0", "end")
+
+    def _set_status(self, msg: str, kind: str = "info"):
+        colors = {
+            "ok": ("#0a4", "#fff"),
+            "info": ("#333", "#fff"),
+            "busy": ("#c80", "#fff"),
+            "error": ("#a00", "#fff"),
+        }
+        bg, fg = colors.get(kind, ("#333", "#fff"))
+        self.status_frame.config(bg=bg)
+        self.status_label.config(bg=bg, fg=fg, text=msg)
+
+    def _set_busy(self, busy: bool, msg: str = ""):
+        self._is_busy = busy
+        state = DISABLED if busy else NORMAL
+        for w in self._action_widgets:
+            try:
+                w.config(state=state)
+            except Exception:
+                pass
+        if busy:
+            self._set_status(msg or "実行中...", "busy")
+        else:
+            self._set_status(msg or "アイドル", "ok")
+
+    # ---------------------------------------------------------- panel
     def _load_panel(self):
         path = _ROOT / "calibration" / "panel_frame.yaml"
         if not path.exists():
             self._log(f"[panel] yaml not found: {path}")
-            self.lbl_panel.config(text=f"panel: NOT FOUND ({path.name})")
+            self.lbl_panel.config(text=f"panel: ❌ NOT FOUND ({path.name})",
+                                   fg="#a00")
+            self._set_status(f"panel_frame.yaml が無い: {path}", "error")
             return
         try:
             self.panel = PanelFrame.from_yaml(path)
         except Exception as e:
             self._log(f"[panel] load failed: {e}")
+            self.lbl_panel.config(text=f"panel: ❌ load failed", fg="#a00")
+            self._set_status(f"panel load 失敗: {e}", "error")
             return
-        cal = "calibrated" if self.panel.calibrated else "PLACEHOLDER"
+        cal = "✅ calibrated" if self.panel.calibrated else "⚠️ PLACEHOLDER"
         sz = self.panel.size_mm
         self.lbl_panel.config(
-            text=f"panel: {sz[0]:.1f} × {sz[1]:.1f} mm ({cal})",
+            text=f"panel: {sz[0]:.1f} × {sz[1]:.1f} mm  {cal}",
             fg="#080" if self.panel.calibrated else "#a40")
         self._log(f"[panel] loaded ({cal}), size = {sz}")
 
-    # ------------------------------------------------------------------ load strokes
+    # ---------------------------------------------------------- load strokes
     def _resolve_strokes(self):
-        """Return (strokes_mm, source_label) or (None, error_msg)."""
         if self.panel is None:
-            return None, "panel が load されていません"
+            return None, "panel_frame.yaml が読み込めてません"
         img = self.var_image.get().strip()
         scene = self.var_scene.get().strip()
         if img:
@@ -180,47 +425,43 @@ class FridaGui:
                                                   clip_to_bounds=True)
                 return result.strokes_mm or [], f"image ({ip.name})"
             except Exception as e:
-                return None, f"vectorize 失敗: {e}"
+                return None, f"画像のベクトル化 失敗: {e}"
         if scene:
             try:
                 from scripts.test_draw_strokes_smooth import SCENES
                 return SCENES[scene](self.panel), f"scene ({scene})"
             except Exception as e:
-                return None, f"scene load 失敗: {e}"
-        return None, "画像も scene も未指定です"
+                return None, f"scene の load 失敗: {e}"
+        return None, "画像も scene も指定されていません"
 
-    # ------------------------------------------------------------------ preflight
+    # ---------------------------------------------------------- preflight
     def _on_preflight(self):
         strokes, src = self._resolve_strokes()
         if strokes is None:
-            self._log(f"[preflight] {src}")
+            self._log(f"[preflight] ❌ {src}")
+            self._set_status(src, "error")
             return
         self.strokes_mm = strokes
         self._log(f"[preflight] source = {src}, {len(strokes)} strokes")
         n_oob = sum(1 for s in strokes
                     for (u, v) in s if not self.panel.in_bounds(u, v))
+        n_total = sum(len(s) for s in strokes)
         if n_oob == 0:
-            self._log(f"  ✓ in_bounds: all "
-                      f"{sum(len(s) for s in strokes)} points")
+            self._log(f"  ✓ in_bounds: all {n_total} points")
+            self._set_status(f"安全性 OK ({n_total} 点全て panel 内)", "ok")
         else:
-            self._log(f"  ⚠️ in_bounds: {n_oob} oob points")
+            self._log(f"  ⚠️ in_bounds: {n_oob}/{n_total} points OUT OF BOUNDS")
+            self._set_status(f"⚠️ {n_oob} 点が panel 外", "error")
         diag = stroke_set_diagnostics(strokes, start_point=None)
         before = total_travel_distance(strokes, start_point=None)
         reordered, _ = reorder_strokes_tsp(strokes, start_point=None)
         after = total_travel_distance(reordered, start_point=None)
-        self._log(f"  draw_length_mm   : {diag['draw_length_mm']:.1f}")
-        self._log(f"  travel raw       : {before:.1f}")
-        self._log(f"  travel TSP       : {after:.1f} "
-                  f"(-{100 * (before - after) / max(1e-9, before):.1f}%)")
-        ch = plan_clear_heights(
-            reordered, w_clear_max_mm=self.panel.w_clear_mm,
-            w_clear_near_mm=self.panel.w_contact_mm
-                + (self.panel.w_clear_mm - self.panel.w_contact_mm) / 3,
-            near_threshold_mm=float(self.var_near_mm.get()))
-        n_near = sum(1 for h in ch if h < self.panel.w_clear_mm)
-        self._log(f"  look-ahead clear : {n_near}/{len(ch)} strokes use lower")
+        saved = 100 * (before - after) / max(1e-9, before)
+        self._log(f"  draw 長     : {diag['draw_length_mm']:.1f} mm")
+        self._log(f"  travel raw  : {before:.1f} mm")
+        self._log(f"  travel TSP後: {after:.1f} mm (-{saved:.1f}%)")
 
-    # ------------------------------------------------------------------ preview
+    # ---------------------------------------------------------- preview
     def _on_preview(self):
         strokes, src = self._resolve_strokes()
         if strokes is None:
@@ -237,54 +478,53 @@ class FridaGui:
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"preview_{time.strftime('%Y%m%d_%H%M%S')}.png"
         img.save(out_path)
-        self._log(f"[preview] saved -> {out_path}")
-        # show in Toplevel
+        self._log(f"[preview] 保存: {out_path}")
+        self._set_status(f"preview 生成: {out_path.name}", "ok")
         win = Toplevel(self.root)
-        win.title("stroke preview (raw vs TSP)")
+        win.title("描画プレビュー (左=raw / 右=TSP後)")
         try:
             from PIL import ImageTk
             tk_img = ImageTk.PhotoImage(img)
             lab = Label(win, image=tk_img)
-            lab.image = tk_img    # keep reference
+            lab.image = tk_img
             lab.pack()
             Label(win,
-                   text=f"raw → TSP の travel 比較。 保存先: {out_path.name}",
-                   font=("Monaco", 9)).pack(pady=4)
+                   text=f"📄 {out_path.name}",
+                   font=("Monaco", 9), fg="#666").pack(pady=4)
         except Exception as e:
             self._log(f"[preview] window 表示失敗 (PIL.ImageTk): {e} — "
                       "ファイルとしては保存済")
+            messagebox.showinfo("preview",
+                f"画像は保存しましたが、 GUI 表示には PIL.ImageTk が必要です:\n"
+                f"  {out_path}\nファイルを直接開いてください。")
 
-    # ------------------------------------------------------------------ anim
+    # ---------------------------------------------------------- anim
     def _on_render_anim(self):
-        """stroke ordering GIF アニメを生成。 描画順を 1 stroke ずつ
-        累積表示。 default 200ms/frame。 user 確認用、 描画には影響しない。
-        """
         strokes, src = self._resolve_strokes()
         if strokes is None:
             messagebox.showerror("anim", src)
             return
-        from modules.stroke_visualizer import render_stroke_animation
-        from modules.stroke_planner import reorder_strokes_tsp
         reordered, _ = reorder_strokes_tsp(strokes, start_point=None)
         out_dir = _ROOT / "logs" / "gui_frida"
         out_dir.mkdir(parents=True, exist_ok=True)
         out_path = out_dir / f"anim_{time.strftime('%Y%m%d_%H%M%S')}.gif"
+        self._set_status("GIF 生成中...", "busy")
         try:
             n, p = render_stroke_animation(
                 reordered, tuple(self.panel.size_mm), out_path,
                 out_size_px=(800, 800), frame_ms=200,
             )
             self._log(f"[anim] {n} frames → {p}")
+            self._set_status(f"GIF 生成: {Path(p).name} ({n} frames)", "ok")
             messagebox.showinfo("GIF アニメ生成",
                 f"{n} frames を出力しました:\n{p}")
         except Exception as e:
-            self._log(f"[anim] ERROR: {e}")
-            messagebox.showerror("anim", str(e))
+            self._log(f"[anim] ❌ {e}")
+            self._set_status(f"GIF 生成失敗: {e}", "error")
 
-    # ------------------------------------------------------------------ draw
+    # ---------------------------------------------------------- draw
     def _start_draw(self, *, use_real: bool):
-        if self._worker and self._worker.is_alive():
-            messagebox.showwarning("busy", "前回の描画スレッド進行中")
+        if self._is_busy:
             return
         strokes, src = self._resolve_strokes()
         if strokes is None:
@@ -292,23 +532,23 @@ class FridaGui:
             return
         if use_real:
             if not messagebox.askyesno(
-                "実機描画 確認",
-                f"REAL モードで {len(strokes)} stroke を描画します。\n"
-                "panel に紙が用意されてますか? 続行しますか?"):
+                "⚠️ 実機描画 確認",
+                f"REAL モードで {len(strokes)} 本の stroke を実機描画します。\n\n"
+                "事前確認:\n"
+                "  ☐ panel に紙 / ホワイトボードが配置されている\n"
+                "  ☐ アームが通電 + can0 が UP\n"
+                "  ☐ panel calibrated (drag-teach 済み)\n\n"
+                "続けますか?"):
                 return
-        self._abort = False
         self._worker = threading.Thread(
             target=self._draw_thread, args=(strokes, src, use_real),
             daemon=True)
         self._worker.start()
 
-    def _on_abort(self):
-        self._abort = True
-        self._log("[abort] flag set — 現在の stroke 完了後に停止 (実装次第)")
-
     def _draw_thread(self, strokes, src, use_real):
-        """Worker thread for draw (so GUI stays responsive)."""
-        self._log(f"[draw] start ({'REAL' if use_real else 'MOCK'}) "
+        self.root.after(0, lambda: self._set_busy(True,
+                          f"{'REAL' if use_real else 'MOCK'} 描画中..."))
+        self._log(f"[draw] 開始 ({'REAL' if use_real else 'MOCK'}) "
                   f"— source = {src}, {len(strokes)} strokes")
         robot = None
         try:
@@ -316,12 +556,10 @@ class FridaGui:
                            use_feedback_workaround=use_real)
             robot.connect()
             if not use_real:
-                # speed up mock
                 robot.wait_for_pose = lambda *a, **kw: True   # type: ignore
             if use_real:
-                self._log("[draw] moving to ready pose ...")
+                self._log("[draw] ready pose に移動中 ...")
                 robot.goto_ready_pose(speed_pct=15, settle_s=10.0)
-            t0 = time.time()
             try:
                 merge_mm = float(self.var_merge_mm.get() or 0)
             except ValueError:
@@ -330,6 +568,7 @@ class FridaGui:
                 merge_lift = float(self.var_merge_lift_mm.get() or 0)
             except ValueError:
                 merge_lift = 0.0
+            t0 = time.time()
             diag = robot.draw_strokes_panel_smooth(
                 strokes,
                 travel_speed=int(self.var_travel_speed.get()),
@@ -343,34 +582,46 @@ class FridaGui:
                 merge_pen_lift_mm=merge_lift,
             )
             elapsed = time.time() - t0
-            self._log(f"[draw] done in {elapsed:.2f}s")
-            self._log(f"  n_arcs           = {diag.get('n_arcs')}")
-            self._log(f"  travel saved     = {diag.get('travel_saved_mm', 0):.1f} mm")
-            self._log(f"  speed mean/max   = "
+            self._log(f"[draw] ✅ 完了 ({elapsed:.2f}s)")
+            self._log(f"  arc 数      = {diag.get('n_arcs')}")
+            self._log(f"  travel 削減 = {diag.get('travel_saved_mm', 0):.1f} mm")
+            self._log(f"  速度 平均/最大 = "
                       f"{diag.get('speed_mean_pct', 0):.1f}% / "
                       f"{diag.get('speed_max_pct', 0)}%")
             if use_real:
-                self._log("[draw] returning to ready pose ...")
+                self._log("[draw] ready pose に戻り中 ...")
                 robot.goto_ready_pose(speed_pct=15, settle_s=6.0)
+            self.root.after(0,
+                lambda: self._set_status(f"描画完了 ({elapsed:.1f}s)", "ok"))
         except Exception as e:
-            self._log(f"[draw] ERROR: {e}")
+            self._log(f"[draw] ❌ {e}")
+            self.root.after(0,
+                lambda e=e: self._set_status(f"描画 失敗: {e}", "error"))
         finally:
             if robot is not None:
                 try:
                     robot.disconnect()
                 except Exception:
                     pass
+            self.root.after(0, lambda: self._set_busy(False))
 
-    # ------------------------------------------------------------------ events
+    # ---------------------------------------------------------- events
     def _on_pick_image(self):
         path = filedialog.askopenfilename(
-            title="画像選択",
+            title="画像を選択",
+            initialdir=self._last_dir,
             filetypes=[("Images", "*.png *.jpg *.jpeg *.bmp"),
                        ("All", "*")])
         if path:
             self.var_image.set(path)
-            self.var_scene.set("")    # clear scene
-            self._log(f"[ui] image: {path}")
+            self.var_scene.set("")
+            self._last_dir = str(Path(path).parent)
+            self._log(f"[ui] 画像: {Path(path).name}")
+            self._set_status(f"画像: {Path(path).name}", "ok")
+
+    def _on_close(self):
+        self._save_state()
+        self.root.destroy()
 
 
 def main():
