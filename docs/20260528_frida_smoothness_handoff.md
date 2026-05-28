@@ -62,6 +62,13 @@
 
 ### benchmark (純関数シミュレータ、 mock 不要)
 
+**2026-05-28 更新 v4**: stroke ordering GIF アニメ生成 追加。
+default OFF、 user 明示 `--render-anim-out path.gif` (or GUI ボタン) で ON:
+- 1 stroke ずつ累積描画 frame を GIF 化、 最後の追加 stroke は赤強調
+- 「ロボットがどの順で何を描くか」 を実機描画前に視覚確認可
+- 依存 PIL のみ (mp4 用 deps 不要)
+- test_sketch.jpg → 9 frames / 18.6 KB / 800x800
+
 **2026-05-28 更新 v3**: stroke 連続化 (近接 stroke を pen-up せず接続) 追加。
 default OFF、 user 明示 `--merge-mm <N>` で ON (副作用: 接続線が描かれる):
 - face_sketch: merge 10mm で 9→7 strokes、 travel 101→88mm
