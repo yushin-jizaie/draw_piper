@@ -511,6 +511,14 @@ class WallDrawingGUI:
         self.lbl_master = ttk.Label(status_frame, text="(通常)",
                                     foreground="gray")
         self.lbl_master.pack(side=tk.LEFT, padx=4)
+        # workflow step indicator (進化ステップ):
+        #   ① 接続 (default) → ② キャリブ済 → ③ コンタクト調整済 → ④ 描画準備完了
+        # 各 callback (on_connect / on_save_drag / on_save_tune 等) で
+        # _refresh_workflow_step() を呼んで再判定
+        self.lbl_workflow = ttk.Label(status_frame,
+            text="🔌 ① 接続待ち", foreground="gray",
+            font=("Monaco", 10, "bold"))
+        self.lbl_workflow.pack(side=tk.LEFT, padx=(12, 4))
         self.lbl_powercycle = ttk.Label(status_frame, text="",
                                         foreground="red")
         self.lbl_powercycle.pack(side=tk.LEFT, padx=4)
@@ -728,7 +736,7 @@ class WallDrawingGUI:
         # ---- 3. 中央調整 (キャンバス中央で X 押し付け量を確定) ----
         tune_frame = ttk.LabelFrame(tab_center,
             text="✏ 中央押し付け 調整 (キャンバス中央で X 押し付け量を確定)",
-            padding=8)
+            padding=6)
         tune_frame.pack(fill=tk.X, padx=2, pady=2)
         # 上段: 大きめ spinbox を 3 つ並べる (▲▼ クリックで即アーム移動)
         tune_top = ttk.Frame(tune_frame)
@@ -1058,6 +1066,11 @@ class WallDrawingGUI:
     # button-state refresh
     # ------------------------------------------------------------------
     def _refresh_buttons(self):
+        # workflow step indicator も同時に更新
+        try:
+            self._refresh_workflow_step()
+        except Exception:
+            pass
         no_master = not self.in_master
         no_busy = not self.busy
         no_restart = not self.gui_restart_required
@@ -1380,6 +1393,45 @@ class WallDrawingGUI:
 
     def _refresh_buttons_safe(self):
         self.root.after(0, self._refresh_buttons)
+
+    def _refresh_workflow_step(self):
+        """workflow ステップ indicator を更新。 接続状態 + canvas yaml の
+        存在 + tune 値 から step を推定して status bar に表示。
+
+        ステップ判定:
+          ① 接続待ち       — not self.connected
+          ② キャリブ必要   — connected, canvas_calibration.yaml 無し
+          ③ コンタクト調整 — calibrated だが contact_x が初期値 のまま
+          ④ 描画準備完了   — 上記全クリア
+        """
+        try:
+            if not getattr(self, "connected", False):
+                self.lbl_workflow.config(text="🔌 ① 接続待ち",
+                                          foreground="gray")
+                return
+            # canvas_calibration.yaml の calibrated フラグを参照
+            yaml_path = OUTPUT_YAML
+            calibrated = False
+            try:
+                if os.path.exists(yaml_path):
+                    with open(yaml_path) as f:
+                        d = yaml.safe_load(f) or {}
+                    calibrated = bool(
+                        d.get("canvas", d).get("calibrated", False))
+            except Exception:
+                pass
+            if not calibrated:
+                self.lbl_workflow.config(text="📐 ② キャリブ必要",
+                                          foreground="#a40")
+                return
+            # tune (contact_x) が default 値かどうかは厳密判定難しいので
+            # 一旦 calibrated → ④ 描画準備完了 とする (ユーザ判断)
+            # ③ コンタクト調整 を別途出したければ contact_x_mm が修正済
+            # フラグを別管理する必要あり
+            self.lbl_workflow.config(text="🎨 ④ 描画準備完了",
+                                      foreground="#080")
+        except Exception:
+            pass    # status indicator は副次機能、 落ちて主機能止めない
 
     # ------------------------------------------------------------------
     # live status poll

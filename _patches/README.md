@@ -142,6 +142,15 @@ GUI ボタンを押さないこと (確認ダイアログで警告)。
 - log() 内で `_strip_emoji` ヘルパが既知の絵文字を strip
 - font 無し環境や log を grep 等で機械処理する用途に対応
 
+⭐ Status bar に workflow step indicator:
+- `lbl_workflow` ラベル新規 (master/CAN ラベルの右)
+- ステップ判定: 接続待ち (gray) → キャリブ必要 (橙) → 描画準備完了 (緑)
+- canvas_calibration.yaml の calibrated フラグを参照
+- `_refresh_buttons` から自動更新、 連動して常時反映
+
+section padding 統一:
+- tune_frame の padding 8 → 6 (他 LabelFrame と一致)
+
 LabelFrame 見出しに絵文字付与 (タスクフロー視認性):
 - 「📊 ステータス」 / 「🔌 接続」 / 「📋 ログ」
 - 「🔍 リーチ確認」 (tab ①)
