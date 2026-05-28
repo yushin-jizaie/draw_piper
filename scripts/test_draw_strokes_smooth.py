@@ -134,6 +134,9 @@ def main() -> int:
     ap.add_argument("--merge-mm", type=float, default=0.0,
                     help="近接 stroke を pen-up せず連続化 (default 0=OFF、 "
                          "副作用で接続線が描かれる)")
+    ap.add_argument("--merge-pen-lift-mm", type=float, default=0.0,
+                    help="merge 時に pen を持ち上げる mm "
+                         "(0=接続線描画、 0.3-1.0=軽量化、 実機調整)")
     ap.add_argument("--panel-yaml", type=Path,
                     default=Path.home() / "draw_piper" /
                             "calibration" / "panel_frame.yaml")
@@ -195,6 +198,7 @@ def main() -> int:
             step_mm=args.step_mm,
             reorder=args.reorder,
             merge_threshold_mm=args.merge_mm,
+            merge_pen_lift_mm=args.merge_pen_lift_mm,
         )
         elapsed = time.time() - t0
         print(f"[test_smooth] done in {elapsed:.2f}s (n_arcs={diag.get('n_arcs')})")

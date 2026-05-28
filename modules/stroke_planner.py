@@ -445,24 +445,41 @@ def plan_clear_heights(
     w_clear_max_mm: float = 30.0,
     w_clear_near_mm: float = 10.0,
     near_threshold_mm: float = 15.0,
+    w_contact_mm: float = 0.0,
+    merge_threshold_mm: float = 0.0,
+    merge_pen_lift_mm: float = 0.0,
 ) -> List[float]:
-    """各 stroke 終了後の pen-up 高さを 次 stroke までの距離で可変にする。
+    """各 stroke 終了後の pen-up 高さを 次 stroke までの距離で 3 region 可変。
 
-    短距離 travel なら 浅く (= 描画キャンバスに近い高さ) でも干渉せず travel 短縮、
-    遠距離なら 深く (= 安全高さ) を維持。
+    優先度 (大 → 小):
+      1. gap <= merge_threshold_mm (接続モード ON 時)
+         → w_contact + merge_pen_lift_mm
+         pen をほぼ下げたまま (lift 0 で接続線描画、 lift>0 で接続線
+         軽量化 = 用紙に触れない程度に浮かせる)
+      2. gap <= near_threshold_mm (look-ahead descent)
+         → w_clear_near_mm (浅い pen-up、 travel 高速化)
+      3. それ以外
+         → w_clear_max_mm (通常の安全な高さ)
+
+    最後の stroke は安全のため必ず w_clear_max_mm を返す
+    (接続モードは「次がある」 ことが前提)。
 
     Parameters
     ----------
     strokes : ordered list of polylines (TSP 後を想定)
     w_clear_max_mm : 通常の pen-up 高さ (= panel.w_clear_mm)
-    w_clear_near_mm : 短距離 travel 時の pen-up 高さ (浅め)
+    w_clear_near_mm : 短距離 travel 時の pen-up 高さ
     near_threshold_mm : この距離以下なら "near" 扱い
+    w_contact_mm : ペン接触面 (= panel.w_contact_mm)、 接続モードの基準
+    merge_threshold_mm : この距離以下なら "merge" 扱い (default 0 = OFF)
+    merge_pen_lift_mm : merge 時に w_contact から持ち上げる mm。
+        0 → pen-down のまま接続線描く
+        0.3-1.0 → 接続線軽量化 (ペン圧次第で 見えなく / 薄く)
+        実機調整推奨
 
     Returns
     -------
     list of float (len == len(strokes))
-        clear_heights[i] = stroke i の終端で取る pen-up 高さ (mm)。
-        最後の stroke は安全のため w_clear_max を返す。
     """
     n = len(strokes)
     if n == 0:
@@ -470,11 +487,12 @@ def plan_clear_heights(
     heights = [w_clear_max_mm] * n
     for i in range(n - 1):
         gap = _dist(strokes[i][-1], strokes[i + 1][0])
-        if gap <= near_threshold_mm:
+        if merge_threshold_mm > 0 and gap <= merge_threshold_mm:
+            heights[i] = w_contact_mm + merge_pen_lift_mm
+        elif gap <= near_threshold_mm:
             heights[i] = w_clear_near_mm
         # else 既に w_clear_max
-    # 最後は常に max (安全に終わる)
-    heights[-1] = w_clear_max_mm
+    heights[-1] = w_clear_max_mm    # 最後は常に max (安全)
     return heights
 
 

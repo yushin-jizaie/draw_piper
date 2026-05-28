@@ -78,7 +78,7 @@ def run_arcs(robot, strokes, draw_speed, travel_speed, step_mm):
 
 def run_smooth(robot, strokes, draw_speed, draw_speed_min, draw_speed_max,
                 travel_speed, near_threshold_mm, step_mm, reorder,
-                merge_threshold_mm=0.0):
+                merge_threshold_mm=0.0, merge_pen_lift_mm=0.0):
     """smooth: Frida-inspired single-call draw_strokes_panel_smooth."""
     t0 = time.time()
     diag = robot.draw_strokes_panel_smooth(
@@ -91,6 +91,7 @@ def run_smooth(robot, strokes, draw_speed, draw_speed_min, draw_speed_max,
         step_mm=step_mm,
         reorder=reorder,
         merge_threshold_mm=merge_threshold_mm,
+        merge_pen_lift_mm=merge_pen_lift_mm,
         settle_s=1.0,
         arrival_tol_mm=2.0, arrival_timeout_s=15.0,
     )
@@ -124,6 +125,8 @@ def main() -> int:
     ap.add_argument("--merge-mm", type=float, default=0.0,
                     help="smooth で 近接 stroke 連続化を有効化 (mm threshold、 "
                          "default 0=OFF、 副作用で接続線描かれる)")
+    ap.add_argument("--merge-pen-lift-mm", type=float, default=0.0,
+                    help="merge 時 pen 持ち上げ mm (0=接続線描画、 0.5=軽量化)")
     ap.add_argument("--countdown", type=int, default=3,
                     help="各 strategy 開始前のカウントダウン (用紙交換)")
     ap.add_argument("--out-dir", type=Path, default=None,
@@ -212,7 +215,8 @@ def main() -> int:
                         args.draw_speed_max, args.travel_speed,
                         args.near_threshold_mm, args.step_mm,
                         not args.no_reorder,
-                        merge_threshold_mm=args.merge_mm)
+                        merge_threshold_mm=args.merge_mm,
+                        merge_pen_lift_mm=args.merge_pen_lift_mm)
                 print(f"[bench] {strat}: {elapsed:.2f}s")
                 results["strategies"][strat] = {
                     "elapsed_s": elapsed,

@@ -71,6 +71,9 @@ def main() -> int:
     ap.add_argument("--merge-mm", type=float, default=0.0,
                     help="近接 stroke を pen-up せず連続化する距離閾値 "
                          "(default 0 = OFF、 副作用で接続線が描かれる)")
+    ap.add_argument("--merge-pen-lift-mm", type=float, default=0.0,
+                    help="merge 時に pen を w_contact から持ち上げる mm "
+                         "(0=接続線描画、 0.3-1.0=接続線軽量化、 実機調整推奨)")
     ap.add_argument("--debug-dir", type=Path, default=None,
                     help="Vectorizer の中間 PNG を保存するディレクトリ")
     ap.add_argument("--out-json", type=Path, default=None,
@@ -213,6 +216,7 @@ def main() -> int:
             step_mm=args.step_mm,
             reorder=not args.no_reorder,
             merge_threshold_mm=args.merge_mm,
+            merge_pen_lift_mm=args.merge_pen_lift_mm,
         )
         elapsed = time.time() - t0
         print(f"[pipeline] draw completed in {elapsed:.2f}s")

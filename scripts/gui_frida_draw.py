@@ -86,6 +86,7 @@ class FridaGui:
         self.var_near_mm = IntVar(value=15)
         self.var_step_mm = StringVar(value="2.0")
         self.var_merge_mm = StringVar(value="0")
+        self.var_merge_lift_mm = StringVar(value="0")
         self.var_reorder = BooleanVar(value=True)
         for lab, var, w in [
             ("draw base", self.var_speed_base, 4),
@@ -95,6 +96,7 @@ class FridaGui:
             ("near_mm", self.var_near_mm, 4),
             ("step_mm", self.var_step_mm, 5),
             ("merge_mm", self.var_merge_mm, 5),
+            ("merge_lift", self.var_merge_lift_mm, 5),
         ]:
             Label(row1, text=lab).pack(side="left", padx=(8, 1))
             Entry(row1, textvariable=var, width=w).pack(side="left")
@@ -324,6 +326,10 @@ class FridaGui:
                 merge_mm = float(self.var_merge_mm.get() or 0)
             except ValueError:
                 merge_mm = 0.0
+            try:
+                merge_lift = float(self.var_merge_lift_mm.get() or 0)
+            except ValueError:
+                merge_lift = 0.0
             diag = robot.draw_strokes_panel_smooth(
                 strokes,
                 travel_speed=int(self.var_travel_speed.get()),
@@ -334,6 +340,7 @@ class FridaGui:
                 step_mm=float(self.var_step_mm.get()),
                 reorder=bool(self.var_reorder.get()),
                 merge_threshold_mm=merge_mm,
+                merge_pen_lift_mm=merge_lift,
             )
             elapsed = time.time() - t0
             self._log(f"[draw] done in {elapsed:.2f}s")

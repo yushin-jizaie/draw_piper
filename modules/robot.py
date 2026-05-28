@@ -851,6 +851,7 @@ class Robot:
                                    speed_smooth_window=3,
                                    max_jerk_per_step=None,
                                    merge_threshold_mm=0.0,
+                                   merge_pen_lift_mm=0.0,
                                    settle_s=2.0,
                                    arrival_tol_mm=2.0,
                                    arrival_timeout_s=15.0):
@@ -912,7 +913,6 @@ class Robot:
         from .stroke_planner import (
             reorder_strokes_tsp, plan_clear_heights,
             speed_profile_for_stroke, total_travel_distance,
-            merge_near_strokes,
         )
 
         panel = self._require_panel()
@@ -949,22 +949,21 @@ class Robot:
             strokes_out = strokes_in
             indices = list(range(len(strokes_in)))
 
-        # オプション: 近接 stroke を pen-up せず連続化
-        # default 0 = OFF。 user 明示で有効化 (副作用: 接続線が描かれる)
-        n_strokes_before_merge = len(strokes_out)
-        merge_group_sizes = [1] * len(strokes_out)
-        if merge_threshold_mm and merge_threshold_mm > 0:
-            strokes_out, merge_group_sizes = merge_near_strokes(
-                strokes_out, merge_threshold_mm)
-
         travel_after = total_travel_distance(strokes_out, start_point=start_uv)
 
-        # look-ahead clear heights
+        # 3-region clear heights:
+        #   merge (gap <= merge_threshold_mm) → w_contact + merge_pen_lift_mm
+        #     (接続モード、 lift=0 で接続線描く、 lift>0 で軽量化)
+        #   near  (gap <= near_threshold_mm)  → w_clear_near (look-ahead)
+        #   far                               → w_clear_max  (通常)
         clear_heights = plan_clear_heights(
             strokes_out,
             w_clear_max_mm=wu_max,
             w_clear_near_mm=w_clear_near,
             near_threshold_mm=near_threshold_mm,
+            w_contact_mm=wc,
+            merge_threshold_mm=merge_threshold_mm,
+            merge_pen_lift_mm=merge_pen_lift_mm,
         )
 
         # ---- draw each stroke ----
@@ -1058,9 +1057,8 @@ class Robot:
             spd_min = spd_max = spd_mean = draw_speed_base
         return {
             "n_strokes": len(strokes_out),
-            "n_strokes_before_merge": n_strokes_before_merge,
-            "merge_group_sizes": merge_group_sizes,
             "merge_threshold_mm": float(merge_threshold_mm),
+            "merge_pen_lift_mm": float(merge_pen_lift_mm),
             "n_arcs": n_arcs_total,
             "reorder_indices": indices,
             "travel_before_mm": travel_before,

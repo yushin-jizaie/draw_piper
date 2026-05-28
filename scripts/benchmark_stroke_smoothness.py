@@ -238,6 +238,7 @@ def simulate_strategy_smooth(
     speed_smooth_window: int = 3,
     max_jerk_per_step=None,
     merge_threshold_mm: float = 0.0,
+    merge_pen_lift_mm: float = 0.0,
 ) -> Dict:
     """Frida-inspired: arcs + TSP reorder + curvature speed + look-ahead descent."""
     if not strokes:
@@ -251,18 +252,19 @@ def simulate_strategy_smooth(
         strokes_o = list(strokes)
         indices = list(range(len(strokes)))
 
-    # 1b. optional stroke merge (近接 stroke を pen-up せず連続化)
-    merge_group_sizes = [1] * len(strokes_o)
-    if merge_threshold_mm and merge_threshold_mm > 0:
-        strokes_o, merge_group_sizes = merge_near_strokes(
-            strokes_o, merge_threshold_mm)
+    # (merge は plan_clear_heights が clear height 経由で表現するので
+    # ここで merge_near_strokes を呼ばない。 strokes_o は そのまま使う。
+    # lift=0 で接続線描画、 lift>0 で接続線軽量化が clear_heights で制御される。)
 
-    # 2. look-ahead clear heights
+    # 2. clear heights (3-region: merge / near / far)
     clear_heights = plan_clear_heights(
         strokes_o,
         w_clear_max_mm=w_clear_max,
         w_clear_near_mm=w_clear_near,
         near_threshold_mm=near_threshold_mm,
+        w_contact_mm=w_contact,
+        merge_threshold_mm=merge_threshold_mm,
+        merge_pen_lift_mm=merge_pen_lift_mm,
     )
 
     n_arcs = 0
