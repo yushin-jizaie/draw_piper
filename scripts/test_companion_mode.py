@@ -1,33 +1,45 @@
 #!/usr/bin/env python3
-"""Companion mode: M16 画風で生成した object を **input の空白地帯に配置**。
+"""Companion mode: 位置ずらし (shift) と 位置合わせ (align) の 2 モード統合 script。
 
-ユーザ要望 (2026-05-28):
-- 入力画像の角度違いの場合は、 むしろ入力画像から位置をずらす
-- cv2 blob で重心 + 空白地帯に描く
+--placement で 2 つの経路を切替 (2026-05-28 統合):
 
-実装:
-  1. 入力 sketch を object preset (v5) で生成 (中央に detailed 出力)
-  2. Vectorizer で生成 strokes (centered)
-  3. 入力 sketch から cv2 で blob 検出 (input 占有領域)
-  4. 入力 bbox を避けた 最大空白矩形を計算
-  5. 生成 strokes を bbox → 空白矩形 に translate + scale
-  6. 入力 sketch も Vectorize → 入力 strokes (元位置)
-  7. 入力 strokes + transformed 生成 strokes = composite output
+  shift (default、 M16 位置ずらしモード):
+    1. 入力 sketch を object preset (M16) で生成 (中央 detailed)
+    2. Vectorizer で生成 strokes (centered)
+    3. 入力 sketch から cv2 で blob 検出 (input 占有領域)
+    4. 入力 bbox を避けた 最大空白矩形を計算
+    5. 生成 strokes を bbox → 空白矩形 に translate + scale
+    6. 入力 sketch も Vectorize → 入力 strokes (元位置)
+    7. 入力 strokes + transformed 生成 strokes = composite output
+    → 入力 sketch 位置を変えずに、 隣に M16 画風 detailed object を 追加。
 
-これにより 入力 sketch 位置を変えずに、 隣に M16 画風 detailed object を 追加。
+  align (位置合わせモード = F_angry_face 経路):
+    入力 sketch をそのまま 2-stage IP-Adapter で stylize (位置キープ)。
+    内部で test_ip_adapter_two_stage --category character を subprocess で呼ぶ。
+    Stage 1 = illustrious_v2_inpaint (Plan E inpaint で構図確定)。
+    Stage 2 = img2img + IP-Adapter (松本 style 転写、 strength 0.45 / ip_scale 0.6)。
+    入力構図を保ったまま 画風だけ変換。
 
 使用:
-  # 手動 prompt
-  ./venv/bin/python -m scripts.test_companion_mode \\
-      --user-sketch logs/sketch_X.png \\
-      --prompt "a cat, detailed Matsumoto style, ..." \\
-      --output logs/companion_<ts>
-
-  # VLM 自動 prompt (sketch → Qwen2.5-VL → Matsumoto companion prompt)
+  # 位置ずらし (M16、 既存挙動)
   ./venv/bin/python -m scripts.test_companion_mode \\
       --user-sketch logs/sketch_X.png \\
       --auto-prompt \\
       --output logs/companion_<ts>
+
+  # 位置合わせ (F_angry_face 経路、 character pool から auto pick)
+  ./venv/bin/python -m scripts.test_companion_mode \\
+      --user-sketch logs/sketch_X.png \\
+      --placement align --auto-prompt \\
+      --output logs/align_<ts>
+
+  # 位置合わせ + style ref 明示指定 (F_angry_face 再現コマンドと等価)
+  ./venv/bin/python -m scripts.test_companion_mode \\
+      --user-sketch SKETCH.png \\
+      --placement align \\
+      --style-ref training/matsumoto_taiyo/raw/IMG_4311.JPG \\
+      --prompt "1boy, solo, ..." \\
+      --output logs/align_<ts> --seed 42
 """
 from __future__ import annotations
 
@@ -48,16 +60,40 @@ def main() -> int:
     ap.add_argument("--user-sketch", type=Path, required=True)
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--prompt", type=str, default=None,
-                    help="object 生成の prompt (M16 detail style)。 "
+                    help="生成 prompt。 placement=shift なら object 生成 (M16)、 "
+                         "placement=align なら Stage 1 (Plan E inpaint) の prompt。 "
                          "--auto-prompt 指定時は無視。")
     ap.add_argument("--auto-prompt", action="store_true",
-                    help="VLM (Qwen2.5-VL) で sketch を識別して "
-                         "Matsumoto-style companion prompt を自動生成する。")
+                    help="VLM (Qwen2.5-VL) で sketch を識別して prompt を自動生成。 "
+                         "placement=shift → COMPANION_TEMPLATE (Matsumoto companion)、 "
+                         "placement=align → CHARACTER_TEMPLATE (M15/M16 character)。")
     ap.add_argument("--confidence-threshold", type=float, default=0.3,
                     help="VLM 信頼度がこの値未満なら fallback prompt を使う。")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--resolution", type=int, default=1024,
-                    help="Stage 1 解像度")
+                    help="Stage 1 解像度 (shift モード) / align モードは 768 固定 "
+                         "(F_angry_face 時と同じ 1024 → 768 経路で test_ip_adapter_two_stage 内で処理)")
+    # ============================================================
+    # 位置合わせ vs 位置ずらし モード切替 (2026-05-28 統合)
+    # shift = M16 object preset で生成 → cv2 blob で 入力の空白地帯に配置
+    # align = test_ip_adapter_two_stage --category character 経路
+    #         (F_angry_face 時の Plan E inpaint → IP-Adapter 2-stage)
+    # ============================================================
+    ap.add_argument("--placement", type=str, default="shift",
+                    choices=["shift", "align"],
+                    help="shift (default) = 位置ずらしモード: M16 object 生成 → "
+                         "cv2 blob で 入力の空白地帯に配置。 "
+                         "align = 位置合わせモード: 入力 sketch をそのまま 2-stage "
+                         "IP-Adapter で stylize、 位置キープ (F_angry_face 経路、 "
+                         "内部で test_ip_adapter_two_stage --category character)")
+    # align モード専用 引数 (shift では無視される)
+    ap.add_argument("--style-ref", type=Path, default=None,
+                    help="[align] style ref 画像。 省略時は character pool から auto pick "
+                         "(test_ip_adapter_two_stage の STYLE_REF_POOLS['character'])")
+    ap.add_argument("--stage2-strength", type=float, default=0.45,
+                    help="[align] img2img strength (F_angry_face 時と同じ 0.45 default)")
+    ap.add_argument("--ip-scale", type=float, default=0.6,
+                    help="[align] IP-Adapter scale (F_angry_face 時と同じ 0.6 default)")
     args = ap.parse_args()
 
     if not args.auto_prompt and not args.prompt:
@@ -76,14 +112,18 @@ def main() -> int:
 
     # ============================================================
     # Step 0: --auto-prompt なら VLM で prompt 生成 (SDXL の前に unload)
+    # placement に応じた template を選択:
+    #   shift  → COMPANION_TEMPLATE  (Matsumoto companion = M16 object)
+    #   align  → CHARACTER_TEMPLATE  (M15/M16 character = 2-stage Plan E)
     # ============================================================
     if args.auto_prompt:
-        print(f"[companion] Step 0: --auto-prompt → VLM で prompt 自動生成")
+        print(f"[companion] Step 0: --auto-prompt → VLM で prompt 自動生成 "
+              f"(placement={args.placement})")
         from modules.vlm import VLM
         from modules.prompt_builder import (
             build_prompt,
-            COMPANION_TEMPLATE,
-            COMPANION_FALLBACK_TEMPLATE,
+            COMPANION_TEMPLATE, COMPANION_FALLBACK_TEMPLATE,
+            CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE,
         )
         sketch_img = Image.open(args.user_sketch).convert("RGB")
         with VLM(verbose=True) as vlm:
@@ -92,15 +132,20 @@ def main() -> int:
         # 起動するためここで VRAM を解放しておく必要がある。
         print(f"[companion]   guess: {guess.to_text()} "
               f"(conf={guess.confidence:.2f})")
+        if args.placement == "align":
+            base_tpl, fb_tpl = CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE
+        else:
+            base_tpl, fb_tpl = COMPANION_TEMPLATE, COMPANION_FALLBACK_TEMPLATE
         args.prompt = build_prompt(
             guess,
             confidence_threshold=args.confidence_threshold,
-            base_template=COMPANION_TEMPLATE,
-            fallback_template=COMPANION_FALLBACK_TEMPLATE,
+            base_template=base_tpl,
+            fallback_template=fb_tpl,
         )
         print(f"[companion]   prompt: {args.prompt}")
         # 後段の参照用に prompt メタも残す
         (args.output / "00_auto_prompt.txt").write_text(
+            f"placement={args.placement}\n"
             f"subject_ja={guess.subject.ja}\n"
             f"location_ja={guess.location.ja}\n"
             f"action_ja={guess.action.ja}\n"
@@ -108,6 +153,36 @@ def main() -> int:
             f"prompt={args.prompt}\n",
             encoding="utf-8",
         )
+
+    # ============================================================
+    # placement=align: F_angry_face 経路 (test_ip_adapter_two_stage --category
+    # character) を subprocess で呼んで、 そこで完結 (Stage 1 + Stage 2 + Vectorize)
+    # ============================================================
+    if args.placement == "align":
+        print(f"[companion] === ALIGN MODE (位置合わせ、 F_angry_face 経路) ===")
+        cmd = [
+            "./venv/bin/python", "-m", "scripts.test_ip_adapter_two_stage",
+            "--user-sketch", str(args.user_sketch),
+            "--category", "character",
+            "--output", str(args.output),
+            "--stage1-prompt", args.prompt,
+            "--stage2-strength", str(args.stage2_strength),
+            "--ip-scale", str(args.ip_scale),
+            "--seed", str(args.seed),
+            "--stage1-resolution", "1024",
+            "--resolution", "768",
+        ]
+        if args.style_ref is not None:
+            cmd += ["--style-ref", str(args.style_ref)]
+        print(f"[companion]   subprocess: {' '.join(cmd)}")
+        res_code = subprocess.run(cmd, cwd=str(_ROOT)).returncode
+        if res_code != 0:
+            print(f"[companion] align mode failed (exit {res_code})")
+            return res_code
+        print(f"\n[companion] ALIGN DONE.")
+        print(f"  出力: {args.output}/ (stage1/ + 20_final_stage2_*.png + "
+              f"30_vectorized_strokes.png)")
+        return 0
 
     # ============================================================
     # Step 1: object mode v5 (M16) で 生成 (中央 detailed)
