@@ -1378,7 +1378,7 @@ class WallDrawingGUI:
     # ------------------------------------------------------------------
     def _run_in_thread(self, fn, *args):
         if self.gui_restart_required:
-            messagebox.showerror("GUI 再起動が必要",
+            messagebox.showerror("⚠ GUI 再起動が必要",
                 "GUI がアームを正常に制御できなくなりました "
                 "(マスター後の状態など)。\n\n"
                 "① 必要ならアームの電源リセット\n"
@@ -2156,7 +2156,7 @@ class WallDrawingGUI:
     def on_restart_gui(self):
         """Spawn a fresh GUI process and quit this one."""
         if self.in_master:
-            messagebox.showerror("マスターモード中は再起動不可",
+            messagebox.showerror("⚠ マスターモード中は再起動不可",
                 "先にティーチを保存 or 中止してください。")
             return
         if not messagebox.askyesno("GUI 再起動",
@@ -2290,7 +2290,7 @@ class WallDrawingGUI:
     def on_can_up(self):
         which = subprocess.run(["which", "pkexec"], capture_output=True)
         if which.returncode != 0:
-            messagebox.showerror("pkexec not found",
+            messagebox.showerror("❌ pkexec not found",
                 "pkexec (PolicyKit) is not installed. Either:\n"
                 "  sudo apt install policykit-1\n"
                 "or run CAN up manually in a terminal:\n"
@@ -2337,7 +2337,7 @@ class WallDrawingGUI:
 
     def on_connect(self):
         if self.gui_restart_required:
-            messagebox.showerror("GUI 再起動が必要",
+            messagebox.showerror("⚠ GUI 再起動が必要",
                 "この GUI は以前マスターモードに入った状態です。 "
                 "SDK が安定して再接続できません。 「GUI 終了」 して "
                 "再起動してください。")
@@ -2677,7 +2677,9 @@ class WallDrawingGUI:
         angle=0 = 閉じ位置として扱われる。
         """
         if self.piper is None:
-            messagebox.showerror("未接続", "先に 「接続」 してください。")
+            messagebox.showerror("❌ 未接続",
+                "アームに接続されていません。\n\n"
+                "対処: 上部の 「🟢 接続」 ボタンを押してから再試行してください。")
             return
         if not messagebox.askyesno("グリッパー ホーミング",
                 "現在のグリッパー位置を 「0」 (= 完全に閉じた位置) として "
@@ -2729,7 +2731,9 @@ class WallDrawingGUI:
     def on_grip_strong(self):
         """グリッパーを最大トルクで閉じる (ペンを強く掴む)。"""
         if self.piper is None:
-            messagebox.showerror("未接続", "先に 「接続」 してください。")
+            messagebox.showerror("❌ 未接続",
+                "アームに接続されていません。\n\n"
+                "対処: 上部の 「🟢 接続」 ボタンを押してから再試行してください。")
             return
         self._run_in_thread(self._do_grip_strong)
 
@@ -2747,7 +2751,9 @@ class WallDrawingGUI:
     def on_grip_release(self):
         """グリッパーを開く (ペンを離す)。"""
         if self.piper is None:
-            messagebox.showerror("未接続", "先に 「接続」 してください。")
+            messagebox.showerror("❌ 未接続",
+                "アームに接続されていません。\n\n"
+                "対処: 上部の 「🟢 接続」 ボタンを押してから再試行してください。")
             return
         self._run_in_thread(self._do_grip_release)
 
@@ -2795,7 +2801,7 @@ class WallDrawingGUI:
         # configurations even with the same cartesian pose, so a strict
         # joint-pose check is too restrictive once chaining has started.
         if not self._at_ready_pose() and not self.probe_active:
-            messagebox.showwarning("ホーム位置未到達",
+            messagebox.showwarning("⚠ ホーム位置未到達",
                 "リーチ確認を始める前に 「ホーム/撮影位置へ」 を "
                 "押してください。")
             return
@@ -2959,7 +2965,7 @@ class WallDrawingGUI:
     # ------------------------------------------------------------------
     def on_start_drag(self):
         if not self._at_ready_pose():
-            messagebox.showwarning("ホーム位置未到達",
+            messagebox.showwarning("⚠ ホーム位置未到達",
                 "ティーチを始める前に 「ホーム/撮影位置へ」 を "
                 "押してください。")
             return
@@ -3251,7 +3257,7 @@ class WallDrawingGUI:
         if self.redo_corner_key is not None:
             p = self._capture_point()
             if p is None:
-                messagebox.showwarning("関節フィードバック未取得",
+                messagebox.showwarning("⚠ 関節フィードバック未取得",
                     "アームの関節値がまだ全てゼロです。\n"
                     "アームを少し手で揺らしてから再度押してください。")
                 return
@@ -3274,7 +3280,7 @@ class WallDrawingGUI:
             return
         p = self._capture_point()
         if p is None:
-            messagebox.showwarning("関節フィードバック未取得",
+            messagebox.showwarning("⚠ 関節フィードバック未取得",
                 "アームの関節値がまだ全てゼロです。\n"
                 "アームを少し手で揺らして 0x155-7 ブロードキャストを "
                 "起動してから記録してください。")
@@ -3328,7 +3334,7 @@ class WallDrawingGUI:
         その隅が上書きされる。
         """
         if self.listener is None or not self.in_master:
-            messagebox.showerror("マスターモード外",
+            messagebox.showerror("⚠ マスターモード外",
                 "個別やり直しはティーチ中 (マスターモード) のみ可。")
             return
         if corner_key not in self.CORNER_ORDER:
@@ -3367,7 +3373,7 @@ class WallDrawingGUI:
 
     def on_save_drag(self):
         if len(self.dt_corners) != 4:
-            messagebox.showerror("四隅が未完了",
+            messagebox.showerror("⚠ 四隅が未完了",
                 f"記録済み {len(self.dt_corners)}/4 隅。 B1 (四隅) を "
                 "全て記録してから保存してください。")
             return
@@ -3464,12 +3470,12 @@ class WallDrawingGUI:
     def _start_trace(self, target):
         """Start a DragSamplingThread that fills dt_traces[target]."""
         if self.listener is None or not self.in_master:
-            messagebox.showerror("マスターモード外",
+            messagebox.showerror("⚠ マスターモード外",
                 "先に 「ティーチ開始」 でマスターモードに入って "
                 "ください。")
             return
         if len(self.dt_corners) < 4:
-            messagebox.showerror("四隅未完了",
+            messagebox.showerror("⚠ 四隅未完了",
                 f"先に 4 隅を全部記録してください "
                 f"(現在 {len(self.dt_corners)}/4)。")
             return
@@ -3533,7 +3539,7 @@ class WallDrawingGUI:
         """Snapshot current master-mode joints as the ready/capture pose
         and persist to panel_frame.yaml's panel.ready_pose_deg."""
         if not self.in_master or self.listener is None:
-            messagebox.showerror("マスターモード外",
+            messagebox.showerror("⚠ マスターモード外",
                 "撮影/ホーム位置の記録には マスターモード "
                 "(ティーチ中) が必要です。\n\n"
                 "先に 「ティーチ開始」 でマスターモードに入り、 "
@@ -4684,11 +4690,13 @@ class WallDrawingGUI:
     def on_strokes_draw(self):
         path = self.var_strokes_json_path.get()
         if not path:
-            messagebox.showerror("ファイル未指定",
+            messagebox.showerror("❌ ファイル未指定",
                 "「選択...」で strokes.json を指定してください。")
             return
         if not os.path.exists(path):
-            messagebox.showerror("ファイルなし", f"見つかりません:\n{path}")
+            messagebox.showerror("❌ ファイルなし",
+                f"見つかりません:\n{path}\n\n"
+                "対処: パスが正しいか、 ファイルが移動されていないか確認。")
             return
         if not self.connected:
             messagebox.showerror("未接続",
@@ -4719,11 +4727,13 @@ class WallDrawingGUI:
         プレビュー表示。 ペン軌跡 + 開始/終点マーカー。"""
         path = self.var_strokes_json_path.get()
         if not path:
-            messagebox.showerror("ファイル未指定",
+            messagebox.showerror("❌ ファイル未指定",
                 "「選択...」 で strokes.json を指定してください。")
             return
         if not os.path.exists(path):
-            messagebox.showerror("ファイルなし", f"見つかりません:\n{path}")
+            messagebox.showerror("❌ ファイルなし",
+                f"見つかりません:\n{path}\n\n"
+                "対処: パスが正しいか、 ファイルが移動されていないか確認。")
             return
         try:
             image_shape, strokes_px, meta = dsw_dev.load_strokes_json(path)
@@ -4788,11 +4798,13 @@ class WallDrawingGUI:
             return
         path = self.var_strokes_json_path.get()
         if not path:
-            messagebox.showerror("ファイル未指定",
+            messagebox.showerror("❌ ファイル未指定",
                 "「選択...」 で strokes.json を指定してください。")
             return
         if not os.path.exists(path):
-            messagebox.showerror("ファイルなし", f"見つかりません:\n{path}")
+            messagebox.showerror("❌ ファイルなし",
+                f"見つかりません:\n{path}\n\n"
+                "対処: パスが正しいか、 ファイルが移動されていないか確認。")
             return
         if not self._check_at_home_or_warn("Frida Smooth Draw"):
             return
@@ -4897,7 +4909,7 @@ class WallDrawingGUI:
         """
         path = self.var_strokes_json_path.get()
         if not path or not os.path.exists(path):
-            messagebox.showerror("ファイル未指定",
+            messagebox.showerror("❌ ファイル未指定",
                 "「選択...」 で strokes.json を指定してください。")
             return
         try:
@@ -4966,7 +4978,7 @@ class WallDrawingGUI:
         """中断した描画を続きから再開。"""
         path = self.var_strokes_json_path.get()
         if not path:
-            messagebox.showerror("ファイル未指定",
+            messagebox.showerror("❌ ファイル未指定",
                 "「選択...」 で strokes.json を指定してください。")
             return
         idx = int(self.strokes_last_completed_idx)
