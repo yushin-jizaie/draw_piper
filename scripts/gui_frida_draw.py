@@ -108,6 +108,8 @@ class FridaGui:
                 command=self._on_preflight).pack(side="left", padx=2)
         Button(row2, text="Preview 画像",
                 command=self._on_preview).pack(side="left", padx=2)
+        Button(row2, text="GIF アニメ",
+                command=self._on_render_anim).pack(side="left", padx=2)
         Button(row2, text="Mock 描画 (dry)",
                 command=lambda: self._start_draw(use_real=False)).pack(
             side="left", padx=2)
@@ -249,6 +251,33 @@ class FridaGui:
         except Exception as e:
             self._log(f"[preview] window 表示失敗 (PIL.ImageTk): {e} — "
                       "ファイルとしては保存済")
+
+    # ------------------------------------------------------------------ anim
+    def _on_render_anim(self):
+        """stroke ordering GIF アニメを生成。 描画順を 1 stroke ずつ
+        累積表示。 default 200ms/frame。 user 確認用、 描画には影響しない。
+        """
+        strokes, src = self._resolve_strokes()
+        if strokes is None:
+            messagebox.showerror("anim", src)
+            return
+        from modules.stroke_visualizer import render_stroke_animation
+        from modules.stroke_planner import reorder_strokes_tsp
+        reordered, _ = reorder_strokes_tsp(strokes, start_point=None)
+        out_dir = _ROOT / "logs" / "gui_frida"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"anim_{time.strftime('%Y%m%d_%H%M%S')}.gif"
+        try:
+            n, p = render_stroke_animation(
+                reordered, tuple(self.panel.size_mm), out_path,
+                out_size_px=(800, 800), frame_ms=200,
+            )
+            self._log(f"[anim] {n} frames → {p}")
+            messagebox.showinfo("GIF アニメ生成",
+                f"{n} frames を出力しました:\n{p}")
+        except Exception as e:
+            self._log(f"[anim] ERROR: {e}")
+            messagebox.showerror("anim", str(e))
 
     # ------------------------------------------------------------------ draw
     def _start_draw(self, *, use_real: bool):

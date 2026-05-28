@@ -78,6 +78,11 @@ def main() -> int:
     ap.add_argument("--render-out", type=Path, default=None,
                     help="strokes を画像化して保存 (TSP 比較 grid)。 "
                          "実機なしで 「ロボットが何を描くか」 を視覚確認")
+    ap.add_argument("--render-anim-out", type=Path, default=None,
+                    help="stroke ordering の累積描画 GIF アニメを保存。 "
+                         "1 stroke ずつ追加されるので 描画順を視覚確認可")
+    ap.add_argument("--anim-frame-ms", type=int, default=200,
+                    help="アニメ 1 frame の表示時間 (ms、 default 200)")
     ap.add_argument("--countdown", type=int, default=3,
                     help="real 時の描画前カウントダウン秒数")
     args = ap.parse_args()
@@ -136,6 +141,21 @@ def main() -> int:
         args.render_out.parent.mkdir(parents=True, exist_ok=True)
         preview.save(args.render_out)
         print(f"[pipeline] preview saved -> {args.render_out}")
+
+    # --- render animation (optional, GIF) ---
+    if args.render_anim_out:
+        from modules.stroke_visualizer import render_stroke_animation
+        from modules.stroke_planner import reorder_strokes_tsp
+        # アニメは TSP 後の描画順で生成 (実際にロボットが描く順)
+        reordered_mm, _ = reorder_strokes_tsp(strokes_mm, start_point=None)
+        args.render_anim_out.parent.mkdir(parents=True, exist_ok=True)
+        n_frames, out_path = render_stroke_animation(
+            reordered_mm, tuple(panel.size_mm),
+            args.render_anim_out,
+            out_size_px=(800, 800),
+            frame_ms=args.anim_frame_ms,
+        )
+        print(f"[pipeline] animation saved -> {out_path} ({n_frames} frames)")
 
     # --- save stroke JSON ---
     if args.out_json:

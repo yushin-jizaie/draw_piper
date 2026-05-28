@@ -203,6 +203,111 @@ def render_comparison_grid(
     return img
 
 
+def render_stroke_animation(
+    strokes_mm: Sequence[Stroke],
+    panel_size_mm: Tuple[float, float],
+    out_path,
+    *,
+    out_size_px: Tuple[int, int] = (800, 800),
+    pen_color: Color = (20, 20, 20),
+    pen_width_px: int = 3,
+    travel_color: Color = (200, 100, 100),
+    travel_width_px: int = 1,
+    frame_ms: int = 200,
+    show_travel: bool = True,
+    loop: int = 0,
+    margin_mm: float = 5.0,
+) -> Tuple[int, str]:
+    """各 stroke を 1 frame ずつ追加していく GIF アニメを生成。
+
+    user が「ロボットが何をどの順で描くか」 を事前に視覚確認できる。
+    stroke[0] (緑) → stroke[1] 追加 (橙の travel 線で前 stroke 末端から
+    繋ぐ) → ... を時系列に再生。
+
+    Parameters
+    ----------
+    strokes_mm : panel uv 系 mm strokes (例 TSP 後)
+    panel_size_mm : (width, height) mm
+    out_path : str or Path、 出力 GIF パス
+    out_size_px : frame サイズ
+    pen_color : 描画線色
+    pen_width_px : 線幅
+    travel_color : travel (pen-up) 線色
+    frame_ms : 1 frame 表示時間 (ms)
+    show_travel : True なら 次 stroke への travel を表示
+    loop : 0=無限、 N>0=N 回 再生
+    margin_mm : panel 周囲の margin
+
+    Returns
+    -------
+    (n_frames, out_path_str)
+    """
+    out_path = str(out_path)
+    if not strokes_mm:
+        # 空 → 1 frame (空の panel) を出す
+        img = render_strokes_uv([], panel_size_mm, out_size_px=out_size_px,
+                                  margin_mm=margin_mm)
+        img.save(out_path)
+        return 1, out_path
+
+    W, H = out_size_px
+    panel_w, panel_h = panel_size_mm
+    total_w_mm = panel_w + 2 * margin_mm
+    total_h_mm = panel_h + 2 * margin_mm
+    scale = min(W / total_w_mm, H / total_h_mm)
+    pad_u = margin_mm + (W / scale - total_w_mm) / 2
+    pad_v = margin_mm + (H / scale - total_h_mm) / 2
+
+    def uv_to_px(u_mm, v_mm):
+        x = (u_mm + pad_u) * scale
+        y = H - (v_mm + pad_v) * scale
+        return (int(x), int(y))
+
+    frames = []
+    # Start: empty panel with panel boundary
+    base_img = render_strokes_uv([], panel_size_mm,
+                                  out_size_px=out_size_px,
+                                  margin_mm=margin_mm,
+                                  title=f"frame 0 / {len(strokes_mm)}: (start)")
+    frames.append(base_img)
+
+    # 1 frame ごとに stroke を 1 本ずつ追加 (累積描画)
+    for i, stroke in enumerate(strokes_mm):
+        img = render_strokes_uv(
+            strokes_mm[:i + 1], panel_size_mm,
+            out_size_px=out_size_px,
+            pen_color=pen_color, pen_width_px=pen_width_px,
+            show_travel=show_travel,
+            travel_color=travel_color, travel_width_px=travel_width_px,
+            start_marker=False, margin_mm=margin_mm,
+            title=f"frame {i + 1} / {len(strokes_mm)}: stroke {i + 1}",
+        )
+        # 「現在 stroke = 赤」 ハイライト (最後に追加した stroke)
+        if len(stroke) >= 2:
+            draw = ImageDraw.Draw(img)
+            for j in range(len(stroke) - 1):
+                p0 = uv_to_px(*stroke[j])
+                p1 = uv_to_px(*stroke[j + 1])
+                draw.line([p0, p1], fill=(220, 30, 30),
+                          width=pen_width_px + 1)
+            # 始点丸
+            sx, sy = uv_to_px(*stroke[0])
+            r = max(3, pen_width_px + 1)
+            draw.ellipse([sx - r, sy - r, sx + r, sy + r],
+                          outline=(220, 30, 30), fill=(220, 30, 30))
+        frames.append(img)
+
+    frames[0].save(
+        out_path,
+        save_all=True,
+        append_images=frames[1:],
+        duration=frame_ms,
+        loop=loop,
+        optimize=True,
+    )
+    return len(frames), out_path
+
+
 # ============================================================ smoke test
 
 if __name__ == "__main__":
