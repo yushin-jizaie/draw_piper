@@ -845,8 +845,13 @@ class WallDrawingGUI:
 
         action_row = ttk.Frame(draw_frame)
         action_row.pack(fill=tk.X, pady=4)
-        self.btn_draw = ttk.Button(action_row, text="中心に正方形 (描画開始)",
-            command=self.on_draw_square, width=22)
+        # 「描画開始」 は実機動作するので 橙背景で視認性↑
+        self.btn_draw = tk.Button(action_row,
+            text="▶ 中心に正方形 (描画開始)",
+            command=self.on_draw_square, width=22,
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
         self.btn_draw.pack(side=tk.LEFT, padx=2)
         ttk.Label(action_row, font=("Monaco", 9), foreground="#555",
             text="C1 → C2 → C3 → C4 → C1"
@@ -910,21 +915,31 @@ class WallDrawingGUI:
                                                 padx=(8, 4))
         make_spinbox(sf_r2, self.var_strokes_max, 0, 999, 1, width=4,
                      fmt="%.0f").pack(side=tk.LEFT, padx=(0, 8))
-        self.btn_strokes_draw = ttk.Button(sf_r2,
-            text="描画開始", command=self.on_strokes_draw, width=10)
+        # 「描画開始」 は実機動作するので 橙背景で視認性↑
+        self.btn_strokes_draw = tk.Button(sf_r2,
+            text="▶ 描画開始", command=self.on_strokes_draw, width=12,
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
         self.btn_strokes_draw.pack(side=tk.LEFT, padx=2)
         self.btn_strokes_resume = ttk.Button(sf_r2,
             text="再開", command=self.on_strokes_resume, width=8,
             state=tk.DISABLED)
         self.btn_strokes_resume.pack(side=tk.LEFT, padx=2)
-        self.btn_strokes_abort = ttk.Button(sf_r2,
-            text="中止", command=self.on_strokes_abort, width=8)
+        # 「中止」 は緊急停止なので 赤背景
+        self.btn_strokes_abort = tk.Button(sf_r2,
+            text="■ 中止", command=self.on_strokes_abort, width=8,
+            bg="#fcc", fg="#800",
+            activebackground="#f99", activeforeground="#600",
+            font=("Monaco", 10, "bold"))
         self.btn_strokes_abort.pack(side=tk.LEFT, padx=2)
         # Frida Smooth Draw (PR #2): 多 stroke 最適化 (TSP + 曲率速度 +
         # look-ahead) 経路で別 Robot インスタンス経由で描画する
-        self.btn_strokes_draw_smooth = ttk.Button(sf_r2,
+        self.btn_strokes_draw_smooth = tk.Button(sf_r2,
             text="✨ Frida Smooth", command=self.on_strokes_draw_smooth,
-            width=14)
+            width=14, bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
         self.btn_strokes_draw_smooth.pack(side=tk.LEFT, padx=(8, 2))
         self.lbl_strokes_progress = ttk.Label(sf_r2,
             text="進捗: -", font=("Monaco", 9), foreground="gray")
@@ -4624,13 +4639,17 @@ class WallDrawingGUI:
             return
         if not self._check_at_home_or_warn("ストローク描画"):
             return
-        msg = (f"ストローク描画を開始しますか?\n\n"
-               f"  入力: {path}\n"
-               f"  最大本数: {self.var_strokes_max.get() or '全部'}\n"
-               f"  関節速度 {self._speed_joint()}% (IK + MOVE J)\n\n"
-               "⚠ アームが動きます。 アームの近くに人がいないことを "
-               "確認してください。")
-        if not messagebox.askyesno("ストローク描画 確認", msg):
+        msg = (f"ストローク描画を開始します。\n\n"
+               f"  入力      : {os.path.basename(path)}\n"
+               f"  最大本数  : {self.var_strokes_max.get() or '全部'}\n"
+               f"  関節速度  : {self._speed_joint()}% (IK + MOVE J)\n\n"
+               "事前確認:\n"
+               "  ☐ アームの可動範囲に人や障害物がない\n"
+               "  ☐ panel に紙が貼られている\n"
+               "  ☐ ペンが付いていて contact_x 調整済\n"
+               "  ☐ 緊急停止ボタンが手元にある\n\n"
+               "⚠ アームが動きます。 続けますか?")
+        if not messagebox.askyesno("⚠️ ストローク描画 確認", msg):
             return
         self.strokes_abort_flag = False
         # 新規開始: 再開状態リセット
