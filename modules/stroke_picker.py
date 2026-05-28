@@ -24,7 +24,7 @@ Usage from another Tk GUI (e.g. wall_drawing_gui.py):
 Standalone test:
     python3 -m modules.stroke_picker
 
-Scans:  <project_root>/logs/vlm_to_image_*/cycle_*/
+Scans:  <project_root>/logs/**/strokes*.json (vlm_to_image_*/cycle_*/ も含む)
 Each card shows:
   - generated.png         (left thumbnail)
   - vec_debug/06_strokes.png (right thumbnail)
@@ -177,32 +177,56 @@ class StrokePicker(tk.Toplevel):
     # log scanning
     # ------------------------------------------------------------------
     def _scan_logs(self) -> list[dict]:
+        """logs/ 配下から strokes 系 JSON を一括スキャン。
+
+        対象:
+          - vlm_to_image_*/cycle_*/strokes.json       (パイプライン GUI 出力)
+          - **/cycle_*/strokes.json                   (他系列の cycle_ 出力)
+          - **/strokes*.json                          (robot_strokes_demo 等 直配置)
+        """
         if not self.logs_dir.exists():
             return []
+        # 候補ディレクトリ収集 (重複排除): strokes*.json を含む dir すべて
+        cycle_dirs: set = set()
+        for js in self.logs_dir.rglob("strokes*.json"):
+            if js.is_file():
+                cycle_dirs.add(js.parent)
         entries: list[dict] = []
-        for cycle in self.logs_dir.glob("vlm_to_image_*/cycle_*"):
+        for cycle in cycle_dirs:
             if not cycle.is_dir():
                 continue
+            # strokes.json or strokes_mm.json 等を一つ拾う (優先順)
+            strokes_json = None
+            for name in ("strokes.json", "strokes_mm.json"):
+                cand = cycle / name
+                if cand.exists():
+                    strokes_json = cand
+                    break
+            if strokes_json is None:
+                # その他 strokes*.json は 1 個目を拾う
+                cand_list = sorted(cycle.glob("strokes*.json"))
+                if cand_list:
+                    strokes_json = cand_list[0]
             gen = cycle / "generated.png"
             strokes_png = cycle / "vec_debug" / "06_strokes.png"
-            strokes_json = cycle / "strokes.json"
             input_sketch = cycle / "input_sketch.jpg"
-            # at least one of the two images must exist
-            if not gen.exists() and not strokes_png.exists():
-                continue
             meta: dict = {
                 "cycle_dir": cycle,
                 "generated_image": gen if gen.exists() else None,
                 "strokes_png": strokes_png if strokes_png.exists() else None,
-                "strokes_json": strokes_json if strokes_json.exists() else None,
+                "strokes_json": strokes_json,
                 "input_sketch": input_sketch if input_sketch.exists() else None,
                 "subject": "",
                 "n_strokes": None,
             }
-            # extract timestamp from parent dir name
-            m = re.search(r"vlm_to_image_(\d{8}_\d{6})", str(cycle.parent.name))
+            # timestamp 抽出: 親 dir 名 / 自 dir 名 から YYYYMMDD_HHMMSS を拾う
+            m = re.search(r"(\d{8}_\d{6})", str(cycle.parent.name))
+            if not m:
+                m = re.search(r"(\d{8}_\d{6})", str(cycle.name))
+            if not m:
+                m = re.search(r"(\d{8})", str(cycle.parent.name))
             meta["timestamp"] = m.group(1) if m else ""
-            # topic_guess.json -> subject
+            # topic_guess.json -> subject (パイプライン GUI のみ)
             tg = cycle / "topic_guess.json"
             if tg.exists():
                 try:
@@ -215,7 +239,7 @@ class StrokePicker(tk.Toplevel):
                 except Exception:
                     pass
             # strokes.json -> n_strokes (for label)
-            if strokes_json.exists():
+            if strokes_json is not None and strokes_json.exists():
                 try:
                     sd = json.loads(strokes_json.read_text(encoding="utf-8"))
                     meta["n_strokes"] = sd.get("n_strokes")

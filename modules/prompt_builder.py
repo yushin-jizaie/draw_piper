@@ -58,6 +58,24 @@ COMPANION_FALLBACK_TEMPLATE = (
 )
 
 
+# 重ね合わせモード (M15/M16 character) 用。 IP-Adapter two-stage の
+# Stage 1 prompt として使う想定。 VLM の subject を 主役にしつつ、
+# style ref で 松本タッチを後段の Stage 2 で重ねる。
+CHARACTER_TEMPLATE = (
+    "{subject_en} {action_en} {location_en}, "
+    "manga style character, dynamic pose, expressive ink lines, "
+    "detailed lineart, single continuous black line on plain white background, "
+    "clean smooth strokes, no shading"
+)
+
+CHARACTER_FALLBACK_TEMPLATE = (
+    "1boy, solo, young boy with full body, messy hair, simple t-shirt, "
+    "manga style character, dynamic pose, expressive ink lines, "
+    "detailed lineart, single continuous black line on plain white background, "
+    "clean smooth strokes, no shading"
+)
+
+
 def build_prompt(guess: TopicGuess, confidence_threshold: float = 0.3,
                   base_template: str = None,
                   fallback_template: str = None) -> str:
@@ -161,3 +179,23 @@ if __name__ == "__main__":
     )
     print(f"  input:  {g6.to_text()}")
     print(f"  prompt: {build_prompt(g6, base_template=COMPANION_TEMPLATE, fallback_template=COMPANION_FALLBACK_TEMPLATE)}")
+
+    print("\n=== character mode (Stage 1 prompt) ===")
+    g7 = TopicGuess(
+        subject=find_subject("人"),
+        location=find_location("公園"),
+        action=find_action("走っている"),
+        confidence=0.8,
+    )
+    print(f"  input:  {g7.to_text()}")
+    print(f"  prompt: {build_prompt(g7, base_template=CHARACTER_TEMPLATE, fallback_template=CHARACTER_FALLBACK_TEMPLATE)}")
+
+    print("\n=== character fallback (low conf → 1boy default) ===")
+    g8 = TopicGuess(
+        subject=UNKNOWN_SUBJECT,
+        location=UNKNOWN_LOCATION,
+        action=UNKNOWN_ACTION,
+        confidence=0.1,
+    )
+    print(f"  input:  {g8.to_text()}")
+    print(f"  prompt: {build_prompt(g8, base_template=CHARACTER_TEMPLATE, fallback_template=CHARACTER_FALLBACK_TEMPLATE)}")

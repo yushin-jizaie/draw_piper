@@ -42,9 +42,57 @@ def main() -> int:
     ap.add_argument("--stage1-prompt", type=str,
                     default="1boy, solo, young boy with full body, "
                             "messy hair, simple t-shirt")
+    ap.add_argument("--auto-prompt", action="store_true",
+                    help="VLM (Qwen2.5-VL) で sketch を識別して "
+                         "category に応じた prompt を自動生成し --stage1-prompt "
+                         "を上書きする。 character → CHARACTER_TEMPLATE、 "
+                         "object → COMPANION_TEMPLATE (Matsumoto)。")
+    ap.add_argument("--confidence-threshold", type=float, default=0.3,
+                    help="VLM 信頼度がこの値未満なら fallback prompt を使う。")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
+
+    # --auto-prompt: VLM 推論 1 回 → category に応じた template で
+    # stage1_prompt を上書き。 subprocess loop が走る前に VLM を unload
+    # しておかないと VRAM を SDXL Turbo と取り合う。
+    if args.auto_prompt:
+        print(f"[gacha] --auto-prompt → VLM で stage1_prompt を自動生成")
+        from PIL import Image as _Image
+        from modules.vlm import VLM
+        from modules.prompt_builder import (
+            build_prompt,
+            COMPANION_TEMPLATE, COMPANION_FALLBACK_TEMPLATE,
+            CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE,
+        )
+        sketch_img = _Image.open(args.user_sketch).convert("RGB")
+        with VLM(verbose=True) as vlm:
+            guess = vlm.predict_intent(sketch_img)
+        print(f"[gacha]   guess: {guess.to_text()} "
+              f"(conf={guess.confidence:.2f})")
+        if args.category == "character":
+            base_tpl, fb_tpl = CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE
+        elif args.category == "object":
+            base_tpl, fb_tpl = COMPANION_TEMPLATE, COMPANION_FALLBACK_TEMPLATE
+        else:
+            # "other" は既存 default を維持しつつ subject だけ前置
+            base_tpl, fb_tpl = CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE
+        args.stage1_prompt = build_prompt(
+            guess,
+            confidence_threshold=args.confidence_threshold,
+            base_template=base_tpl,
+            fallback_template=fb_tpl,
+        )
+        print(f"[gacha]   stage1_prompt: {args.stage1_prompt}")
+        (args.output / "00_auto_prompt.txt").write_text(
+            f"category={args.category}\n"
+            f"subject_ja={guess.subject.ja}\n"
+            f"location_ja={guess.location.ja}\n"
+            f"action_ja={guess.action.ja}\n"
+            f"confidence={guess.confidence:.3f}\n"
+            f"stage1_prompt={args.stage1_prompt}\n",
+            encoding="utf-8",
+        )
 
     rng = random.Random(args.master_seed)
     # 各 試行用の seed 列
