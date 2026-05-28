@@ -257,6 +257,27 @@ class FridaGui:
         Tooltip(cb,
                 "ON (default): TSP greedy + 2-opt で stroke 順を距離最短に\n"
                 "OFF: 元の Vectorizer 出力順 (比較用)")
+        Button(misc_lf, text="📋 パラメータ早見表",
+                command=self._show_param_reference).pack(side="left",
+                                                           padx=12)
+
+        # ---- パラメータ整合性警告 ----
+        # 効果が期待できない / 矛盾する値を検出して 黄色 banner で警告
+        warn_lf = Frame(self._params_frame)
+        warn_lf.pack(fill="x", pady=2)
+        self.lbl_validation = Label(warn_lf,
+            text="", font=("Monaco", 9),
+            bg="#ffe", fg="#960", wraplength=720, justify="left",
+            anchor="w")
+        # default では空表示、 警告ありで pack
+        # validation trigger を Entry/IntVar に紐付け
+        for var in [self.var_speed_base, self.var_speed_min,
+                     self.var_speed_max, self.var_travel_speed,
+                     self.var_near_mm]:
+            var.trace_add("write", lambda *a: self._on_param_change())
+        for var in [self.var_step_mm, self.var_merge_mm,
+                     self.var_merge_lift_mm]:
+            var.trace_add("write", lambda *a: self._on_param_change())
 
         # ---- Section: 実行 ----
         sec_run = ttk.LabelFrame(main, text="3. 実行", padding=8)
@@ -344,6 +365,174 @@ class FridaGui:
         Tooltip(ent, tooltip)
 
     # ---------------------------------------------------------- UI helpers
+    def _on_param_change(self, *_args):
+        """パラメータ変更時の validation。 効果が期待できない値を warning。
+        メイン UI 内 (params frame 下) に黄色 banner で表示、 修正案も。"""
+        warnings = self._validate_params()
+        if warnings:
+            self.lbl_validation.config(text="⚠ " + "\n⚠ ".join(warnings))
+            self.lbl_validation.pack(fill="x", pady=2)
+        else:
+            self.lbl_validation.config(text="")
+            self.lbl_validation.pack_forget()
+
+    def _validate_params(self):
+        """パラメータの整合性をチェック。 警告メッセージ list を返す
+        (空 list なら問題なし)。"""
+        warnings = []
+
+        def _fnum(var, default=0.0):
+            """StringVar/IntVar から float を取り出す、 失敗時 default。"""
+            try:
+                return float(var.get())
+            except (ValueError, AttributeError):
+                return default
+
+        base = _fnum(self.var_speed_base)
+        mn = _fnum(self.var_speed_min)
+        mx = _fnum(self.var_speed_max)
+        travel = _fnum(self.var_travel_speed)
+        near = _fnum(self.var_near_mm)
+        step = _fnum(self.var_step_mm, 2.0)
+        merge = _fnum(self.var_merge_mm, 0.0)
+        merge_lift = _fnum(self.var_merge_lift_mm, 0.0)
+        w_clear = float(self.panel.w_clear_mm) if self.panel else 30.0
+        w_contact = float(self.panel.w_contact_mm) if self.panel else 0.0
+
+        # 速度系
+        if mn > base:
+            warnings.append(
+                f"鋭い曲線の最低速度 ({mn:.0f}%) が 緩い曲線基準 ({base:.0f}%) "
+                f"より高い: 鋭い場所で減速されず効果なし。 min <= base 推奨")
+        if mx < base:
+            warnings.append(
+                f"直線部上限 ({mx:.0f}%) が 緩い曲線基準 ({base:.0f}%) "
+                f"より低い: 直線部で加速されず効果なし。 max >= base 推奨")
+        if base < 1 or base > 100:
+            warnings.append(f"draw base 速度 ({base:.0f}%) は 1-100 の範囲で")
+        if travel < base:
+            warnings.append(
+                f"travel 速度 ({travel:.0f}%) が 描画基準 ({base:.0f}%) "
+                f"より遅い: stroke 間移動が描画より遅く 効率悪い")
+
+        # 距離系
+        if step <= 0:
+            warnings.append(
+                f"step_mm ({step:.1f}) は正の値必要、 smooth_polyline が壊れる")
+        if near <= 0:
+            warnings.append(
+                f"near_threshold_mm ({near:.0f}) は正の値必要、 "
+                "look-ahead descent 機能しない")
+
+        # merge 系
+        if merge > 0 and merge >= near:
+            warnings.append(
+                f"merge 閾値 ({merge:.1f}mm) >= near 閾値 ({near:.0f}mm): "
+                "near 用 pen-up 高さが使われない (全て merge 扱い)。 "
+                "merge < near 推奨")
+        if merge_lift > w_clear:
+            warnings.append(
+                f"merge pen lift ({merge_lift:.1f}mm) > w_clear_max "
+                f"({w_clear:.1f}mm): pen が clear 高さより上がり 効果矛盾")
+        if merge_lift > 5.0 and merge > 0:
+            warnings.append(
+                f"merge pen lift ({merge_lift:.1f}mm) が大きすぎ: "
+                "接続線軽量化として 0.3-1.0mm 程度が実用範囲")
+        if merge == 0 and merge_lift > 0:
+            warnings.append(
+                f"merge_mm=0 (merge OFF) なのに pen lift={merge_lift:.1f} は "
+                "効果なし。 merge を有効にするか pen lift=0 へ")
+
+        return warnings
+
+    def _show_param_reference(self):
+        """別ウィンドウで「効果的なパラメータ早見表」 を表示する。
+
+        各パラメータの:
+          - 推奨範囲 / typical 値
+          - 効果説明
+          - 安全 / 危険ゾーン
+        を表形式で見せて user 判断の参考に。
+        """
+        win = Toplevel(self.root)
+        win.title("📋 パラメータ早見表")
+        win.geometry("960x620")
+
+        header = Label(win,
+            text="効果的なパラメータの典型値・推奨レンジ\n"
+                 "(default で実用範囲、 strikethrough は \"効果なし or 矛盾\")",
+            font=("Monaco", 10), justify="left",
+            padx=10, pady=6)
+        header.pack(anchor="w")
+
+        # 表データ: (パラメータ名, default, 推奨レンジ, 説明)
+        rows = [
+            ("─ 速度 (%) ─", "", "", ""),
+            ("draw_speed_base (緩い曲線)", "30", "20-40",
+             "曲率の小さい部分の描画速度。 30 が安全 sweet spot。\n"
+             "実機の MOVE_L/MOVE_C overhead で 30-40 が体感最速"),
+            ("draw_speed_min (鋭い曲線)", "10", "5-15",
+             "鋭い曲線で減速する下限。 jerk 抑制効果。\n"
+             "値小: 細部精度↑ / 描画時間↑、 値大: 描画速いが揺れる可能性"),
+            ("draw_speed_max (直線部)", "50", "40-60",
+             "ほぼ直線で加速する上限。 base 以上必須。\n"
+             "実機の安全側 60 まで。 base と同じ値でも OK (加速無効)"),
+            ("travel_speed (stroke 間)", "60", "50-80",
+             "pen-up 状態の travel 速度。 描画より速くて良い。\n"
+             "base より遅いと効率悪い (validation で警告)"),
+            ("─ 距離 (mm) ─", "", "", ""),
+            ("near_threshold_mm", "15", "10-25",
+             "次 stroke までの距離 N mm 以下なら pen-up を浅く\n"
+             "(look-ahead descent)。 値大: travel 短縮↑ / 干渉リスク↑"),
+            ("step_mm (リサンプル間隔)", "2.0", "1.0-4.0",
+             "smooth_polyline のリサンプル間隔。 小さい = 滑らかだが arc 数増。\n"
+             "1mm 以下: 滑らか / arc 数多 / 計算時間↑。 5mm 以上: カクつき"),
+            ("─ stroke 連続化 (任意、 default OFF) ─", "", "", ""),
+            ("merge_threshold_mm", "0", "0 / 3-10",
+             "0: 無効 (default)、 ON だと 隣接 stroke を pen-up せず接続。\n"
+             "副作用で接続線が描かれる。 near より小さい値推奨"),
+            ("merge_pen_lift_mm", "0", "0 / 0.3-1.0",
+             "merge 時 pen を浮かす量。 0=接続線描画、 0.3-1.0=軽量化。\n"
+             "実機のペン圧 / spring 次第で見えにくくなる調整必要"),
+            ("─ その他 ─", "", "", ""),
+            ("reorder (TSP)", "ON", "ON",
+             "OFF にする理由は A/B 比較のみ。 default ON 推奨。\n"
+             "100 stroke 規模で travel 82% 削減の主因"),
+        ]
+
+        # frame + columns
+        body = Frame(win)
+        body.pack(fill="both", expand=True, padx=10, pady=6)
+        cols = ("パラメータ", "default", "推奨", "説明")
+        widths = (28, 10, 14, 60)
+        # header row
+        for ci, (col, w) in enumerate(zip(cols, widths)):
+            Label(body, text=col, font=("Monaco", 10, "bold"),
+                  width=w, anchor="w", bg="#eee", relief="solid",
+                  borderwidth=1, padx=4, pady=2).grid(
+                row=0, column=ci, sticky="ew")
+        for ri, (name, d, rng, desc) in enumerate(rows, start=1):
+            # section divider はグレー bg
+            if name.startswith("─"):
+                lbl = Label(body, text=name, font=("Monaco", 10, "bold"),
+                            anchor="w", bg="#ddd", padx=4, pady=2)
+                lbl.grid(row=ri, column=0, columnspan=4, sticky="ew")
+                continue
+            Label(body, text=name, font=("Monaco", 10), anchor="w",
+                  padx=4, pady=2).grid(row=ri, column=0, sticky="ew")
+            Label(body, text=d, font=("Monaco", 10), anchor="center",
+                  fg="#080", padx=4, pady=2).grid(row=ri, column=1,
+                                                    sticky="ew")
+            Label(body, text=rng, font=("Monaco", 10), anchor="center",
+                  fg="#940", padx=4, pady=2).grid(row=ri, column=2,
+                                                    sticky="ew")
+            Label(body, text=desc, font=("Monaco", 9), anchor="w",
+                  justify="left", padx=4, pady=2, wraplength=480).grid(
+                row=ri, column=3, sticky="ew")
+        # close button
+        Button(win, text="閉じる", command=win.destroy,
+                width=12).pack(pady=6)
+
     def _toggle_params(self):
         if self._params_visible.get():
             self._params_frame.pack_forget()
