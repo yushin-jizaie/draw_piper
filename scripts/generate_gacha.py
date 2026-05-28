@@ -49,6 +49,10 @@ def main() -> int:
                          "object → COMPANION_TEMPLATE (Matsumoto)。")
     ap.add_argument("--confidence-threshold", type=float, default=0.3,
                     help="VLM 信頼度がこの値未満なら fallback prompt を使う。")
+    ap.add_argument("--skip-stage2", action="store_true",
+                    help="各 variant で test_ip_adapter_two_stage に --skip-stage2 を渡す "
+                         "(Stage 2 IP-Adapter を skip、 Stage 1 のみで Vectorize)。 "
+                         "object mode で推奨。")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -116,6 +120,8 @@ def main() -> int:
             "--stage1-prompt", args.stage1_prompt,
             "--seed", str(seed),
         ]
+        if args.skip_stage2:
+            cmd.append("--skip-stage2")
         rc = subprocess.run(cmd, cwd=str(_ROOT)).returncode
         if rc != 0:
             print(f"[gacha]   FAILED rc={rc}")
