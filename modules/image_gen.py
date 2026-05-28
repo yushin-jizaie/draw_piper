@@ -250,6 +250,27 @@ MODEL_PRESETS: dict[str, dict] = {
         "img2img_strength": 0.0,    # text2img mode (0.65 → 0.0)
         "inpaint_mode": False,
     },
+    # 2026-05-29 (style-pool-rebalance branch): object preset + matsumoto LoRA。
+    # 上記 _object に matsumoto_taiyo LoRA (scale 0.4) を載せた版。
+    # ユーザー所感「Stage 2 (IP-Adapter) はもう不要、 Stage 1 を強化したい」 への対処。
+    # Stage 1 のみで松本タッチが効くようにする (Stage 2 skip との組合せ前提)。
+    "illustrious_v2_object_mt": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.65,
+        "style_hint": (
+            "mt_taiyo_style, monochrome, lineart, sketch, ink illustration, "
+            "white_background, simple_background, no humans"
+        ),
+        "lora_path": "training/lora/matsumoto_taiyo.safetensors",
+        "lora_scale": 0.4,
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.0,
+        "inpaint_mode": False,
+    },
     # Plan E + v4 LoRA (2026-05-28 学習予定、 厳格 binarize dataset 学習版)
     # 過去 v0-v3 の失敗原因 (grayscale lineart の VAE hatching 化) への対処。
     # threshold=50 で完全 2 値化、 rank 8 / lr 5e-5 / 600 step で過学習回避。

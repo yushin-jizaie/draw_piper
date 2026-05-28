@@ -59,10 +59,13 @@ STYLE_REF_POOLS = {
 
 
 # category → stage1_preset 対応
+# 2026-05-29 (style-pool-rebalance): Stage 1 強化のため LoRA 込み preset に切替。
+# 旧 (LoRA 未使用): character → illustrious_v2_inpaint / object → illustrious_v2_object
+# 新 (LoRA 0.4 載せ):
 CATEGORY_TO_STAGE1_PRESET = {
-    "character": "illustrious_v2_inpaint",   # inpaint で構図確定
-    "object":    "illustrious_v2_object",    # img2img で sketch を stylize
-    "other":     "illustrious_v2_inpaint",   # 念のため inpaint で
+    "character": "illustrious_v2_inpaint_mt",  # inpaint + matsumoto LoRA 0.4
+    "object":    "illustrious_v2_object_mt",   # img2img + matsumoto LoRA 0.4 (新規)
+    "other":     "illustrious_v2_inpaint_mt",  # 念のため inpaint + LoRA
 }
 
 
@@ -110,6 +113,13 @@ def main() -> int:
                     help="Stage 2 (IP-Adapter) 用の解像度")
     ap.add_argument("--stage1-resolution", type=int, default=1024,
                     help="Stage 1 (Plan E) 用の解像度。 1024 が face/body 構図に有利")
+    # 2026-05-29 (style-pool-rebalance): Stage 2 (IP-Adapter) skip フラグ。
+    # Stage 1 を LoRA 込み preset で強化したので、 Stage 2 不要な場面が増えた。
+    ap.add_argument("--skip-stage2", action="store_true",
+                    help="Stage 2 (IP-Adapter style 転写) を skip し、 Stage 1 出力を "
+                         "そのまま 最終結果に。 Vectorize + render は実行。 "
+                         "実行時間 ~64s → ~30s に短縮、 Stage 2 の副作用 (style 過剰 / "
+                         "副題材化) も回避可能。")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -120,10 +130,16 @@ def main() -> int:
         args.stage1_preset = CATEGORY_TO_STAGE1_PRESET[args.category]
     print(f"[2stage] category={args.category}, stage1_preset={args.stage1_preset}")
 
-    # style ref 解決 (--style-ref 直指定 or --category から ランダム選択)
-    style_ref = _resolve_style_ref(args)
+    # --skip-stage2: Stage 2 自体を skip (style_ref を None 扱いに)
+    # 後続の "if style_ref is None" 分岐で Stage 2 skip 経路に入る
+    if args.skip_stage2:
+        print(f"[2stage] --skip-stage2: Stage 1 + Vectorize のみ実行")
+        style_ref = None
+    else:
+        # style ref 解決 (--style-ref 直指定 or --category から ランダム選択)
+        style_ref = _resolve_style_ref(args)
     if style_ref is None:
-        print(f"[2stage] category='other': IP-Adapter off, Stage 2 skip")
+        print(f"[2stage] Stage 2 skip (--skip-stage2 or category 'other')")
     else:
         if not style_ref.exists():
             print(f"[2stage] style ref not found: {style_ref}")
