@@ -3,7 +3,7 @@
 > **目的**: 詰まった時に「正常な地点」へ素早く戻るための地図。
 > Git は履歴の倉庫、このファイルは *どこが正常か / どこで詰まったか* を一目で見る索引。
 >
-> 最終更新: 2026-05-25 15:17
+> 最終更新: 2026-05-28 (M17 下書き追記)
 
 ---
 
@@ -199,6 +199,41 @@
                          scripts/generate_gacha.py (N variants + grid)
                          scripts/gen_test_sketches{,_objects}.py
                        demo: github phase-e-results-20260528/{multi_mode_v3,v4_object,v5_object_detailed}/
+              │
+05-28 ??:??   ○ M17 (下書き) Panel geometry alignment (canvas → SDXL bucket 共有)  [021979c]
+                     └ カメラ warp / 画像生成 / ロボット認識平面 の 3 つを
+                       同じ panel 物理寸法で合わせ込む single source of truth。
+                       modules/panel_geometry.py 新規:
+                         canvas_calibration.whiteboard_computed を真値、
+                         panel aspect から SDXL bucket (64 倍数, area≈1024²)
+                         を自動選択。 PanelGeometry(panel_size_mm,
+                         panel_image_size, mm_per_px, source)。
+                       image_gen.py 拡張:
+                         resolution を int | (W, H) に (後方互換)、
+                         generate() の pipe_kwargs に height/width 明示、
+                         imagegen_config.yaml の auto_from_panel: true で
+                         build_image_generator_from_config が panel_geometry
+                         に降りて bucket を解決。
+                       imagegen_config.yaml: auto_from_panel: true をデフォルト。
+                       scripts/check_panel_geometry.py 新規 (CLI 整合 diff、
+                         --sync で panel_frame.panel.size_mm を canvas に揃える)。
+                       pipeline_test_gui.py ImageGenCalibWindow:
+                         Panel readout (現 panel mm + 推奨 bucket + mm/px) +
+                         auto_from_panel トグル + 手動 W×H spinbox +
+                         「🔄 再計測値で更新」 + 「📐 bucket を手動欄に反映」。
+                     └ mock 検証 (実機なし):
+                         canvas 92.93×193.52 mm (aspect 0.480)
+                           → bucket 704×1472 px (aspect err 0.4%)
+                           → mm/px=(0.1320, 0.1315) で等方
+                         旧 1024×1024 強制だと (0.0908, 0.1890) と異方 (2.1x 縦伸び)
+                     └ 残課題:
+                         phase_a_calibration.panel_size_mm (230×300) は
+                         カメラ 4 点クリック時の仮値。 実物 (canvas 由来) に
+                         合わせるには scripts/calibrate_panel.py 再実行が必要
+                         (check_panel_geometry が警告で誘導)。
+                     └ 実機検証 (生成 → vectorize → robot 描画で panel に
+                       歪み無し確認) PASS で ● 確定 + ★ 現在地 更新。
+                     └ ブランチ: claude/smooth-curve-rendering-e88Vb
 ```
 
 ---
@@ -226,6 +261,7 @@
 | M14 | 2026-05-28 01:50 | Vectorizer (strokes_mm 化) + Robot.draw_stroke_panel mock/real CAN 双方で動作確認 | `82cb13b` | `Vectorizer.vectorize_to_panel(panel=PanelFrame)` で 107 strokes_mm 取得 (panel 107.05 x 197.07 mm)。`Robot(mock=True).draw_stroke_panel(strokes_uv)` 完走 + `Robot(mock=False).connect/disconnect` 実 CAN (実機電源 OFF) で OK (ERROR-PASSIVE = ACK 無し正常) |
 | M15 | 2026-05-28 08:38 | IP-Adapter two-stage で 松本大洋画風 + 顔保持 + ロボット適合 同時達成 | `c32c2c1` | `venv/bin/python -m scripts.test_ip_adapter_two_stage --user-sketch scripts/test_sketch.jpg --style-ref training/matsumoto_taiyo/raw/IMG_4311.JPG --output logs/ip_2stage_<ts> --stage1-resolution 1024 --resolution 768 --stage2-strength 0.45 --ip-scale 0.6 --seed 42` で `30_vectorized_strokes.png` に 114 strokes / 2542 pts の松本タッチ純線画。 demo: branch phase-e-results-20260528/matsumoto_v2_two_stage/ |
 | M16 | 2026-05-28 10:33 | multi-mode (character/object/other) + gacha UX + object 詳細化 (text2img + CN soft hint で sketch を hint だけにし prompt 駆動で detailed lineart 生成) | `27de6b4` | `venv/bin/python -m scripts.generate_gacha --user-sketch <sketch> --category {character\|object} --output logs/gacha_<ts> --n 3` で各 sketch から 3 variants の detailed 線画。 cat 34 / house 37 / tree 89 / car 111 strokes。 demo: branch phase-e-results-20260528/multi_mode_v5_object_detailed/ |
+| **M17 (下書き)** | 2026-05-28 | Panel geometry alignment ― canvas_calibration を真値に SDXL bucket 自動選択 + image_gen non-square 対応 + 整合 diff CLI + GUI readout/トグル | `021979c` | `python3 scripts/check_panel_geometry.py` で `推奨 PanelGeometry` が canvas 由来 (panel 92.93×193.52 mm → bucket 704×1472 px, aspect err 0.4%, mm/px=(0.132, 0.132) で等方) を表示。 `imagegen_config.yaml` の `auto_from_panel: true` で build_image_generator_from_config が bucket 自動解決。 実機検証 (生成 → vectorize → robot 描画で panel に歪み無し) PASS で ● 確定 + ★ 現在地 更新。 ブランチ: `claude/smooth-curve-rendering-e88Vb` |
 
 ---
 
