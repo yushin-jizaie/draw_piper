@@ -44,7 +44,16 @@ STYLE_REF_POOLS = {
         "training/matsumoto_taiyo/raw/IMG_4324.JPG",       # ゴーグル少年
         "training/matsumoto_taiyo/raw/o0600045013450720343.jpg",  # 5 人並び
     ],
-    "object": [],   # IP-Adapter off + Stage 1 を illustrious_v2_object に切替
+    # 2026-05-29 rebalance: object pool に raw から 5 枚試行投入
+    # (style-pool-rebalance-20260529 branch)。 raw に純粋 object 画像は無いが、
+    # キャラ + 街 / 建物 / 海岸 のシーン作品を試行。 テキスト / ロゴ混入リスクあり。
+    "object": [
+        "training/matsumoto_taiyo/raw/EdvzOK7U8AAqpwO.jpg",   # 建物群 + 漫画コマ (テキストあり)
+        "training/matsumoto_taiyo/raw/IMG_4314.JPG",          # 街並み逆さま + 落下キャラ
+        "training/matsumoto_taiyo/raw/IMG_4310.JPG",          # graniph collab、 街並み + キャラ
+        "training/matsumoto_taiyo/raw/1090748_300.jpg",       # 海岸 + 子供 (raw 唯一のカラー画像)
+        "training/matsumoto_taiyo/raw/IMG_4315.JPG",          # 街並み + キャラ 2 人
+    ],
     "other": [],    # IP-Adapter off + Stage 1 は inpaint (元の動作維持)
 }
 
