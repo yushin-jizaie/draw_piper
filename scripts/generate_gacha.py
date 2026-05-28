@@ -30,7 +30,7 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--user-sketch", type=Path, required=True)
     ap.add_argument("--category", type=str, default="character",
-                    choices=["character", "urban", "other"])
+                    choices=["character", "object", "other"])
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--n", type=int, default=5, help="生成枚数")
     ap.add_argument("--ip-scale", type=float, default=0.6)

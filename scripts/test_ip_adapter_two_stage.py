@@ -34,6 +34,8 @@ sys.path.insert(0, str(_ROOT))
 
 
 # カテゴリ別 style ref pool (松本作品の raw 画像から curate)
+# 改訂 2026-05-28: urban mode 廃止 (IP-Adapter ref が character composition を
+# 学んでしまう構造的問題)。 object mode (img2img、 IP-Adapter off) に統合。
 STYLE_REF_POOLS = {
     "character": [
         "training/matsumoto_taiyo/raw/IMG_4311.JPG",       # 花男表紙 2 選手
@@ -42,12 +44,16 @@ STYLE_REF_POOLS = {
         "training/matsumoto_taiyo/raw/IMG_4324.JPG",       # ゴーグル少年
         "training/matsumoto_taiyo/raw/o0600045013450720343.jpg",  # 5 人並び
     ],
-    "urban": [
-        "training/matsumoto_taiyo/raw/IMG_4321.JPG",       # ナンバーファイブ街並
-        "training/matsumoto_taiyo/raw/IMG_4315.JPG",       # 蒸気の街 + 2 人
-        "training/matsumoto_taiyo/raw/IMG_4314.JPG",       # 落下キャラ + ビル
-    ],
-    "other": [],   # IP-Adapter off, Plan E のみで clean lineart
+    "object": [],   # IP-Adapter off + Stage 1 を illustrious_v2_object に切替
+    "other": [],    # IP-Adapter off + Stage 1 は inpaint (元の動作維持)
+}
+
+
+# category → stage1_preset 対応
+CATEGORY_TO_STAGE1_PRESET = {
+    "character": "illustrious_v2_inpaint",   # inpaint で構図確定
+    "object":    "illustrious_v2_object",    # img2img で sketch を stylize
+    "other":     "illustrious_v2_inpaint",   # 念のため inpaint で
 }
 
 
@@ -74,11 +80,14 @@ def main() -> int:
     ap.add_argument("--style-ref", type=Path, default=None,
                     help="明示指定の style ref。 未指定なら --category から ランダム選択")
     ap.add_argument("--category", type=str, default="character",
-                    choices=["character", "urban", "other"],
-                    help="入力 sketch のカテゴリ。 ref pool 選択に使う。 other = IP-Adapter off")
+                    choices=["character", "object", "other"],
+                    help="入力 sketch カテゴリ。 character=人間 (inpaint+IP-Adapter)、 "
+                         "object=物体・動物・植物 (img2img、 IP-Adapter off)、 "
+                         "other=その他 (inpaint、 IP-Adapter off)")
     ap.add_argument("--output", type=Path, required=True)
-    ap.add_argument("--stage1-preset", type=str, default="illustrious_v2_inpaint",
-                    help="Stage 1 (構図確定) で使う preset")
+    ap.add_argument("--stage1-preset", type=str, default=None,
+                    help="Stage 1 で使う preset。 None なら category に応じて自動選択 "
+                         f"({CATEGORY_TO_STAGE1_PRESET})")
     ap.add_argument("--stage1-prompt", type=str,
                     default="1boy, solo, young boy with full body, "
                             "messy hair, surprised expression, simple t-shirt")
@@ -96,6 +105,11 @@ def main() -> int:
 
     args.output.mkdir(parents=True, exist_ok=True)
     res = args.resolution
+
+    # stage1 preset 解決
+    if args.stage1_preset is None:
+        args.stage1_preset = CATEGORY_TO_STAGE1_PRESET[args.category]
+    print(f"[2stage] category={args.category}, stage1_preset={args.stage1_preset}")
 
     # style ref 解決 (--style-ref 直指定 or --category から ランダム選択)
     style_ref = _resolve_style_ref(args)
@@ -144,15 +158,25 @@ def main() -> int:
         from modules.vectorizer import Vectorizer
         from modules.stroke_render import render_strokes_to_image
         final = Image.open(s1_out).convert("RGB").resize((res, res))
-        final.save(args.output / f"20_final_other_mode.png")
+        final.save(args.output / f"20_final_no_ip_adapter.png")
         vec = Vectorizer()
-        user_full = Image.open(args.user_sketch).convert("RGB").resize((res, res))
-        r = vec.vectorize(generated_image=final, user_image=user_full)
+        # object mode は img2img で sketch を stylize するため、 Vectorizer
+        # に user_image を渡すと diff で元線が引かれて 0 strokes になる。
+        # → user_image=None で 全 strokes を抽出。
+        # character/other は inpaint なので user_image diff で「追加された線」
+        # だけ抽出するのが妥当 (元 sketch は別途 robot 側で描画想定)。
+        if args.category == "object":
+            r = vec.vectorize(generated_image=final, user_image=None)
+            mode_label = "object (no diff)"
+        else:
+            user_full = Image.open(args.user_sketch).convert("RGB").resize((res, res))
+            r = vec.vectorize(generated_image=final, user_image=user_full)
+            mode_label = "other (diff vs user)"
         rendered = render_strokes_to_image(
             r.strokes, width=r.image_shape[1], height=r.image_shape[0],
             line_width=2)
         rendered.save(args.output / "30_vectorized_strokes.png")
-        print(f"[2stage] other mode: {r.n_strokes} strokes, {r.n_points} pts")
+        print(f"[2stage] {mode_label}: {r.n_strokes} strokes, {r.n_points} pts")
         return 0
 
     print(f"[2stage] Stage 2: IP-Adapter style transfer")

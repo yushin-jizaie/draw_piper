@@ -214,6 +214,24 @@ MODEL_PRESETS: dict[str, dict] = {
         "inpaint_keep_dilate": 4,
         "inpaint_strength": 1.0,
     },
+    # Plan E + object mode: 非人間 sketch (家・木・猫・車 etc) 用。
+    # inpaint mode は 複雑 sketch (たくさんの線) で「全保持 + 微小自由領域 repaint」
+    # になり機能しない。 代わりに img2img で sketch を全体 stylize する。
+    "illustrious_v2_object": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "monochrome, lineart, sketch, ink illustration, "
+            "white_background, simple_background, no humans"
+        ),
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.65,    # 入力 sketch を 35% 残しつつ 65% stylize
+        "inpaint_mode": False,
+    },
     # Plan E + v4 LoRA (2026-05-28 学習予定、 厳格 binarize dataset 学習版)
     # 過去 v0-v3 の失敗原因 (grayscale lineart の VAE hatching 化) への対処。
     # threshold=50 で完全 2 値化、 rank 8 / lr 5e-5 / 600 step で過学習回避。
