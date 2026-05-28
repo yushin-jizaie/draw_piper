@@ -10,9 +10,16 @@
 ## ファイル
 
 - `wall_drawing_gui_full_dev_stroke_picker.patch`
-  unified diff (`patch -p0` で適用可)
+  unified diff、 約 50 行 — Section 5 の strokes select で
+  カード一覧 UI (StrokePicker) を使う
+- ⭐ `wall_drawing_gui_full_dev_frida_smooth.patch` (新規)
+  unified diff、 約 160 行 — Section 5 に `✨ Frida Smooth` ボタンを追加
+  (PR #2 の `Robot.draw_strokes_panel_smooth` を 別 Robot で呼ぶ)
+- ⭐ `wall_drawing_gui_full_dev_ux_polish.patch` (新規)
+  unified diff、 約 80 行 — 描画系ボタンの視認性 UX 改善 (危険ボタン橙/赤
+  ハイライト、 確認ダイアログにチェックリスト追加)
 - `wall_drawing_gui_full_dev.patched.py`
-  パッチ適用後の完全版ファイル (cp で上書き派の人向け)
+  上記 **3 つすべて適用済の完全版**。 cp で上書き派の人向け
 
 ## 適用方法 (どちらか好きな方)
 
@@ -20,13 +27,17 @@
 
 ```bash
 cd ~/piper_test
+
+# 順番に当てる (stroke_picker → frida_smooth → ux_polish)
 patch -p0 < ~/draw_piper/_patches/wall_drawing_gui_full_dev_stroke_picker.patch
+patch -p0 < ~/draw_piper/_patches/wall_drawing_gui_full_dev_frida_smooth.patch
+patch -p0 < ~/draw_piper/_patches/wall_drawing_gui_full_dev_ux_polish.patch
 
 # 失敗時は --dry-run で先に確認
-patch -p0 --dry-run < ~/draw_piper/_patches/wall_drawing_gui_full_dev_stroke_picker.patch
+patch -p0 --dry-run < ~/draw_piper/_patches/wall_drawing_gui_full_dev_ux_polish.patch
 ```
 
-### 方法 B: ファイル丸ごと上書き
+### 方法 B: ファイル丸ごと上書き (両 patch 込み)
 
 ```bash
 cp ~/draw_piper/_patches/wall_drawing_gui_full_dev.patched.py \
@@ -42,34 +53,114 @@ cp ~/draw_piper/_patches/wall_drawing_gui_full_dev.patched.py \
 
 ```bash
 cd ~/piper_test
-git diff wall_drawing_gui_full_dev.py | head -30
-# → import 追加 + on_strokes_select_file の変更が見えるはず
+git diff wall_drawing_gui_full_dev.py | head -50
+# → 新 import + on_strokes_draw_smooth + ✨ Frida Smooth ボタン が見える
 
 # GUI を起動
 ~/draw_piper/venv/bin/python wall_drawing_gui_full_dev.py
-# 「5. 生成画像描画」 セクションの 「選択...」 ボタンを押す →
-# StrokePicker のカード一覧が出るはず
+# Section 5 で 「✨ Frida Smooth」 ボタンが表示される
+# strokes.json 選択後 → ✨ Frida Smooth クリック → 確認 → 実機描画
 ```
 
-`from modules.stroke_picker import StrokePicker` で `~/draw_piper` から
-読まれるので、 draw_piper 側の最新 (claude/smooth-curve-rendering-e88Vb
-ブランチ) が pull 済みであることが前提。
+`from modules.robot import Robot, PanelFrame` で `~/draw_piper` から
+読まれるので、 draw_piper 側の最新 (claude/frida-smoothness-20260527
+ブランチ、 dev 取り込み後は dev/main) が pull 済みであることが前提。
 
-## 変更内容サマリー (約 50 行)
+## 変更内容サマリー
 
-1. 先頭の import 群直後に sys.path に `~/draw_piper` を追加 + `StrokePicker`
-   を try import (失敗時は None で警告)
-2. `on_strokes_select_file()` を 2 段構成に書き直し:
-   - 主経路: `StrokePicker.show(self.root)` でカード一覧 → `strokes_json`
-     パスを取得
-   - フォールバック: StrokePicker import 失敗 / 実行時エラーで従来の
-     `filedialog.askopenfilename`
-   - 共通: `strokes.json` の軽い検証 → `var_strokes_json_path` に set →
-     `_refresh_buttons_safe()`
+### `_stroke_picker.patch` (約 50 行)
 
-機能的にはユーザ体験のみ変わる(OS finder → カードグリッド)。
-state の更新先 (`var_strokes_json_path`) は不変なので後段 (プレビュー /
-draw 実行) は全部そのまま動く。
+1. import 群直後に `from modules.stroke_picker import StrokePicker`
+2. `on_strokes_select_file()` を 2 段構成: 主 = StrokePicker、 fallback = filedialog
+
+### `_frida_smooth.patch` (約 160 行)
+
+1. import: `from modules.robot import Robot as _DPRobot, PanelFrame as _DPPanelFrame`
+2. Section 5 ボタン列に `✨ Frida Smooth` 追加 (中止ボタンの右隣)
+3. メソッド追加:
+   - `on_strokes_draw_smooth()`: 確認ダイアログ + worker thread 起動
+   - `_do_strokes_draw_smooth()`: strokes.json → uv mm 変換 → Robot 接続 →
+     `draw_strokes_panel_smooth()` → 切断
+4. 既存 `on_strokes_draw` (IK + MOVE J chained) と並存。 user が ボタンで使い分け
+
+⚠️ Frida ボタンは別 Robot インスタンスで CAN bus 共有のため、 描画中は他の
+GUI ボタンを押さないこと (確認ダイアログで警告)。
+
+### `_ux_polish.patch` (約 270 行)
+
+危険度別 色分けで誤操作リスクを下げる UX 改善 (全体に拡張):
+
+**🔴 赤 (最危険、 緊急/管理者操作)**:
+- 「🔴 CAN 起動(管理者)」 — pkexec で CAN bring up、 admin 権限
+- 「🔴 切断」 — タイミング次第で master mode 残留リスク
+- 「🔄 接続をリセット」 — recover 操作、 副作用ある
+- 「⚠ ティーチ開始 (マスターモード)」 — master mode 入り、 電源 cycle 必要
+- 「■ 中止 (drag-teach)」 — 4 隅記録を捨てる
+- 「■ 中止 (strokes)」 — 描画中断
+
+**🟢 緑 (安全な確定/保存/開始)**:
+- 「🟢 接続」 — workflow の始点
+- 「✅ 保存して終了 (マスター解除)」 — drag-teach 結果を確定
+
+**🟠 橙 (実機 motion 主要)**:
+- 「🏠 ホーム/撮影位置へ」 / 「📦 収納ポーズへ」 / 「🖋 ペン交換ポーズへ」
+- 「▶ 中心に正方形 (描画開始)」 / 「▶ 中心に丸」 / 「▶ 中心に三角」
+- 「▶ B2 外周トレース開始」
+- 「▶ 描画開始 (strokes)」
+- 「✨ Frida Smooth」
+
+**🟡 薄橙 (接触系、 注意)**:
+- 「✏ ペン下げ (probe)」 / 「✏ ペン下げ (tune)」 — 接触あり
+- 「⬆ ペン上げ (probe)」 / 「⬆ ペン上げ (tune)」 — 安全方向だが motion
+
+**(default ttk のまま)**:
+- 情報系 (📖 操作の流れ、 ? ヘルプ、 📊 進捗プレビュー)
+- 細かい記録操作 (現在地を記録、 1点取消、 トレース停止)
+- 既に絵文字付き (🔒 強く掴む、 🔓 ゆるめる)
+- 補助 (選択..., プレビュー, 四隅補正をゼロに, キャンセル 等)
+
+ダイアログ強化:
+- `on_strokes_draw` 確認に 事前チェックリスト (人/障害物、 紙、 ペン
+  contact_x、 緊急停止) 追加
+- showerror タイトル先頭に絵文字: ❌ (致命的) / ⚠ (注意/操作順序)
+- showwarning タイトル先頭に ⚠
+- 「未接続」 「ファイルなし」 「未指定」 系に **対処示唆** を本文に追加
+  - 未接続 → 「上部の 🟢 接続 ボタンを押してから」
+  - ファイルなし → 「パスが正しいか、 ファイルが移動されていないか確認」
+
+ログ文言 (log_safe / self.log) にも 絵文字統一:
+- 失敗系 → 先頭に ❌ (MOVE J 失敗、 ペン下げ失敗、 GripperCtrl 失敗、
+  リーチ確認失敗、 移動失敗、 yaml 読込失敗、 保存失敗 等)
+- 完了系 → 先頭に ✓ (ペン下げ完了、 ペン上げ完了、 ホーミング完了、
+  グリップ動作完了 等)
+- 描画進捗系 → 先頭に ▶ (正方形描画 / Drawing label / 再開) や ✏ (ペン下げ)
+- 既に絵文字 ある log (⚙ ホーミング 開始、 🔒 強く掴む) はそのまま
+
+⭐ 絵文字 ON/OFF 切替可:
+- ステータスバーに 「log に絵文字」 Checkbutton (default ON、 即時反映)
+- 環境変数 `WALL_GUI_NO_EMOJI=1` で起動時 OFF
+- log() 内で `_strip_emoji` ヘルパが既知の絵文字を strip
+- font 無し環境や log を grep 等で機械処理する用途に対応
+
+⭐ Status bar に workflow step indicator:
+- `lbl_workflow` ラベル新規 (master/CAN ラベルの右)
+- ステップ判定: 接続待ち (gray) → キャリブ必要 (橙) → 描画準備完了 (緑)
+- canvas_calibration.yaml の calibrated フラグを参照
+- `_refresh_buttons` から自動更新、 連動して常時反映
+
+section padding 統一:
+- tune_frame の padding 8 → 6 (他 LabelFrame と一致)
+
+LabelFrame 見出しに絵文字付与 (タスクフロー視認性):
+- 「📊 ステータス」 / 「🔌 接続」 / 「📋 ログ」
+- 「🔍 リーチ確認」 (tab ①)
+- 「📐 キャンバスキャリブレーション」 (tab ②)
+- 「✏ 中央押し付け 調整」 / 「🔧 四つ角微調整」 (tab ③)
+- 「🧪 テスト描画 (図形)」 / 「🎨 生成画像描画」 (tab ④)
+- tab 自体の番号 (① ② ③ ④) は既存のまま
+
+機能変更なし、 純粋に UX 改善。 ttk.Button → tk.Button は state/font 等
+の API 互換、 既存 callback はそのまま動く。
 
 ## なぜ draw_piper の `_patches/` に置くか
 

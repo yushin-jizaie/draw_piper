@@ -60,6 +60,19 @@ except Exception as _spk_err:
     print(f"[wall_drawing_gui] StrokePicker import 失敗 ({_spk_err}) — "
           "filedialog にフォールバック")
 
+# Frida-inspired smooth drawing (PR #2, claude/frida-smoothness-20260527)。
+# draw_strokes_panel_smooth は draw_piper の Robot に実装済。
+# 既存 'on_strokes_draw' (IK + MOVE J chained) とは独立、 別 Robot
+# インスタンス + EndPoseCtrl (MOVE_L + MOVE_C) 経路で描画する。
+try:
+    from modules.robot import Robot as _DPRobot                # type: ignore
+    from modules.robot import PanelFrame as _DPPanelFrame      # type: ignore
+except Exception as _frida_err:
+    _DPRobot = None
+    _DPPanelFrame = None
+    print(f"[wall_drawing_gui] Frida Robot import 失敗 ({_frida_err}) — "
+          "Frida Smooth Draw 無効")
+
 try:
     from piper_sdk import C_PiperInterface_V2
 except ImportError:
@@ -228,6 +241,11 @@ class WallDrawingGUI:
         self.root = root
         self.root.title("Piper 壁面描画コンソール")
         self.root.geometry("1080x940")
+
+        # log の絵文字 ON/OFF。 環境変数 WALL_GUI_NO_EMOJI=1 で OFF。
+        # 起動後 UI checkbutton でも変更可。 font 無し環境や log を
+        # grep 等で機械処理する時に絵文字邪魔な場合 OFF。
+        self._use_emoji = (os.environ.get("WALL_GUI_NO_EMOJI", "0") != "1")
 
         self.piper = None
         self.connected = False
@@ -470,13 +488,19 @@ class WallDrawingGUI:
     # ------------------------------------------------------------------
     def _build_ui(self):
         # ---- ステータスバー (上部、 横幅いっぱい) ----
-        status_frame = ttk.LabelFrame(self.root, text="ステータス", padding=6)
+        status_frame = ttk.LabelFrame(self.root, text="📊 ステータス", padding=6)
         status_frame.pack(fill=tk.X, padx=6, pady=4)
         ttk.Button(status_frame, text="GUI 終了",
             command=self.on_quit, width=10
         ).pack(side=tk.RIGHT, padx=4)
         ttk.Button(status_frame, text="GUI 再起動",
             command=self.on_restart_gui, width=12
+        ).pack(side=tk.RIGHT, padx=4)
+        # log の絵文字 ON/OFF (環境変数 WALL_GUI_NO_EMOJI=1 でも OFF 可)
+        self.var_use_emoji = tk.BooleanVar(value=self._use_emoji)
+        ttk.Checkbutton(status_frame, text="log に絵文字",
+            variable=self.var_use_emoji,
+            command=self._on_toggle_emoji
         ).pack(side=tk.RIGHT, padx=4)
         self.lbl_can = ttk.Label(status_frame, text="CAN: ?",
                                  foreground="gray")
@@ -487,6 +511,14 @@ class WallDrawingGUI:
         self.lbl_master = ttk.Label(status_frame, text="(通常)",
                                     foreground="gray")
         self.lbl_master.pack(side=tk.LEFT, padx=4)
+        # workflow step indicator (進化ステップ):
+        #   ① 接続 (default) → ② キャリブ済 → ③ コンタクト調整済 → ④ 描画準備完了
+        # 各 callback (on_connect / on_save_drag / on_save_tune 等) で
+        # _refresh_workflow_step() を呼んで再判定
+        self.lbl_workflow = ttk.Label(status_frame,
+            text="🔌 ① 接続待ち", foreground="gray",
+            font=("Monaco", 10, "bold"))
+        self.lbl_workflow.pack(side=tk.LEFT, padx=(12, 4))
         self.lbl_powercycle = ttk.Label(status_frame, text="",
                                         foreground="red")
         self.lbl_powercycle.pack(side=tk.LEFT, padx=4)
@@ -497,7 +529,7 @@ class WallDrawingGUI:
 
         # ---- 接続セクション: タブ外、 常時表示 (上部固定) ----
         # ヘルプボタンは接続セクションの右端に配置
-        conn_frame = ttk.LabelFrame(self.root, text="接続", padding=6)
+        conn_frame = ttk.LabelFrame(self.root, text="🔌 接続", padding=6)
         conn_frame.pack(fill=tk.X, padx=6, pady=2)
         self._build_conn_section(conn_frame)
 
@@ -524,7 +556,7 @@ class WallDrawingGUI:
 
         # ---- リーチ確認 ----
         probe_frame = ttk.LabelFrame(tab_reach,
-            text="リーチ確認 (キャリブ前に限界点へ移動してマーク)",
+            text="🔍 リーチ確認 (キャリブ前に限界点へ移動してマーク)",
             padding=6)
         probe_frame.pack(fill=tk.X, padx=2, pady=2)
         probe_row1 = ttk.Frame(probe_frame)
@@ -542,12 +574,20 @@ class WallDrawingGUI:
             self.btn_probe_corners[name] = btn
         probe_row2 = ttk.Frame(probe_frame)
         probe_row2.pack(fill=tk.X, pady=(4, 0))
-        self.btn_probe_pen_down = ttk.Button(probe_row2,
-            text="ペン下げ (印を付ける)",
-            command=self.on_probe_pen_down, width=20)
+        # 「ペン下げ」 は接触するので 薄橙
+        self.btn_probe_pen_down = tk.Button(probe_row2,
+            text="✏ ペン下げ (印を付ける)",
+            command=self.on_probe_pen_down, width=22,
+            bg="#fed", fg="#950",
+            activebackground="#fda", activeforeground="#830",
+            font=("Monaco", 10, "bold"))
         self.btn_probe_pen_down.pack(side=tk.LEFT, padx=2)
-        self.btn_probe_pen_up = ttk.Button(probe_row2, text="ペン上げ",
-            command=self.on_probe_pen_up, width=10)
+        # ペン上げは安全方向だが motion なので 薄橙で軽くハイライト
+        self.btn_probe_pen_up = tk.Button(probe_row2, text="⬆ ペン上げ",
+            command=self.on_probe_pen_up, width=12,
+            bg="#fed", fg="#950",
+            activebackground="#fda", activeforeground="#830",
+            font=("Monaco", 10, "bold"))
         self.btn_probe_pen_up.pack(side=tk.LEFT, padx=2)
         # IK 候補選択モード
         self.var_probe_ik_select = tk.BooleanVar(value=False)
@@ -558,15 +598,20 @@ class WallDrawingGUI:
 
         # ---- 2. キャンバスキャリブ (B1 四隅 + B2 外周 + B3 対角 + B5 内側) ----
         dt_frame = ttk.LabelFrame(tab_calib,
-            text="2. キャンバスキャリブレーション "
+            text="📐 キャンバスキャリブレーション "
                  "(四隅 → 外周 → 対角線 → 任意 内側ジグザグ)",
             padding=6)
         dt_frame.pack(fill=tk.X, padx=2, pady=2)
         row_a = ttk.Frame(dt_frame)
         row_a.pack(fill=tk.X)
-        self.btn_start_drag = ttk.Button(row_a,
-            text="ティーチ開始 (マスターモード)",
-            command=self.on_start_drag, width=36)
+        # 「ティーチ開始」 は master mode に入り GUI が不安定化、 終了時に
+        # 電源 cycle が必要になる最危険操作。 赤背景で警告。
+        self.btn_start_drag = tk.Button(row_a,
+            text="⚠ ティーチ開始 (マスターモード)",
+            command=self.on_start_drag, width=36,
+            bg="#fdd", fg="#a00",
+            activebackground="#faa", activeforeground="#800",
+            font=("Monaco", 10, "bold"))
         self.btn_start_drag.pack(side=tk.LEFT, padx=2)
         self.lbl_phase = ttk.Label(dt_frame,
             text="(ティーチ未開始)", font=("Monaco", 10),
@@ -590,13 +635,20 @@ class WallDrawingGUI:
         attach_tooltip(btn_motor_help,
                        "クリックで モーター番号 ↔ アーム関節 の対応図を "
                        "別ウィンドウで表示")
-        self.btn_save_drag = ttk.Button(row_b,
-            text="保存して終了 (マスター解除)",
-            command=self.on_save_drag, width=24)
+        # 保存系は緑、 中止系は赤
+        self.btn_save_drag = tk.Button(row_b,
+            text="✅ 保存して終了 (マスター解除)",
+            command=self.on_save_drag, width=28,
+            bg="#dfd", fg="#060",
+            activebackground="#afa", activeforeground="#040",
+            font=("Monaco", 10, "bold"))
         self.btn_save_drag.pack(side=tk.RIGHT, padx=2)
-        self.btn_abort_drag = ttk.Button(row_b,
-            text="中止 (保存しない)",
-            command=self.on_abort_drag, width=18)
+        self.btn_abort_drag = tk.Button(row_b,
+            text="■ 中止 (保存しない)",
+            command=self.on_abort_drag, width=18,
+            bg="#fcc", fg="#800",
+            activebackground="#f99", activeforeground="#600",
+            font=("Monaco", 10, "bold"))
         self.btn_abort_drag.pack(side=tk.RIGHT, padx=2)
 
         # 個別やり直し行: 既に B1 完了 + B2/B3/B5 やった後で、 特定の
@@ -622,7 +674,10 @@ class WallDrawingGUI:
                   font=("Monaco", 9)).pack(side=tk.LEFT, padx=(0, 4))
         make_spinbox(row_c, self.var_sampling_interval, 2, 50, 1, width=4,
                      fmt="%.0f").pack(side=tk.LEFT, padx=(0, 8))
-        self.btn_b2_start = ttk.Button(row_c, text="B2 外周トレース開始",
+        self.btn_b2_start = tk.Button(row_c, text="▶ B2 外周トレース開始",
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"),
             command=self.on_b2_start_trace, width=20)
         self.btn_b2_start.pack(side=tk.LEFT, padx=2)
         self.btn_trace_stop = ttk.Button(row_c, text="トレース停止",
@@ -680,8 +735,8 @@ class WallDrawingGUI:
 
         # ---- 3. 中央調整 (キャンバス中央で X 押し付け量を確定) ----
         tune_frame = ttk.LabelFrame(tab_center,
-            text="3. 中央調整 (キャンバス中央で X 押し付け量を確定)",
-            padding=8)
+            text="✏ 中央押し付け 調整 (キャンバス中央で X 押し付け量を確定)",
+            padding=6)
         tune_frame.pack(fill=tk.X, padx=2, pady=2)
         # 上段: 大きめ spinbox を 3 つ並べる (▲▼ クリックで即アーム移動)
         tune_top = ttk.Frame(tune_frame)
@@ -713,10 +768,17 @@ class WallDrawingGUI:
             text="中央へ移動 (ペン上げ) -- 初回",
             command=self.on_go_center, width=28)
         self.btn_go_center.pack(side=tk.LEFT, padx=2)
-        self.btn_tune_pen_down = ttk.Button(tune_bot, text="ペン下げ",
-            command=self.on_tune_pen_down, width=10)
+        # tune section の「ペン下げ」 も接触なので 薄橙
+        self.btn_tune_pen_down = tk.Button(tune_bot, text="✏ ペン下げ",
+            command=self.on_tune_pen_down, width=12,
+            bg="#fed", fg="#950",
+            activebackground="#fda", activeforeground="#830",
+            font=("Monaco", 10, "bold"))
         self.btn_tune_pen_down.pack(side=tk.LEFT, padx=(8, 4))
-        self.btn_lift_pen = ttk.Button(tune_bot, text="ペン上げ",
+        self.btn_lift_pen = tk.Button(tune_bot, text="⬆ ペン上げ",
+            bg="#fed", fg="#950",
+            activebackground="#fda", activeforeground="#830",
+            font=("Monaco", 10, "bold"),
             command=self.on_lift_pen, width=10)
         self.btn_lift_pen.pack(side=tk.LEFT, padx=(0, 12))
         # 中央調整値 (X 押し付け補正 / 中央 Y / 中央 Z) を yaml に保存
@@ -733,7 +795,7 @@ class WallDrawingGUI:
 
         # ---- 四つ角微調整 (B4 中央調整の代わり) ----
         ca_frame = ttk.LabelFrame(tab_center,
-            text="四つ角微調整 (各 隅へ移動 → Y/Z spinbox で位置補正 → "
+            text="🔧 四つ角微調整 (各 隅へ移動 → Y/Z spinbox で位置補正 → "
                  "確定で yaml 更新)", padding=6)
         ca_frame.pack(fill=tk.X, padx=2, pady=2)
         # 4 隅選択ボタン
@@ -785,7 +847,7 @@ class WallDrawingGUI:
 
         # ---- 4. テスト描画 ----
         draw_frame = ttk.LabelFrame(tab_draw,
-            text="テスト描画", padding=6)
+            text="🧪 テスト描画 (図形)", padding=6)
         draw_frame.pack(fill=tk.X, padx=2, pady=2)
 
         side_row = ttk.Frame(draw_frame)
@@ -832,21 +894,32 @@ class WallDrawingGUI:
 
         action_row = ttk.Frame(draw_frame)
         action_row.pack(fill=tk.X, pady=4)
-        self.btn_draw = ttk.Button(action_row, text="中心に正方形 (描画開始)",
-            command=self.on_draw_square, width=22)
+        # 「描画開始」 は実機動作するので 橙背景で視認性↑
+        self.btn_draw = tk.Button(action_row,
+            text="▶ 中心に正方形 (描画開始)",
+            command=self.on_draw_square, width=22,
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
         self.btn_draw.pack(side=tk.LEFT, padx=2)
         ttk.Label(action_row, font=("Monaco", 9), foreground="#555",
             text="C1 → C2 → C3 → C4 → C1"
         ).pack(side=tk.LEFT, padx=10)
 
-        # 図形バリエーション (中心配置)
+        # 図形バリエーション (中心配置) — 正方形と同じ橙でハイライト
         shape_row = ttk.Frame(draw_frame)
         shape_row.pack(fill=tk.X, pady=(2, 0))
-        self.btn_circle = ttk.Button(shape_row, text="中心に丸",
-            command=self.on_draw_circle, width=14)
+        self.btn_circle = tk.Button(shape_row, text="▶ 中心に丸",
+            command=self.on_draw_circle, width=14,
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
         self.btn_circle.pack(side=tk.LEFT, padx=2)
-        self.btn_triangle = ttk.Button(shape_row, text="中心に三角",
-            command=self.on_draw_triangle, width=14)
+        self.btn_triangle = tk.Button(shape_row, text="▶ 中心に三角",
+            command=self.on_draw_triangle, width=14,
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
         self.btn_triangle.pack(side=tk.LEFT, padx=2)
 
         # 四隅合わせ正方形 (キャンバスの各隅に square の対応する角を一致させる)
@@ -866,7 +939,7 @@ class WallDrawingGUI:
 
         # ---- 5. 生成画像描画 ----
         strokes_frame = ttk.LabelFrame(tab_draw,
-            text="5. 生成画像描画 (strokes.json を実機描画)", padding=6)
+            text="🎨 生成画像描画 (strokes.json を実機描画)", padding=6)
         strokes_frame.pack(fill=tk.X, padx=2, pady=2)
         # 1 行目: JSON ファイル選択 + プレビュー
         sf_r1 = ttk.Frame(strokes_frame)
@@ -897,16 +970,32 @@ class WallDrawingGUI:
                                                 padx=(8, 4))
         make_spinbox(sf_r2, self.var_strokes_max, 0, 999, 1, width=4,
                      fmt="%.0f").pack(side=tk.LEFT, padx=(0, 8))
-        self.btn_strokes_draw = ttk.Button(sf_r2,
-            text="描画開始", command=self.on_strokes_draw, width=10)
+        # 「描画開始」 は実機動作するので 橙背景で視認性↑
+        self.btn_strokes_draw = tk.Button(sf_r2,
+            text="▶ 描画開始", command=self.on_strokes_draw, width=12,
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
         self.btn_strokes_draw.pack(side=tk.LEFT, padx=2)
         self.btn_strokes_resume = ttk.Button(sf_r2,
             text="再開", command=self.on_strokes_resume, width=8,
             state=tk.DISABLED)
         self.btn_strokes_resume.pack(side=tk.LEFT, padx=2)
-        self.btn_strokes_abort = ttk.Button(sf_r2,
-            text="中止", command=self.on_strokes_abort, width=8)
+        # 「中止」 は緊急停止なので 赤背景
+        self.btn_strokes_abort = tk.Button(sf_r2,
+            text="■ 中止", command=self.on_strokes_abort, width=8,
+            bg="#fcc", fg="#800",
+            activebackground="#f99", activeforeground="#600",
+            font=("Monaco", 10, "bold"))
         self.btn_strokes_abort.pack(side=tk.LEFT, padx=2)
+        # Frida Smooth Draw (PR #2): 多 stroke 最適化 (TSP + 曲率速度 +
+        # look-ahead) 経路で別 Robot インスタンス経由で描画する
+        self.btn_strokes_draw_smooth = tk.Button(sf_r2,
+            text="✨ Frida Smooth", command=self.on_strokes_draw_smooth,
+            width=14, bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
+        self.btn_strokes_draw_smooth.pack(side=tk.LEFT, padx=(8, 2))
         self.lbl_strokes_progress = ttk.Label(sf_r2,
             text="進捗: -", font=("Monaco", 9), foreground="gray")
         self.lbl_strokes_progress.pack(side=tk.LEFT, padx=(8, 0))
@@ -915,7 +1004,7 @@ class WallDrawingGUI:
         ).pack(side=tk.RIGHT, padx=2)
 
         # ---- 右ペイン: ログ (大きく取る) ----
-        log_frame = ttk.LabelFrame(right_frame, text="ログ", padding=6)
+        log_frame = ttk.LabelFrame(right_frame, text="📋 ログ", padding=6)
         log_frame.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
         self.log_text = scrolledtext.ScrolledText(log_frame,
                                                   font=("Monaco", 9),
@@ -943,16 +1032,45 @@ class WallDrawingGUI:
     # ------------------------------------------------------------------
     def log(self, msg):
         ts = time.strftime("%H:%M:%S")
+        # 絵文字 ON/OFF (環境変数 WALL_GUI_NO_EMOJI=1 で OFF、
+        # default ON)。 OFF 時は log メッセージから既知の絵文字を strip
+        # して、 font 無し環境や機械処理用途に対応
+        if getattr(self, "_use_emoji", None) is False:
+            msg = self._strip_emoji(msg)
         self.log_text.insert(tk.END, f"[{ts}] {msg}\n")
         self.log_text.see(tk.END)
 
     def log_safe(self, msg):
         self.root.after(0, lambda: self.log(msg))
 
+    def _on_toggle_emoji(self):
+        """log の絵文字 ON/OFF を切り替え (Checkbutton から呼ばれる)。"""
+        self._use_emoji = bool(self.var_use_emoji.get())
+        state = "ON" if self._use_emoji else "OFF"
+        self.log(f"log の絵文字を {state} に切り替えました")
+
+    @staticmethod
+    def _strip_emoji(s):
+        """log で使う既知の絵文字を strip。 全 unicode 絵文字対応ではない。"""
+        for ch in ("✓", "✅", "❌", "⚠", "ℹ", "▶", "■", "✏", "⬆",
+                    "🏠", "📦", "🖋", "🔴", "🟢", "🟡", "🟠",
+                    "📖", "📊", "🔒", "🔓", "🔄", "⚙", "✨",
+                    "⛔"):
+            s = s.replace(ch, "")
+        # 連続スペース整理
+        while "  " in s:
+            s = s.replace("  ", " ")
+        return s.strip()
+
     # ------------------------------------------------------------------
     # button-state refresh
     # ------------------------------------------------------------------
     def _refresh_buttons(self):
+        # workflow step indicator も同時に更新
+        try:
+            self._refresh_workflow_step()
+        except Exception:
+            pass
         no_master = not self.in_master
         no_busy = not self.busy
         no_restart = not self.gui_restart_required
@@ -1276,6 +1394,45 @@ class WallDrawingGUI:
     def _refresh_buttons_safe(self):
         self.root.after(0, self._refresh_buttons)
 
+    def _refresh_workflow_step(self):
+        """workflow ステップ indicator を更新。 接続状態 + canvas yaml の
+        存在 + tune 値 から step を推定して status bar に表示。
+
+        ステップ判定:
+          ① 接続待ち       — not self.connected
+          ② キャリブ必要   — connected, canvas_calibration.yaml 無し
+          ③ コンタクト調整 — calibrated だが contact_x が初期値 のまま
+          ④ 描画準備完了   — 上記全クリア
+        """
+        try:
+            if not getattr(self, "connected", False):
+                self.lbl_workflow.config(text="🔌 ① 接続待ち",
+                                          foreground="gray")
+                return
+            # canvas_calibration.yaml の calibrated フラグを参照
+            yaml_path = OUTPUT_YAML
+            calibrated = False
+            try:
+                if os.path.exists(yaml_path):
+                    with open(yaml_path) as f:
+                        d = yaml.safe_load(f) or {}
+                    calibrated = bool(
+                        d.get("canvas", d).get("calibrated", False))
+            except Exception:
+                pass
+            if not calibrated:
+                self.lbl_workflow.config(text="📐 ② キャリブ必要",
+                                          foreground="#a40")
+                return
+            # tune (contact_x) が default 値かどうかは厳密判定難しいので
+            # 一旦 calibrated → ④ 描画準備完了 とする (ユーザ判断)
+            # ③ コンタクト調整 を別途出したければ contact_x_mm が修正済
+            # フラグを別管理する必要あり
+            self.lbl_workflow.config(text="🎨 ④ 描画準備完了",
+                                      foreground="#080")
+        except Exception:
+            pass    # status indicator は副次機能、 落ちて主機能止めない
+
     # ------------------------------------------------------------------
     # live status poll
     # ------------------------------------------------------------------
@@ -1308,7 +1465,7 @@ class WallDrawingGUI:
     # ------------------------------------------------------------------
     def _run_in_thread(self, fn, *args):
         if self.gui_restart_required:
-            messagebox.showerror("GUI 再起動が必要",
+            messagebox.showerror("⚠ GUI 再起動が必要",
                 "GUI がアームを正常に制御できなくなりました "
                 "(マスター後の状態など)。\n\n"
                 "① 必要ならアームの電源リセット\n"
@@ -1505,7 +1662,10 @@ class WallDrawingGUI:
         """接続セクション (タブ外、 常時表示)。"""
         conn_r1 = ttk.Frame(parent)
         conn_r1.pack(fill=tk.X)
-        self.btn_can_up = ttk.Button(conn_r1, text="CAN 起動(管理者)",
+        self.btn_can_up = tk.Button(conn_r1, text="🔴 CAN 起動(管理者)",
+            bg="#fdd", fg="#a00",
+            activebackground="#faa", activeforeground="#800",
+            font=("Monaco", 10, "bold"),
             command=self.on_can_up, width=16)
         self.btn_can_up.pack(side=tk.LEFT, padx=(0, 8))
         ttk.Label(conn_r1, text="関節速度(%):").pack(side=tk.LEFT)
@@ -1519,16 +1679,28 @@ class WallDrawingGUI:
                      fmt="%.0f").pack(side=tk.LEFT, padx=(2, 8))
         conn_r2 = ttk.Frame(parent)
         conn_r2.pack(fill=tk.X, pady=(4, 0))
-        self.btn_connect = ttk.Button(conn_r2, text="接続",
+        self.btn_connect = tk.Button(conn_r2, text="🟢 接続",
+            bg="#dfd", fg="#060",
+            activebackground="#afa", activeforeground="#040",
+            font=("Monaco", 10, "bold"),
             command=self.on_connect, width=10)
         self.btn_connect.pack(side=tk.LEFT, padx=2)
-        self.btn_recover = ttk.Button(conn_r2, text="ホーム/撮影位置へ",
+        self.btn_recover = tk.Button(conn_r2, text="🏠 ホーム/撮影位置へ",
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"),
             command=self.on_recover, width=18)
         self.btn_recover.pack(side=tk.LEFT, padx=2)
-        self.btn_storage = ttk.Button(conn_r2, text="収納ポーズへ",
+        self.btn_storage = tk.Button(conn_r2, text="📦 収納ポーズへ",
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"),
             command=self.on_storage, width=14)
         self.btn_storage.pack(side=tk.LEFT, padx=2)
-        self.btn_pen_exchange = ttk.Button(conn_r2, text="ペン交換ポーズへ",
+        self.btn_pen_exchange = tk.Button(conn_r2, text="🖋 ペン交換ポーズへ",
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"),
             command=self.on_pen_exchange, width=18)
         self.btn_pen_exchange.pack(side=tk.LEFT, padx=2)
         self.btn_grip_home = ttk.Button(conn_r2,
@@ -1541,10 +1713,16 @@ class WallDrawingGUI:
         self.btn_grip_release = ttk.Button(conn_r2, text="🔓 ゆるめる",
             command=self.on_grip_release, width=12)
         self.btn_grip_release.pack(side=tk.LEFT, padx=2)
-        self.btn_disconnect = ttk.Button(conn_r2, text="切断",
+        self.btn_disconnect = tk.Button(conn_r2, text="🔴 切断",
+            bg="#fdd", fg="#a00",
+            activebackground="#faa", activeforeground="#800",
+            font=("Monaco", 10, "bold"),
             command=self.on_disconnect, width=10)
         self.btn_disconnect.pack(side=tk.LEFT, padx=2)
-        self.btn_recover_conn = ttk.Button(conn_r2, text="接続をリセット",
+        self.btn_recover_conn = tk.Button(conn_r2, text="🔄 接続をリセット",
+            bg="#fdd", fg="#a00",
+            activebackground="#faa", activeforeground="#800",
+            font=("Monaco", 10, "bold"),
             command=self.on_recover_connection, width=16)
         self.btn_recover_conn.pack(side=tk.LEFT, padx=2)
         # 「操作の流れを開く」 ボタンを接続の右端に配置
@@ -2065,7 +2243,7 @@ class WallDrawingGUI:
     def on_restart_gui(self):
         """Spawn a fresh GUI process and quit this one."""
         if self.in_master:
-            messagebox.showerror("マスターモード中は再起動不可",
+            messagebox.showerror("⚠ マスターモード中は再起動不可",
                 "先にティーチを保存 or 中止してください。")
             return
         if not messagebox.askyesno("GUI 再起動",
@@ -2199,7 +2377,7 @@ class WallDrawingGUI:
     def on_can_up(self):
         which = subprocess.run(["which", "pkexec"], capture_output=True)
         if which.returncode != 0:
-            messagebox.showerror("pkexec not found",
+            messagebox.showerror("❌ pkexec not found",
                 "pkexec (PolicyKit) is not installed. Either:\n"
                 "  sudo apt install policykit-1\n"
                 "or run CAN up manually in a terminal:\n"
@@ -2246,7 +2424,7 @@ class WallDrawingGUI:
 
     def on_connect(self):
         if self.gui_restart_required:
-            messagebox.showerror("GUI 再起動が必要",
+            messagebox.showerror("⚠ GUI 再起動が必要",
                 "この GUI は以前マスターモードに入った状態です。 "
                 "SDK が安定して再接続できません。 「GUI 終了」 して "
                 "再起動してください。")
@@ -2479,7 +2657,7 @@ class WallDrawingGUI:
             err = max(abs(c - r) for c, r in zip(cur, target))
             self.log_safe(f"  到着。 最大関節誤差 {err:.2f}°")
         except Exception as e:
-            self.log_safe(f"  MOVE J 失敗: {e}")
+            self.log_safe(f"  ❌ MOVE J 失敗: {e}")
             self.log_safe(
                 "  → 再度 「ホーム/撮影位置へ」 を押すと改善することが "
                 "あります。 駄目なら 「収納ポーズへ」 で安全姿勢に。")
@@ -2586,7 +2764,9 @@ class WallDrawingGUI:
         angle=0 = 閉じ位置として扱われる。
         """
         if self.piper is None:
-            messagebox.showerror("未接続", "先に 「接続」 してください。")
+            messagebox.showerror("❌ 未接続",
+                "アームに接続されていません。\n\n"
+                "対処: 上部の 「🟢 接続」 ボタンを押してから再試行してください。")
             return
         if not messagebox.askyesno("グリッパー ホーミング",
                 "現在のグリッパー位置を 「0」 (= 完全に閉じた位置) として "
@@ -2612,10 +2792,10 @@ class WallDrawingGUI:
             self.piper.GripperCtrl(0, 1000, 0x01, 0)
             time.sleep(0.5)
         except Exception as e:
-            self.log_safe(f"  GripperCtrl 失敗: {e}")
+            self.log_safe(f"  ❌ GripperCtrl 失敗: {e}")
             return
         state_after = self._gripper_state()
-        self.log_safe(f"  ホーミング完了 (after: {state_after})")
+        self.log_safe(f"  ✓ ホーミング完了 (after: {state_after})")
         if state_after and not state_after.get("homed"):
             self.log_safe(
                 "  ⚠ status_code に homed bit が立っていません。 "
@@ -2638,7 +2818,9 @@ class WallDrawingGUI:
     def on_grip_strong(self):
         """グリッパーを最大トルクで閉じる (ペンを強く掴む)。"""
         if self.piper is None:
-            messagebox.showerror("未接続", "先に 「接続」 してください。")
+            messagebox.showerror("❌ 未接続",
+                "アームに接続されていません。\n\n"
+                "対処: 上部の 「🟢 接続」 ボタンを押してから再試行してください。")
             return
         self._run_in_thread(self._do_grip_strong)
 
@@ -2651,12 +2833,14 @@ class WallDrawingGUI:
         self._send_gripper(angle=0, effort=3000, code=0x01)
         time.sleep(0.5)
         state_after = self._gripper_state()
-        self.log_safe(f"  完了 (after: {state_after})")
+        self.log_safe(f"  ✓ 完了 (after: {state_after})")
 
     def on_grip_release(self):
         """グリッパーを開く (ペンを離す)。"""
         if self.piper is None:
-            messagebox.showerror("未接続", "先に 「接続」 してください。")
+            messagebox.showerror("❌ 未接続",
+                "アームに接続されていません。\n\n"
+                "対処: 上部の 「🟢 接続」 ボタンを押してから再試行してください。")
             return
         self._run_in_thread(self._do_grip_release)
 
@@ -2669,7 +2853,7 @@ class WallDrawingGUI:
         self._send_gripper(angle=70000, effort=1000, code=0x01)
         time.sleep(0.5)
         state_after = self._gripper_state()
-        self.log_safe(f"  完了 (after: {state_after})")
+        self.log_safe(f"  ✓ 完了 (after: {state_after})")
 
     # ------------------------------------------------------------------
     # Reach Probe (pre-calibration: drive arm to 4 reach-corner
@@ -2704,7 +2888,7 @@ class WallDrawingGUI:
         # configurations even with the same cartesian pose, so a strict
         # joint-pose check is too restrictive once chaining has started.
         if not self._at_ready_pose() and not self.probe_active:
-            messagebox.showwarning("ホーム位置未到達",
+            messagebox.showwarning("⚠ ホーム位置未到達",
                 "リーチ確認を始める前に 「ホーム/撮影位置へ」 を "
                 "押してください。")
             return
@@ -2751,7 +2935,7 @@ class WallDrawingGUI:
                 f"{actual[2]:.1f})  目標 (-, {y:.1f}, {z:.1f})  "
                 f"YZ 誤差 {err:.1f}mm")
         except Exception as e:
-            self.log_safe(f"リーチ確認 {name}: 移動失敗 ({e})")
+            self.log_safe(f"  ❌ リーチ確認 {name}: 移動失敗 ({e})")
         self._refresh_buttons_safe()
 
     def _do_probe_corner(self, name, y, z):
@@ -2809,7 +2993,7 @@ class WallDrawingGUI:
                     "(リーチ限界の最寄り点)。 キャンバスをアームに近づけるか "
                     "サイズを調整してください。")
         except Exception as e:
-            self.log_safe(f"リーチ確認 {name}: 移動失敗 ({e})")
+            self.log_safe(f"  ❌ リーチ確認 {name}: 移動失敗 ({e})")
         self.log_safe(f"リーチ確認 {name}: ペン上げで到着。 「ペン下げ」 "
                       "で印を付けるか、 次のコーナーを選択。")
         self._refresh_buttons_safe()
@@ -2829,15 +3013,15 @@ class WallDrawingGUI:
     def _do_probe_pen_down(self):
         actual = self._read_endpose()
         draw_x = self._draw_x()
-        self.log_safe(f"ペン下げ (IK 低速): X={draw_x:.1f} "
+        self.log_safe(f"✏ ペン下げ (IK 低速): X={draw_x:.1f}"
                       f"Y={actual[1]:.1f} Z={actual[2]:.1f} "
                       f"[X 補正 {self._xoff():+.1f}]")
         try:
             self._move_xyz_via_ik(draw_x, actual[1], actual[2])
             self.probe_pen_down = True
-            self.log_safe("  ペン下げ完了。 印を付けたら 「ペン上げ」。")
+            self.log_safe("  ✓ ペン下げ完了。 印を付けたら 「⬆ ペン上げ」。")
         except Exception as e:
-            self.log_safe(f"  ペン下げ失敗: {e}")
+            self.log_safe(f"  ❌ ペン下げ失敗: {e}")
         self._refresh_buttons_safe()
 
     def on_probe_pen_up(self):
@@ -2858,9 +3042,9 @@ class WallDrawingGUI:
         try:
             self._move_xyz_via_ik(pen_up_x, actual[1], actual[2])
             self.probe_pen_down = False
-            self.log_safe("  ペン上げ完了。")
+            self.log_safe("  ✓ ペン上げ完了。")
         except Exception as e:
-            self.log_safe(f"  ペン上げ失敗: {e}")
+            self.log_safe(f"  ❌ ペン上げ失敗: {e}")
         self._refresh_buttons_safe()
 
     # ------------------------------------------------------------------
@@ -2868,7 +3052,7 @@ class WallDrawingGUI:
     # ------------------------------------------------------------------
     def on_start_drag(self):
         if not self._at_ready_pose():
-            messagebox.showwarning("ホーム位置未到達",
+            messagebox.showwarning("⚠ ホーム位置未到達",
                 "ティーチを始める前に 「ホーム/撮影位置へ」 を "
                 "押してください。")
             return
@@ -2926,7 +3110,7 @@ class WallDrawingGUI:
         try:
             parsed = read_calibration(OUTPUT_YAML)
         except Exception as e:
-            self.log_safe(f"  既存 yaml 読込失敗: {e}")
+            self.log_safe(f"  ❌ 既存 yaml 読込失敗: {e}")
             return
         raw = parsed.get("raw") or {}
         wb_records = raw.get("whiteboard_corners_mm") or {}
@@ -3000,7 +3184,7 @@ class WallDrawingGUI:
             self._refresh_buttons_safe()
         self.log_safe("*** WIGGLE THE ARM by hand to start 0x155-7 broadcast ***")
         if load_prev and self.dt_phase == "b2_idle":
-            self.log_safe("既存データ引継ぎ完了。 個別やり直し ボタンで "
+            self.log_safe("✓ 既存データ引継ぎ完了。 個別やり直し ボタンで "
                           "特定の隅だけ再記録可能。 トレース系も既存値を "
                           "保持。 完了したら 「保存して終了」 で yaml 上書き。")
         else:
@@ -3160,7 +3344,7 @@ class WallDrawingGUI:
         if self.redo_corner_key is not None:
             p = self._capture_point()
             if p is None:
-                messagebox.showwarning("関節フィードバック未取得",
+                messagebox.showwarning("⚠ 関節フィードバック未取得",
                     "アームの関節値がまだ全てゼロです。\n"
                     "アームを少し手で揺らしてから再度押してください。")
                 return
@@ -3183,7 +3367,7 @@ class WallDrawingGUI:
             return
         p = self._capture_point()
         if p is None:
-            messagebox.showwarning("関節フィードバック未取得",
+            messagebox.showwarning("⚠ 関節フィードバック未取得",
                 "アームの関節値がまだ全てゼロです。\n"
                 "アームを少し手で揺らして 0x155-7 ブロードキャストを "
                 "起動してから記録してください。")
@@ -3237,7 +3421,7 @@ class WallDrawingGUI:
         その隅が上書きされる。
         """
         if self.listener is None or not self.in_master:
-            messagebox.showerror("マスターモード外",
+            messagebox.showerror("⚠ マスターモード外",
                 "個別やり直しはティーチ中 (マスターモード) のみ可。")
             return
         if corner_key not in self.CORNER_ORDER:
@@ -3276,7 +3460,7 @@ class WallDrawingGUI:
 
     def on_save_drag(self):
         if len(self.dt_corners) != 4:
-            messagebox.showerror("四隅が未完了",
+            messagebox.showerror("⚠ 四隅が未完了",
                 f"記録済み {len(self.dt_corners)}/4 隅。 B1 (四隅) を "
                 "全て記録してから保存してください。")
             return
@@ -3373,12 +3557,12 @@ class WallDrawingGUI:
     def _start_trace(self, target):
         """Start a DragSamplingThread that fills dt_traces[target]."""
         if self.listener is None or not self.in_master:
-            messagebox.showerror("マスターモード外",
+            messagebox.showerror("⚠ マスターモード外",
                 "先に 「ティーチ開始」 でマスターモードに入って "
                 "ください。")
             return
         if len(self.dt_corners) < 4:
-            messagebox.showerror("四隅未完了",
+            messagebox.showerror("⚠ 四隅未完了",
                 f"先に 4 隅を全部記録してください "
                 f"(現在 {len(self.dt_corners)}/4)。")
             return
@@ -3442,7 +3626,7 @@ class WallDrawingGUI:
         """Snapshot current master-mode joints as the ready/capture pose
         and persist to panel_frame.yaml's panel.ready_pose_deg."""
         if not self.in_master or self.listener is None:
-            messagebox.showerror("マスターモード外",
+            messagebox.showerror("⚠ マスターモード外",
                 "撮影/ホーム位置の記録には マスターモード "
                 "(ティーチ中) が必要です。\n\n"
                 "先に 「ティーチ開始」 でマスターモードに入り、 "
@@ -3824,7 +4008,7 @@ class WallDrawingGUI:
 
     def _do_tune_pen_down(self):
         draw_x = self._draw_x()
-        self.log_safe(f"ペン下げ (IK 低速): X={draw_x:.1f} (押し付け量 "
+        self.log_safe(f"✏ ペン下げ (IK 低速): X={draw_x:.1f}(押し付け量 "
                       f"{MAX_PUSH_MM}mm + 補正 {self._xoff():+.1f}mm)")
         q = self._move_xyz_via_ik(draw_x, self.tune_y, self.tune_z,
                                    warm_start_q=self.tune_warm_q)
@@ -3962,7 +4146,7 @@ class WallDrawingGUI:
             self.corner_adj_warm_q = q
             self.log_safe("  到着。 Y/Z spinbox で微調整 → 「yaml 更新」。")
         except Exception as e:
-            self.log_safe(f"  移動失敗: {e}")
+            self.log_safe(f"  ❌ 移動失敗: {e}")
             self.corner_adj_key = None
         self._refresh_buttons_safe()
 
@@ -4152,7 +4336,7 @@ class WallDrawingGUI:
             self.log_safe(f"中央調整 保存: xoff={xoff:+.2f}, "
                           f"center=({cy:.2f}, {cz:.2f})")
         except Exception as e:
-            self.log_safe(f"中央調整 保存失敗: {e}")
+            self.log_safe(f"❌ 中央調整 保存失敗: {e}")
             self.root.after(0, lambda m=str(e): messagebox.showerror(
                 "保存失敗", f"yaml 書き込み失敗:\n{m}"))
 
@@ -4210,7 +4394,7 @@ class WallDrawingGUI:
         self._run_in_thread(self._do_draw_square, corners, xoff)
 
     def _do_draw_square(self, corners, xoff):
-        self.log_safe(f"正方形描画 (IK + MOVE J 低速): "
+        self.log_safe(f"▶ 正方形描画 (IK + MOVE J 低速): "
                       f"関節速度 {self._speed_joint()}%, X offset {xoff:+.2f}")
         self._ensure_wall_facing()
         pen_up_x = self.contact_x_mm - PEN_UP_CLEAR_MM + xoff
@@ -4424,7 +4608,7 @@ class WallDrawingGUI:
         IK で高速収束。
         """
         speed = self._speed_joint()
-        self.log_safe(f"Drawing {label}: IK + MOVE J 低速描画 関節速度="
+        self.log_safe(f"▶ Drawing {label}: IK + MOVE J 低速描画 関節速度="
                       f"{speed}%, X offset {xoff:+.2f}, {len(points)} 点")
         self._ensure_wall_facing()
         pen_up_x = self.contact_x_mm - PEN_UP_CLEAR_MM + xoff
@@ -4593,11 +4777,13 @@ class WallDrawingGUI:
     def on_strokes_draw(self):
         path = self.var_strokes_json_path.get()
         if not path:
-            messagebox.showerror("ファイル未指定",
+            messagebox.showerror("❌ ファイル未指定",
                 "「選択...」で strokes.json を指定してください。")
             return
         if not os.path.exists(path):
-            messagebox.showerror("ファイルなし", f"見つかりません:\n{path}")
+            messagebox.showerror("❌ ファイルなし",
+                f"見つかりません:\n{path}\n\n"
+                "対処: パスが正しいか、 ファイルが移動されていないか確認。")
             return
         if not self.connected:
             messagebox.showerror("未接続",
@@ -4605,13 +4791,17 @@ class WallDrawingGUI:
             return
         if not self._check_at_home_or_warn("ストローク描画"):
             return
-        msg = (f"ストローク描画を開始しますか?\n\n"
-               f"  入力: {path}\n"
-               f"  最大本数: {self.var_strokes_max.get() or '全部'}\n"
-               f"  関節速度 {self._speed_joint()}% (IK + MOVE J)\n\n"
-               "⚠ アームが動きます。 アームの近くに人がいないことを "
-               "確認してください。")
-        if not messagebox.askyesno("ストローク描画 確認", msg):
+        msg = (f"ストローク描画を開始します。\n\n"
+               f"  入力      : {os.path.basename(path)}\n"
+               f"  最大本数  : {self.var_strokes_max.get() or '全部'}\n"
+               f"  関節速度  : {self._speed_joint()}% (IK + MOVE J)\n\n"
+               "事前確認:\n"
+               "  ☐ アームの可動範囲に人や障害物がない\n"
+               "  ☐ panel に紙が貼られている\n"
+               "  ☐ ペンが付いていて contact_x 調整済\n"
+               "  ☐ 緊急停止ボタンが手元にある\n\n"
+               "⚠ アームが動きます。 続けますか?")
+        if not messagebox.askyesno("⚠️ ストローク描画 確認", msg):
             return
         self.strokes_abort_flag = False
         # 新規開始: 再開状態リセット
@@ -4624,11 +4814,13 @@ class WallDrawingGUI:
         プレビュー表示。 ペン軌跡 + 開始/終点マーカー。"""
         path = self.var_strokes_json_path.get()
         if not path:
-            messagebox.showerror("ファイル未指定",
+            messagebox.showerror("❌ ファイル未指定",
                 "「選択...」 で strokes.json を指定してください。")
             return
         if not os.path.exists(path):
-            messagebox.showerror("ファイルなし", f"見つかりません:\n{path}")
+            messagebox.showerror("❌ ファイルなし",
+                f"見つかりません:\n{path}\n\n"
+                "対処: パスが正しいか、 ファイルが移動されていないか確認。")
             return
         try:
             image_shape, strokes_px, meta = dsw_dev.load_strokes_json(path)
@@ -4672,13 +4864,139 @@ class WallDrawingGUI:
         self.strokes_abort_flag = True
         self.log("⛔ 描画中止を要求 (現在のストロークの終了後に停止)")
 
+    # ------------------------------------------------------------------
+    # Frida Smooth Draw (PR #2, claude/frida-smoothness-20260527)
+    # ------------------------------------------------------------------
+    def on_strokes_draw_smooth(self):
+        """Frida-inspired multi-stroke smooth draw を別 Robot で実行する。
+
+        既存 'on_strokes_draw' (IK + MOVE J chained) とは独立。 別 Robot
+        インスタンスで draw_strokes_panel_smooth() を呼ぶ:
+          - TSP greedy で stroke 順最適化
+          - 曲率連動の 3-region 速度プロファイル (直線部加速 含む)
+          - look-ahead descent height (近い stroke 間は pen-up 浅く)
+
+        既存 GUI の SDK 接続と CAN bus を共有するので、 描画中に他のボタンを
+        押さないこと。 安全のため確認ダイアログを出す。
+        """
+        if _DPRobot is None:
+            messagebox.showerror("Frida 無効",
+                "draw_piper の Robot import 失敗。 起動ログを確認してください。")
+            return
+        path = self.var_strokes_json_path.get()
+        if not path:
+            messagebox.showerror("❌ ファイル未指定",
+                "「選択...」 で strokes.json を指定してください。")
+            return
+        if not os.path.exists(path):
+            messagebox.showerror("❌ ファイルなし",
+                f"見つかりません:\n{path}\n\n"
+                "対処: パスが正しいか、 ファイルが移動されていないか確認。")
+            return
+        if not self._check_at_home_or_warn("Frida Smooth Draw"):
+            return
+        if not messagebox.askyesno(
+            "Frida Smooth Draw",
+            "Frida 拡張 (TSP + 曲率連動速度 + look-ahead descent) で\n"
+            "別 Robot 経由で実機描画します。\n\n"
+            "既存 GUI の SDK 接続と CAN bus を共有するので、 描画中は\n"
+            "GUI の他のボタンを押さないでください。\n\n続けますか?"):
+            return
+        self.strokes_abort_flag = False
+        self._run_in_thread(self._do_strokes_draw_smooth)
+
+    def _do_strokes_draw_smooth(self):
+        """Worker: draw_piper.Robot.draw_strokes_panel_smooth で描画。"""
+        path = self.var_strokes_json_path.get()
+        # 1. strokes.json をロード (既存 dsw_dev 経由、 px 座標)
+        try:
+            image_shape, strokes_px, meta = dsw_dev.load_strokes_json(path)
+        except Exception as e:
+            self.log_safe(f"[frida] strokes.json 読み込み失敗: {e}")
+            return
+        # 2. panel_frame.yaml から PanelFrame (draw_piper 版)
+        try:
+            panel = _DPPanelFrame.from_yaml(self._PANEL_YAML_PATH)
+        except Exception as e:
+            self.log_safe(f"[frida] panel_frame.yaml 読み込み失敗: {e}")
+            return
+        # 3. px → uv mm 変換 (Vectorizer.vectorize_to_panel と同じロジック、
+        #    画像左上原点 / panel 左下原点で Y 反転)
+        h, w = image_shape
+        wu, hv = panel.size_mm[0], panel.size_mm[1]
+        scale_u = wu / w
+        scale_v = hv / h
+        strokes_mm = []
+        for stroke_px in strokes_px:
+            s_uv = []
+            for (x_px, y_px) in stroke_px:
+                u = x_px * scale_u
+                v = (h - y_px) * scale_v
+                if panel.in_bounds(u, v):
+                    s_uv.append((u, v))
+            if len(s_uv) >= 2:
+                strokes_mm.append(s_uv)
+        self.log_safe(
+            f"[frida] {len(strokes_mm)} strokes after px->mm + bounds filter "
+            f"(input {len(strokes_px)}, image {w}x{h}, "
+            f"panel {wu:.0f}x{hv:.0f}mm)")
+        if not strokes_mm:
+            self.log_safe("[frida] no strokes — abort")
+            return
+        # 4. Robot 接続 → 描画 → 切断
+        robot = _DPRobot(mock=False, panel_frame=panel,
+                          use_feedback_workaround=True)
+        try:
+            robot.connect(enable_motors=True)
+            self.log_safe(
+                "[frida] Robot connected (別 SDK instance、 既存接続と並存)")
+            self.log_safe("[frida] moving to ready pose ...")
+            robot.goto_ready_pose(speed_pct=15, settle_s=10.0)
+            self.log_safe(
+                f"[frida] draw_strokes_panel_smooth start "
+                f"({len(strokes_mm)} strokes) ...")
+            import time as _t
+            t0 = _t.time()
+            diag = robot.draw_strokes_panel_smooth(
+                strokes_mm,
+                draw_speed_base=30, draw_speed_min=10, draw_speed_max=50,
+                travel_speed=60, near_threshold_mm=15.0, step_mm=2.0,
+                reorder=True,
+                merge_threshold_mm=0.0,   # 接続線描画は default OFF
+                merge_pen_lift_mm=0.0,    # merge ON 時の pen 浮かしも default 0
+                settle_s=1.0, arrival_tol_mm=2.0, arrival_timeout_s=15.0,
+            )
+            elapsed = _t.time() - t0
+            self.log_safe(f"[frida] done in {elapsed:.1f}s")
+            self.log_safe(
+                f"[frida]   n_arcs           = {diag.get('n_arcs')}")
+            self.log_safe(
+                f"[frida]   travel saved (mm)= "
+                f"{diag.get('travel_saved_mm', 0):.1f}")
+            self.log_safe(
+                f"[frida]   speed mean (pct) = "
+                f"{diag.get('speed_mean_pct', 0):.1f} "
+                f"(range {diag.get('speed_min_pct')}-"
+                f"{diag.get('speed_max_pct')})")
+            self.log_safe("[frida] returning to ready pose ...")
+            robot.goto_ready_pose(speed_pct=15, settle_s=6.0)
+            self.log_safe("[frida] ✅ 完了")
+        except Exception as e:
+            self.log_safe(f"[frida] ❌ ERROR: {e}")
+        finally:
+            try:
+                robot.disconnect()
+                self.log_safe("[frida] Robot disconnected")
+            except Exception:
+                pass
+
     def on_strokes_live_preview(self):
         """ストローク全体プレビュー + 現在描画中のストロークをハイライト。
         500ms 毎に self.strokes_current_idx を読んで再描画。
         """
         path = self.var_strokes_json_path.get()
         if not path or not os.path.exists(path):
-            messagebox.showerror("ファイル未指定",
+            messagebox.showerror("❌ ファイル未指定",
                 "「選択...」 で strokes.json を指定してください。")
             return
         try:
@@ -4747,7 +5065,7 @@ class WallDrawingGUI:
         """中断した描画を続きから再開。"""
         path = self.var_strokes_json_path.get()
         if not path:
-            messagebox.showerror("ファイル未指定",
+            messagebox.showerror("❌ ファイル未指定",
                 "「選択...」 で strokes.json を指定してください。")
             return
         idx = int(self.strokes_last_completed_idx)
@@ -4896,7 +5214,7 @@ class WallDrawingGUI:
         warm = None
         last_completed_idx = start_from - 1  # 再開時の起点
         if start_from > 0:
-            self.log_safe(f"再開: ストローク {start_from + 1}/{n_total} から")
+            self.log_safe(f"▶ 再開: ストローク {start_from + 1}/{n_total} から")
         for i in range(start_from, n_total):
             stroke_uv = strokes_uv[i]
             if self.strokes_abort_flag:
