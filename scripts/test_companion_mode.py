@@ -17,9 +17,16 @@
 これにより 入力 sketch 位置を変えずに、 隣に M16 画風 detailed object を 追加。
 
 使用:
+  # 手動 prompt
   ./venv/bin/python -m scripts.test_companion_mode \\
       --user-sketch logs/sketch_X.png \\
       --prompt "a cat, detailed Matsumoto style, ..." \\
+      --output logs/companion_<ts>
+
+  # VLM 自動 prompt (sketch → Qwen2.5-VL → Matsumoto companion prompt)
+  ./venv/bin/python -m scripts.test_companion_mode \\
+      --user-sketch logs/sketch_X.png \\
+      --auto-prompt \\
       --output logs/companion_<ts>
 """
 from __future__ import annotations
@@ -40,12 +47,21 @@ def main() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--user-sketch", type=Path, required=True)
     ap.add_argument("--output", type=Path, required=True)
-    ap.add_argument("--prompt", type=str, required=True,
-                    help="object 生成の prompt (M16 detail style)")
+    ap.add_argument("--prompt", type=str, default=None,
+                    help="object 生成の prompt (M16 detail style)。 "
+                         "--auto-prompt 指定時は無視。")
+    ap.add_argument("--auto-prompt", action="store_true",
+                    help="VLM (Qwen2.5-VL) で sketch を識別して "
+                         "Matsumoto-style companion prompt を自動生成する。")
+    ap.add_argument("--confidence-threshold", type=float, default=0.3,
+                    help="VLM 信頼度がこの値未満なら fallback prompt を使う。")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--resolution", type=int, default=1024,
                     help="Stage 1 解像度")
     args = ap.parse_args()
+
+    if not args.auto_prompt and not args.prompt:
+        ap.error("either --prompt or --auto-prompt is required")
 
     args.output.mkdir(parents=True, exist_ok=True)
     res = args.resolution
@@ -57,6 +73,41 @@ def main() -> int:
         detect_blobs, union_bbox, find_largest_empty_rect)
     from modules.stroke_transform import (
         compute_strokes_bbox, transform_strokes, combine_strokes)
+
+    # ============================================================
+    # Step 0: --auto-prompt なら VLM で prompt 生成 (SDXL の前に unload)
+    # ============================================================
+    if args.auto_prompt:
+        print(f"[companion] Step 0: --auto-prompt → VLM で prompt 自動生成")
+        from modules.vlm import VLM
+        from modules.prompt_builder import (
+            build_prompt,
+            COMPANION_TEMPLATE,
+            COMPANION_FALLBACK_TEMPLATE,
+        )
+        sketch_img = Image.open(args.user_sketch).convert("RGB")
+        with VLM(verbose=True) as vlm:
+            guess = vlm.predict_intent(sketch_img)
+        # VLM unload は with の __exit__ で。 SDXL を subprocess で
+        # 起動するためここで VRAM を解放しておく必要がある。
+        print(f"[companion]   guess: {guess.to_text()} "
+              f"(conf={guess.confidence:.2f})")
+        args.prompt = build_prompt(
+            guess,
+            confidence_threshold=args.confidence_threshold,
+            base_template=COMPANION_TEMPLATE,
+            fallback_template=COMPANION_FALLBACK_TEMPLATE,
+        )
+        print(f"[companion]   prompt: {args.prompt}")
+        # 後段の参照用に prompt メタも残す
+        (args.output / "00_auto_prompt.txt").write_text(
+            f"subject_ja={guess.subject.ja}\n"
+            f"location_ja={guess.location.ja}\n"
+            f"action_ja={guess.action.ja}\n"
+            f"confidence={guess.confidence:.3f}\n"
+            f"prompt={args.prompt}\n",
+            encoding="utf-8",
+        )
 
     # ============================================================
     # Step 1: object mode v5 (M16) で 生成 (中央 detailed)

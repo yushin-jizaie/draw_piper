@@ -43,6 +43,21 @@ _FALLBACK_TEMPLATE = (
 )
 
 
+COMPANION_TEMPLATE = (
+    "a detailed Matsumoto-style {subject_en} {action_en} {location_en}, "
+    "manga style, expressive ink lines, "
+    "single continuous black line on plain white background, "
+    "clean smooth strokes, illustrative, no shading"
+)
+
+COMPANION_FALLBACK_TEMPLATE = (
+    "a detailed Matsumoto-style illustration, "
+    "manga style, expressive ink lines, "
+    "single continuous black line on plain white background, "
+    "clean smooth strokes, no shading"
+)
+
+
 def build_prompt(guess: TopicGuess, confidence_threshold: float = 0.3,
                   base_template: str = None,
                   fallback_template: str = None) -> str:
@@ -126,3 +141,23 @@ if __name__ == "__main__":
     )
     print(f"  input:  {g4.to_text()}")
     print(f"  prompt: {build_prompt(g4)}")
+
+    print("\n=== companion mode (Matsumoto style) ===")
+    g5 = TopicGuess(
+        subject=find_subject("猫"),
+        location=UNKNOWN_LOCATION,
+        action=UNKNOWN_ACTION,
+        confidence=0.7,
+    )
+    print(f"  input:  {g5.to_text()}")
+    print(f"  prompt: {build_prompt(g5, base_template=COMPANION_TEMPLATE, fallback_template=COMPANION_FALLBACK_TEMPLATE)}")
+
+    print("\n=== companion fallback (low confidence) ===")
+    g6 = TopicGuess(
+        subject=find_subject("猫"),
+        location=UNKNOWN_LOCATION,
+        action=UNKNOWN_ACTION,
+        confidence=0.1,
+    )
+    print(f"  input:  {g6.to_text()}")
+    print(f"  prompt: {build_prompt(g6, base_template=COMPANION_TEMPLATE, fallback_template=COMPANION_FALLBACK_TEMPLATE)}")
