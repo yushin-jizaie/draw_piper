@@ -1,5 +1,5 @@
 --- wall_drawing_gui_full_dev.py	2026-05-28 00:31:18.138271313 +0000
-+++ wall_drawing_gui_full_dev.py	2026-05-28 00:47:42.782329843 +0000
++++ wall_drawing_gui_full_dev.py	2026-05-28 00:57:08.122363449 +0000
 @@ -555,12 +555,20 @@
              self.btn_probe_corners[name] = btn
          probe_row2 = ttk.Frame(probe_frame)
@@ -282,6 +282,15 @@
                  "この GUI は以前マスターモードに入った状態です。 "
                  "SDK が安定して再接続できません。 「GUI 終了」 して "
                  "再起動してください。")
+@@ -2498,7 +2570,7 @@
+             err = max(abs(c - r) for c, r in zip(cur, target))
+             self.log_safe(f"  到着。 最大関節誤差 {err:.2f}°")
+         except Exception as e:
+-            self.log_safe(f"  MOVE J 失敗: {e}")
++            self.log_safe(f"  ❌ MOVE J 失敗: {e}")
+             self.log_safe(
+                 "  → 再度 「ホーム/撮影位置へ」 を押すと改善することが "
+                 "あります。 駄目なら 「収納ポーズへ」 で安全姿勢に。")
 @@ -2605,7 +2677,9 @@
          angle=0 = 閉じ位置として扱われる。
          """
@@ -293,6 +302,19 @@
              return
          if not messagebox.askyesno("グリッパー ホーミング",
                  "現在のグリッパー位置を 「0」 (= 完全に閉じた位置) として "
+@@ -2631,10 +2705,10 @@
+             self.piper.GripperCtrl(0, 1000, 0x01, 0)
+             time.sleep(0.5)
+         except Exception as e:
+-            self.log_safe(f"  GripperCtrl 失敗: {e}")
++            self.log_safe(f"  ❌ GripperCtrl 失敗: {e}")
+             return
+         state_after = self._gripper_state()
+-        self.log_safe(f"  ホーミング完了 (after: {state_after})")
++        self.log_safe(f"  ✓ ホーミング完了 (after: {state_after})")
+         if state_after and not state_after.get("homed"):
+             self.log_safe(
+                 "  ⚠ status_code に homed bit が立っていません。 "
 @@ -2657,7 +2731,9 @@
      def on_grip_strong(self):
          """グリッパーを最大トルクで閉じる (ペンを強く掴む)。"""
@@ -304,7 +326,13 @@
              return
          self._run_in_thread(self._do_grip_strong)
  
-@@ -2675,7 +2751,9 @@
+@@ -2670,12 +2746,14 @@
+         self._send_gripper(angle=0, effort=3000, code=0x01)
+         time.sleep(0.5)
+         state_after = self._gripper_state()
+-        self.log_safe(f"  完了 (after: {state_after})")
++        self.log_safe(f"  ✓ 完了 (after: {state_after})")
+ 
      def on_grip_release(self):
          """グリッパーを開く (ペンを離す)。"""
          if self.piper is None:
@@ -315,6 +343,15 @@
              return
          self._run_in_thread(self._do_grip_release)
  
+@@ -2688,7 +2766,7 @@
+         self._send_gripper(angle=70000, effort=1000, code=0x01)
+         time.sleep(0.5)
+         state_after = self._gripper_state()
+-        self.log_safe(f"  完了 (after: {state_after})")
++        self.log_safe(f"  ✓ 完了 (after: {state_after})")
+ 
+     # ------------------------------------------------------------------
+     # Reach Probe (pre-calibration: drive arm to 4 reach-corner
 @@ -2723,7 +2801,7 @@
          # configurations even with the same cartesian pose, so a strict
          # joint-pose check is too restrictive once chaining has started.
@@ -324,6 +361,48 @@
                  "リーチ確認を始める前に 「ホーム/撮影位置へ」 を "
                  "押してください。")
              return
+@@ -2770,7 +2848,7 @@
+                 f"{actual[2]:.1f})  目標 (-, {y:.1f}, {z:.1f})  "
+                 f"YZ 誤差 {err:.1f}mm")
+         except Exception as e:
+-            self.log_safe(f"リーチ確認 {name}: 移動失敗 ({e})")
++            self.log_safe(f"  ❌ リーチ確認 {name}: 移動失敗 ({e})")
+         self._refresh_buttons_safe()
+ 
+     def _do_probe_corner(self, name, y, z):
+@@ -2828,7 +2906,7 @@
+                     "(リーチ限界の最寄り点)。 キャンバスをアームに近づけるか "
+                     "サイズを調整してください。")
+         except Exception as e:
+-            self.log_safe(f"リーチ確認 {name}: 移動失敗 ({e})")
++            self.log_safe(f"  ❌ リーチ確認 {name}: 移動失敗 ({e})")
+         self.log_safe(f"リーチ確認 {name}: ペン上げで到着。 「ペン下げ」 "
+                       "で印を付けるか、 次のコーナーを選択。")
+         self._refresh_buttons_safe()
+@@ -2854,9 +2932,9 @@
+         try:
+             self._move_xyz_via_ik(draw_x, actual[1], actual[2])
+             self.probe_pen_down = True
+-            self.log_safe("  ペン下げ完了。 印を付けたら 「ペン上げ」。")
++            self.log_safe("  ✓ ペン下げ完了。 印を付けたら 「⬆ ペン上げ」。")
+         except Exception as e:
+-            self.log_safe(f"  ペン下げ失敗: {e}")
++            self.log_safe(f"  ❌ ペン下げ失敗: {e}")
+         self._refresh_buttons_safe()
+ 
+     def on_probe_pen_up(self):
+@@ -2877,9 +2955,9 @@
+         try:
+             self._move_xyz_via_ik(pen_up_x, actual[1], actual[2])
+             self.probe_pen_down = False
+-            self.log_safe("  ペン上げ完了。")
++            self.log_safe("  ✓ ペン上げ完了。")
+         except Exception as e:
+-            self.log_safe(f"  ペン上げ失敗: {e}")
++            self.log_safe(f"  ❌ ペン上げ失敗: {e}")
+         self._refresh_buttons_safe()
+ 
+     # ------------------------------------------------------------------
 @@ -2887,7 +2965,7 @@
      # ------------------------------------------------------------------
      def on_start_drag(self):
@@ -333,6 +412,24 @@
                  "ティーチを始める前に 「ホーム/撮影位置へ」 を "
                  "押してください。")
              return
+@@ -2945,7 +3023,7 @@
+         try:
+             parsed = read_calibration(OUTPUT_YAML)
+         except Exception as e:
+-            self.log_safe(f"  既存 yaml 読込失敗: {e}")
++            self.log_safe(f"  ❌ 既存 yaml 読込失敗: {e}")
+             return
+         raw = parsed.get("raw") or {}
+         wb_records = raw.get("whiteboard_corners_mm") or {}
+@@ -3019,7 +3097,7 @@
+             self._refresh_buttons_safe()
+         self.log_safe("*** WIGGLE THE ARM by hand to start 0x155-7 broadcast ***")
+         if load_prev and self.dt_phase == "b2_idle":
+-            self.log_safe("既存データ引継ぎ完了。 個別やり直し ボタンで "
++            self.log_safe("✓ 既存データ引継ぎ完了。 個別やり直し ボタンで "
+                           "特定の隅だけ再記録可能。 トレース系も既存値を "
+                           "保持。 完了したら 「保存して終了」 で yaml 上書き。")
+         else:
 @@ -3179,7 +3257,7 @@
          if self.redo_corner_key is not None:
              p = self._capture_point()
@@ -393,6 +490,24 @@
                  "撮影/ホーム位置の記録には マスターモード "
                  "(ティーチ中) が必要です。\n\n"
                  "先に 「ティーチ開始」 でマスターモードに入り、 "
+@@ -3981,7 +4059,7 @@
+             self.corner_adj_warm_q = q
+             self.log_safe("  到着。 Y/Z spinbox で微調整 → 「yaml 更新」。")
+         except Exception as e:
+-            self.log_safe(f"  移動失敗: {e}")
++            self.log_safe(f"  ❌ 移動失敗: {e}")
+             self.corner_adj_key = None
+         self._refresh_buttons_safe()
+ 
+@@ -4171,7 +4249,7 @@
+             self.log_safe(f"中央調整 保存: xoff={xoff:+.2f}, "
+                           f"center=({cy:.2f}, {cz:.2f})")
+         except Exception as e:
+-            self.log_safe(f"中央調整 保存失敗: {e}")
++            self.log_safe(f"❌ 中央調整 保存失敗: {e}")
+             self.root.after(0, lambda m=str(e): messagebox.showerror(
+                 "保存失敗", f"yaml 書き込み失敗:\n{m}"))
+ 
 @@ -4612,11 +4690,13 @@
      def on_strokes_draw(self):
          path = self.var_strokes_json_path.get()
