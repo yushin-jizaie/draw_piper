@@ -7,6 +7,7 @@
 """
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 import time
@@ -16,7 +17,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 _ROOT = Path(__file__).resolve().parent.parent
-BASE_DIR = _ROOT / "sketch_variations/stage1_lora_20260529_005952"
+DEFAULT_BASE = "sketch_variations/stage1_lora_20260529_005952"
 
 COMBOS = [
     # (sketch_id, input_path, category)
@@ -47,8 +48,15 @@ def make_overlay(input_path: Path, stroke_path: Path) -> Image.Image:
 
 
 def main() -> int:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--base-dir", default=DEFAULT_BASE,
+                    help="Stage1 結果ディレクトリ (各 <sketch_id>/ 配下に 30_vectorized_strokes.png)")
+    ap.add_argument("--suffix", default="stage1lora",
+                    help="出力 grid のファイル名 suffix と OUTDIR の suffix")
+    args = ap.parse_args()
+    base_dir = _ROOT / args.base_dir
     ts = time.strftime("%Y%m%d_%H%M%S")
-    outdir = _ROOT / f"sketch_variations/grid_stage1_lora_{ts}"
+    outdir = _ROOT / f"sketch_variations/grid_{args.suffix}_{ts}"
     outdir.mkdir(parents=True, exist_ok=True)
     try:
         font = ImageFont.truetype(
@@ -56,7 +64,7 @@ def main() -> int:
     except Exception:
         font = ImageFont.load_default()
     for sid, ip, cat in COMBOS:
-        stroke_p = BASE_DIR / sid / "30_vectorized_strokes.png"
+        stroke_p = base_dir / sid / "30_vectorized_strokes.png"
         ip_p = _ROOT / ip
         if not stroke_p.exists() or not ip_p.exists():
             print(f"  SKIP {sid}: missing files")
@@ -68,14 +76,14 @@ def main() -> int:
         canvas = Image.new("RGB", (W, H), (255, 255, 255))
         draw = ImageDraw.Draw(canvas)
         draw.text((10, 6),
-                  f"{sid} / {cat} (Stage1 LoRA mt 0.4, skip-stage2)",
+                  f"{sid} / {cat} ({args.suffix}, skip-stage2)",
                   fill=(0, 0, 0), font=font)
         draw.text((SIZE + GAP + 10, 6),
                   "input (blue) + strokes (black)",
                   fill=(0, 0, 0), font=font)
         canvas.paste(stroke, (0, LABEL_H))
         canvas.paste(overlay, (SIZE + GAP, LABEL_H))
-        out_path = outdir / f"{sid}_{cat}_stage1lora.png"
+        out_path = outdir / f"{sid}_{cat}_{args.suffix}.png"
         canvas.save(out_path)
         print(f"  saved {out_path.relative_to(_ROOT)}")
     print(f"\nOUTDIR={outdir.relative_to(_ROOT)}")

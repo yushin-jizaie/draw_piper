@@ -266,7 +266,7 @@ MODEL_PRESETS: dict[str, dict] = {
             "white_background, simple_background, no humans"
         ),
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
-        "lora_scale": 0.4,
+        "lora_scale": 0.2,   # 2026-05-29: 0.4 → 0.2 (object 系のシンプル化過剰対策)
         "guide_dilate_ksize": 5,
         "img2img_strength": 0.0,
         "inpaint_mode": False,
@@ -311,7 +311,7 @@ MODEL_PRESETS: dict[str, dict] = {
             "white_background, simple_background"
         ),
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
-        "lora_scale": 0.4,
+        "lora_scale": 0.2,   # 2026-05-29: 0.4 → 0.2 (object 系のシンプル化過剰対策)
         "guide_dilate_ksize": 5,
         "inpaint_mode": True,
         "inpaint_line_threshold": 200,
