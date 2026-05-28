@@ -86,19 +86,32 @@ git diff wall_drawing_gui_full_dev.py | head -50
 ⚠️ Frida ボタンは別 Robot インスタンスで CAN bus 共有のため、 描画中は他の
 GUI ボタンを押さないこと (確認ダイアログで警告)。
 
-### `_ux_polish.patch` (約 80 行)
+### `_ux_polish.patch` (約 180 行)
 
-描画系ボタンの視認性を高めて誤操作リスクを下げる:
+危険度別 色分けで誤操作リスクを下げる UX 改善:
 
-1. 「描画開始」 系 (3 か所: Section 4 「中心に正方形」、 Section 5
-   「描画開始」、 Section 5 「✨ Frida Smooth」) を `tk.Button` に置換、
-   bg=橙 + fg=濃橙 + bold で 「実機が動くボタン」 として明示
-2. 「中止」 を `tk.Button` で bg=赤 + fg=濃赤 で 緊急停止を強調
-3. `on_strokes_draw` 確認ダイアログを 事前チェックリスト付きに改善:
-   - 「アームの可動範囲に人や障害物がない」
-   - 「panel に紙が貼られている」
-   - 「ペンが付いていて contact_x 調整済」
-   - 「緊急停止ボタンが手元にある」
+**🔴 赤 (最危険、 緊急停止 / 強い警告)**:
+- 「⚠ ティーチ開始 (マスターモード)」 — master mode 入り、 終了に電源
+  cycle 必要
+- 「■ 中止 (drag-teach)」 — 4 隅記録を捨てる
+- 「■ 中止 (strokes)」 — 描画中断
+
+**🟢 緑 (安全な確定/保存)**:
+- 「✅ 保存して終了 (マスター解除)」 — drag-teach 結果を確定
+
+**🟠 橙 (実機動作の主要ボタン)**:
+- 「▶ 中心に正方形 (描画開始)」
+- 「▶ 中心に丸」 / 「▶ 中心に三角」
+- 「▶ 描画開始 (strokes)」
+- 「✨ Frida Smooth」
+
+**🟡 薄橙 (接触系、 注意必要)**:
+- 「✏ ペン下げ (probe)」
+- 「✏ ペン下げ (tune)」
+
+ダイアログ強化:
+- `on_strokes_draw` 確認に 事前チェックリスト (人/障害物、 紙、 ペン
+  contact_x、 緊急停止) 追加
 
 機能変更なし、 純粋に UX 改善。 ttk.Button → tk.Button は state/font 等
 の API 互換、 既存 callback はそのまま動く。

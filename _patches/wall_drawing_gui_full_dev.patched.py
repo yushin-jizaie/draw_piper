@@ -555,9 +555,13 @@ class WallDrawingGUI:
             self.btn_probe_corners[name] = btn
         probe_row2 = ttk.Frame(probe_frame)
         probe_row2.pack(fill=tk.X, pady=(4, 0))
-        self.btn_probe_pen_down = ttk.Button(probe_row2,
-            text="ペン下げ (印を付ける)",
-            command=self.on_probe_pen_down, width=20)
+        # 「ペン下げ」 は接触するので 薄橙
+        self.btn_probe_pen_down = tk.Button(probe_row2,
+            text="✏ ペン下げ (印を付ける)",
+            command=self.on_probe_pen_down, width=22,
+            bg="#fed", fg="#950",
+            activebackground="#fda", activeforeground="#830",
+            font=("Monaco", 10, "bold"))
         self.btn_probe_pen_down.pack(side=tk.LEFT, padx=2)
         self.btn_probe_pen_up = ttk.Button(probe_row2, text="ペン上げ",
             command=self.on_probe_pen_up, width=10)
@@ -577,9 +581,14 @@ class WallDrawingGUI:
         dt_frame.pack(fill=tk.X, padx=2, pady=2)
         row_a = ttk.Frame(dt_frame)
         row_a.pack(fill=tk.X)
-        self.btn_start_drag = ttk.Button(row_a,
-            text="ティーチ開始 (マスターモード)",
-            command=self.on_start_drag, width=36)
+        # 「ティーチ開始」 は master mode に入り GUI が不安定化、 終了時に
+        # 電源 cycle が必要になる最危険操作。 赤背景で警告。
+        self.btn_start_drag = tk.Button(row_a,
+            text="⚠ ティーチ開始 (マスターモード)",
+            command=self.on_start_drag, width=36,
+            bg="#fdd", fg="#a00",
+            activebackground="#faa", activeforeground="#800",
+            font=("Monaco", 10, "bold"))
         self.btn_start_drag.pack(side=tk.LEFT, padx=2)
         self.lbl_phase = ttk.Label(dt_frame,
             text="(ティーチ未開始)", font=("Monaco", 10),
@@ -603,13 +612,20 @@ class WallDrawingGUI:
         attach_tooltip(btn_motor_help,
                        "クリックで モーター番号 ↔ アーム関節 の対応図を "
                        "別ウィンドウで表示")
-        self.btn_save_drag = ttk.Button(row_b,
-            text="保存して終了 (マスター解除)",
-            command=self.on_save_drag, width=24)
+        # 保存系は緑、 中止系は赤
+        self.btn_save_drag = tk.Button(row_b,
+            text="✅ 保存して終了 (マスター解除)",
+            command=self.on_save_drag, width=28,
+            bg="#dfd", fg="#060",
+            activebackground="#afa", activeforeground="#040",
+            font=("Monaco", 10, "bold"))
         self.btn_save_drag.pack(side=tk.RIGHT, padx=2)
-        self.btn_abort_drag = ttk.Button(row_b,
-            text="中止 (保存しない)",
-            command=self.on_abort_drag, width=18)
+        self.btn_abort_drag = tk.Button(row_b,
+            text="■ 中止 (保存しない)",
+            command=self.on_abort_drag, width=18,
+            bg="#fcc", fg="#800",
+            activebackground="#f99", activeforeground="#600",
+            font=("Monaco", 10, "bold"))
         self.btn_abort_drag.pack(side=tk.RIGHT, padx=2)
 
         # 個別やり直し行: 既に B1 完了 + B2/B3/B5 やった後で、 特定の
@@ -726,8 +742,12 @@ class WallDrawingGUI:
             text="中央へ移動 (ペン上げ) -- 初回",
             command=self.on_go_center, width=28)
         self.btn_go_center.pack(side=tk.LEFT, padx=2)
-        self.btn_tune_pen_down = ttk.Button(tune_bot, text="ペン下げ",
-            command=self.on_tune_pen_down, width=10)
+        # tune section の「ペン下げ」 も接触なので 薄橙
+        self.btn_tune_pen_down = tk.Button(tune_bot, text="✏ ペン下げ",
+            command=self.on_tune_pen_down, width=12,
+            bg="#fed", fg="#950",
+            activebackground="#fda", activeforeground="#830",
+            font=("Monaco", 10, "bold"))
         self.btn_tune_pen_down.pack(side=tk.LEFT, padx=(8, 4))
         self.btn_lift_pen = ttk.Button(tune_bot, text="ペン上げ",
             command=self.on_lift_pen, width=10)
@@ -857,14 +877,20 @@ class WallDrawingGUI:
             text="C1 → C2 → C3 → C4 → C1"
         ).pack(side=tk.LEFT, padx=10)
 
-        # 図形バリエーション (中心配置)
+        # 図形バリエーション (中心配置) — 正方形と同じ橙でハイライト
         shape_row = ttk.Frame(draw_frame)
         shape_row.pack(fill=tk.X, pady=(2, 0))
-        self.btn_circle = ttk.Button(shape_row, text="中心に丸",
-            command=self.on_draw_circle, width=14)
+        self.btn_circle = tk.Button(shape_row, text="▶ 中心に丸",
+            command=self.on_draw_circle, width=14,
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
         self.btn_circle.pack(side=tk.LEFT, padx=2)
-        self.btn_triangle = ttk.Button(shape_row, text="中心に三角",
-            command=self.on_draw_triangle, width=14)
+        self.btn_triangle = tk.Button(shape_row, text="▶ 中心に三角",
+            command=self.on_draw_triangle, width=14,
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"))
         self.btn_triangle.pack(side=tk.LEFT, padx=2)
 
         # 四隅合わせ正方形 (キャンバスの各隅に square の対応する角を一致させる)
