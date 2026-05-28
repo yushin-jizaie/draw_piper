@@ -563,8 +563,12 @@ class WallDrawingGUI:
             activebackground="#fda", activeforeground="#830",
             font=("Monaco", 10, "bold"))
         self.btn_probe_pen_down.pack(side=tk.LEFT, padx=2)
-        self.btn_probe_pen_up = ttk.Button(probe_row2, text="ペン上げ",
-            command=self.on_probe_pen_up, width=10)
+        # ペン上げは安全方向だが motion なので 薄橙で軽くハイライト
+        self.btn_probe_pen_up = tk.Button(probe_row2, text="⬆ ペン上げ",
+            command=self.on_probe_pen_up, width=12,
+            bg="#fed", fg="#950",
+            activebackground="#fda", activeforeground="#830",
+            font=("Monaco", 10, "bold"))
         self.btn_probe_pen_up.pack(side=tk.LEFT, padx=2)
         # IK 候補選択モード
         self.var_probe_ik_select = tk.BooleanVar(value=False)
@@ -651,7 +655,10 @@ class WallDrawingGUI:
                   font=("Monaco", 9)).pack(side=tk.LEFT, padx=(0, 4))
         make_spinbox(row_c, self.var_sampling_interval, 2, 50, 1, width=4,
                      fmt="%.0f").pack(side=tk.LEFT, padx=(0, 8))
-        self.btn_b2_start = ttk.Button(row_c, text="B2 外周トレース開始",
+        self.btn_b2_start = tk.Button(row_c, text="▶ B2 外周トレース開始",
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"),
             command=self.on_b2_start_trace, width=20)
         self.btn_b2_start.pack(side=tk.LEFT, padx=2)
         self.btn_trace_stop = ttk.Button(row_c, text="トレース停止",
@@ -749,7 +756,10 @@ class WallDrawingGUI:
             activebackground="#fda", activeforeground="#830",
             font=("Monaco", 10, "bold"))
         self.btn_tune_pen_down.pack(side=tk.LEFT, padx=(8, 4))
-        self.btn_lift_pen = ttk.Button(tune_bot, text="ペン上げ",
+        self.btn_lift_pen = tk.Button(tune_bot, text="⬆ ペン上げ",
+            bg="#fed", fg="#950",
+            activebackground="#fda", activeforeground="#830",
+            font=("Monaco", 10, "bold"),
             command=self.on_lift_pen, width=10)
         self.btn_lift_pen.pack(side=tk.LEFT, padx=(0, 12))
         # 中央調整値 (X 押し付け補正 / 中央 Y / 中央 Z) を yaml に保存
@@ -1565,7 +1575,10 @@ class WallDrawingGUI:
         """接続セクション (タブ外、 常時表示)。"""
         conn_r1 = ttk.Frame(parent)
         conn_r1.pack(fill=tk.X)
-        self.btn_can_up = ttk.Button(conn_r1, text="CAN 起動(管理者)",
+        self.btn_can_up = tk.Button(conn_r1, text="🔴 CAN 起動(管理者)",
+            bg="#fdd", fg="#a00",
+            activebackground="#faa", activeforeground="#800",
+            font=("Monaco", 10, "bold"),
             command=self.on_can_up, width=16)
         self.btn_can_up.pack(side=tk.LEFT, padx=(0, 8))
         ttk.Label(conn_r1, text="関節速度(%):").pack(side=tk.LEFT)
@@ -1579,16 +1592,28 @@ class WallDrawingGUI:
                      fmt="%.0f").pack(side=tk.LEFT, padx=(2, 8))
         conn_r2 = ttk.Frame(parent)
         conn_r2.pack(fill=tk.X, pady=(4, 0))
-        self.btn_connect = ttk.Button(conn_r2, text="接続",
+        self.btn_connect = tk.Button(conn_r2, text="🟢 接続",
+            bg="#dfd", fg="#060",
+            activebackground="#afa", activeforeground="#040",
+            font=("Monaco", 10, "bold"),
             command=self.on_connect, width=10)
         self.btn_connect.pack(side=tk.LEFT, padx=2)
-        self.btn_recover = ttk.Button(conn_r2, text="ホーム/撮影位置へ",
+        self.btn_recover = tk.Button(conn_r2, text="🏠 ホーム/撮影位置へ",
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"),
             command=self.on_recover, width=18)
         self.btn_recover.pack(side=tk.LEFT, padx=2)
-        self.btn_storage = ttk.Button(conn_r2, text="収納ポーズへ",
+        self.btn_storage = tk.Button(conn_r2, text="📦 収納ポーズへ",
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"),
             command=self.on_storage, width=14)
         self.btn_storage.pack(side=tk.LEFT, padx=2)
-        self.btn_pen_exchange = ttk.Button(conn_r2, text="ペン交換ポーズへ",
+        self.btn_pen_exchange = tk.Button(conn_r2, text="🖋 ペン交換ポーズへ",
+            bg="#fea", fg="#940",
+            activebackground="#fc7", activeforeground="#820",
+            font=("Monaco", 10, "bold"),
             command=self.on_pen_exchange, width=18)
         self.btn_pen_exchange.pack(side=tk.LEFT, padx=2)
         self.btn_grip_home = ttk.Button(conn_r2,
@@ -1601,10 +1626,16 @@ class WallDrawingGUI:
         self.btn_grip_release = ttk.Button(conn_r2, text="🔓 ゆるめる",
             command=self.on_grip_release, width=12)
         self.btn_grip_release.pack(side=tk.LEFT, padx=2)
-        self.btn_disconnect = ttk.Button(conn_r2, text="切断",
+        self.btn_disconnect = tk.Button(conn_r2, text="🔴 切断",
+            bg="#fdd", fg="#a00",
+            activebackground="#faa", activeforeground="#800",
+            font=("Monaco", 10, "bold"),
             command=self.on_disconnect, width=10)
         self.btn_disconnect.pack(side=tk.LEFT, padx=2)
-        self.btn_recover_conn = ttk.Button(conn_r2, text="接続をリセット",
+        self.btn_recover_conn = tk.Button(conn_r2, text="🔄 接続をリセット",
+            bg="#fdd", fg="#a00",
+            activebackground="#faa", activeforeground="#800",
+            font=("Monaco", 10, "bold"),
             command=self.on_recover_connection, width=16)
         self.btn_recover_conn.pack(side=tk.LEFT, padx=2)
         # 「操作の流れを開く」 ボタンを接続の右端に配置
