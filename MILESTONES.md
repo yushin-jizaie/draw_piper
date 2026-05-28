@@ -167,20 +167,38 @@
               │      Robot(mock=False).connect/disconnect: 実機電源 OFF で
               │        CAN 送信 → ERROR-PASSIVE (ACK 無しのため、 正常)。
               │
-05-28 08:38   ● M15 IP-Adapter two-stage で 松本大洋画風 + 顔保持 同時達成 ★★ 現在地 ★★  [c32c2c1]
-                     └ 自前 LoRA v0-v3 すべて失敗 (dataset 黒/文字暴走) を IP-Adapter
-                       (h94/IP-Adapter sdxl_models/ip-adapter_sdxl) で迂回。
-                       1 段で IP-Adapter 使うと style ref の構図 (顔=頭) と 元 sketch
-                       (中央 face oval) が競合 → 顔が胴体中央に。
-                       Two-stage で解決:
-                         Stage 1: illustrious_v2_inpaint @ 1024res で 構図確定
-                         Stage 2: img2img + IP-Adapter (strength 0.45, ip_scale 0.6,
-                                  768res) で style 転写、 構図維持
-                       Vectorizer 後で 114 strokes / 2542 pts。 松本タッチ
-                       (spiky 髪、 rough/expressive lines、 dynamic body) + 純線画 +
-                       顔保持 を同時に達成。 ロボット描画 ready。
-                       script: scripts/test_ip_adapter_two_stage.py
-                       demo: github phase-e-results-20260528/matsumoto_v2_two_stage/
+05-28 08:38   ● M15 IP-Adapter two-stage で 松本大洋画風 + 顔保持 同時達成  [c32c2c1]
+              │      └ 自前 LoRA v0-v3 すべて失敗 (dataset 黒/文字暴走) を IP-Adapter
+              │        (h94/IP-Adapter sdxl_models/ip-adapter_sdxl) で迂回。
+              │        1 段で IP-Adapter 使うと style ref の構図 (顔=頭) と 元 sketch
+              │        (中央 face oval) が競合 → 顔が胴体中央に。
+              │        Two-stage で解決:
+              │          Stage 1: illustrious_v2_inpaint @ 1024res で 構図確定
+              │          Stage 2: img2img + IP-Adapter (strength 0.45, ip_scale 0.6,
+              │                   768res) で style 転写、 構図維持
+              │        Vectorizer 後で 114 strokes / 2542 pts。 松本タッチ
+              │        (spiky 髪、 rough/expressive lines、 dynamic body) + 純線画 +
+              │        顔保持 を同時に達成。 ロボット描画 ready。
+              │        script: scripts/test_ip_adapter_two_stage.py
+              │        demo: github phase-e-results-20260528/matsumoto_v2_two_stage/
+              │
+05-28 10:33   ● M16 multi-mode (character / object / other) + gacha UX + object 詳細化 ★★ 現在地 ★★  [27de6b4]
+                     └ M15 (character mode 完成) の後、 ユーザ指摘で:
+                       1. 「同じ pose しか出ない」 → seed ランダム化 (gacha) で 解決
+                       2. 「人間以外も描く」 → 3 mode 設計 (character/object/other) で 対応
+                       3. 「object mode は sketch 複製のみ」 → text2img + CN soft hint で
+                          detailed 線画 を生成するよう preset 再設計
+                       新 preset:
+                         character: illustrious_v2_inpaint + IP-Adapter ON (M15 と同じ)
+                         object:    illustrious_v2_object (text2img, CN 0.65 soft hint)
+                                    → prompt で detail 指示、 sketch は構造ヒント
+                         other:     fallback
+                       検証 (object v2): house 37 / tree 89 / cat 34 / car 111 strokes
+                       script:
+                         scripts/test_ip_adapter_two_stage.py (--category)
+                         scripts/generate_gacha.py (N variants + grid)
+                         scripts/gen_test_sketches{,_objects}.py
+                       demo: github phase-e-results-20260528/{multi_mode_v3,v4_object,v5_object_detailed}/
 ```
 
 ---
@@ -207,6 +225,7 @@
 | M13 | 2026-05-28 00:14 | Plan E (Illustrious XL early-release-v0 + MistoLine + inpaint) で 純線画 + 顔保持 + 体描き足し 達成。 Animagine + 自前 LoRA 路線 (v0-v3 全失敗) を base 乗換で迂回 | `ce0eefc` | `venv/bin/python -m scripts.compare_imagegen_models --guide scripts/test_sketch.jpg --prompt "1boy, solo, young boy with full body, messy hair, surprised expression, simple t-shirt, standing" --presets illustrious_v2_inpaint --seed 42` で 顔保持 + 体描き足し の純線画。 demo: branch phase-e-results-20260528/phase_e_demo/ |
 | M14 | 2026-05-28 01:50 | Vectorizer (strokes_mm 化) + Robot.draw_stroke_panel mock/real CAN 双方で動作確認 | `82cb13b` | `Vectorizer.vectorize_to_panel(panel=PanelFrame)` で 107 strokes_mm 取得 (panel 107.05 x 197.07 mm)。`Robot(mock=True).draw_stroke_panel(strokes_uv)` 完走 + `Robot(mock=False).connect/disconnect` 実 CAN (実機電源 OFF) で OK (ERROR-PASSIVE = ACK 無し正常) |
 | M15 | 2026-05-28 08:38 | IP-Adapter two-stage で 松本大洋画風 + 顔保持 + ロボット適合 同時達成 | `c32c2c1` | `venv/bin/python -m scripts.test_ip_adapter_two_stage --user-sketch scripts/test_sketch.jpg --style-ref training/matsumoto_taiyo/raw/IMG_4311.JPG --output logs/ip_2stage_<ts> --stage1-resolution 1024 --resolution 768 --stage2-strength 0.45 --ip-scale 0.6 --seed 42` で `30_vectorized_strokes.png` に 114 strokes / 2542 pts の松本タッチ純線画。 demo: branch phase-e-results-20260528/matsumoto_v2_two_stage/ |
+| M16 | 2026-05-28 10:33 | multi-mode (character/object/other) + gacha UX + object 詳細化 (text2img + CN soft hint で sketch を hint だけにし prompt 駆動で detailed lineart 生成) | `27de6b4` | `venv/bin/python -m scripts.generate_gacha --user-sketch <sketch> --category {character\|object} --output logs/gacha_<ts> --n 3` で各 sketch から 3 variants の detailed 線画。 cat 34 / house 37 / tree 89 / car 111 strokes。 demo: branch phase-e-results-20260528/multi_mode_v5_object_detailed/ |
 
 ---
 
