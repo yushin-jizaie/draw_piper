@@ -1,0 +1,27 @@
+{
+  "prompt": "a detailed Matsumoto-style tree, manga style, expressive ink lines, detailed lineart, single continuous black line on plain white background, fur details, clean smooth strokes, no shading",
+  "negative_prompt": "color, colored, blue background, cyan, sky, gradient, hatching, crosshatch, screentone, halftone, dot pattern, filled background, paper texture, scribble, sketchy, shading, gray, sepia, watermark, signature, text, frame, border, blurry, noise, jpeg artifacts",
+  "seed": 42,
+  "guide_image": "logs/sketches_objects_20260528_183943/sketch_tree.png",
+  "presets": [
+    {
+      "name": "illustrious_v2_object",
+      "config": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.65,
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.0,
+        "inpaint_mode": false
+      },
+      "style_hint": "monochrome, lineart, sketch, ink illustration, white_background, simple_background, no humans",
+      "elapsed_load_s": 5.97,
+      "elapsed_gen_s": 23.41,
+      "output_png": "illustrious_v2_object.png",
+      "status": "ok"
+    }
+  ]
+}

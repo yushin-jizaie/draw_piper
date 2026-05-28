@@ -59,13 +59,16 @@ STYLE_REF_POOLS = {
 
 
 # category → stage1_preset 対応
-# 2026-05-29 (style-pool-rebalance): Stage 1 強化のため LoRA 込み preset に切替。
-# 旧 (LoRA 未使用): character → illustrious_v2_inpaint / object → illustrious_v2_object
-# 新 (LoRA 0.4 載せ):
+# 2026-05-29 (style-pool-rebalance) ROLLBACK: LoRA 入れたら detail がシンプル化過剰になり、
+# phase-e multi_mode_v5 の理想出力 (LoRA 抜き) より劣化した。 ユーザー判断で
+# phase-e v5 = illustrious_v2_object (text2img + CN 0.65、 LoRA なし) に戻し。
+# v0 LoRA matsumoto_taiyo.safetensors は raw 36 枚の smiley face コマ等で
+# シンプル化を強く誘導するバイアスを持つ、 が判明。 LoRA 再学習までは画像生成
+# 経路では使わない。
 CATEGORY_TO_STAGE1_PRESET = {
-    "character": "illustrious_v2_inpaint_mt",  # inpaint + matsumoto LoRA 0.4
-    "object":    "illustrious_v2_object_mt",   # img2img + matsumoto LoRA 0.4 (新規)
-    "other":     "illustrious_v2_inpaint_mt",  # 念のため inpaint + LoRA
+    "character": "illustrious_v2_inpaint",     # inpaint で構図確定 (phase-e v5 character mode)
+    "object":    "illustrious_v2_object",      # text2img + CN 0.65 soft hint (phase-e v5)
+    "other":     "illustrious_v2_inpaint",     # フォールバック
 }
 
 
