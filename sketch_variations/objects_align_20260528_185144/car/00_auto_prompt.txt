@@ -1,0 +1,6 @@
+placement=align
+subject_ja=車
+location_ja=不明
+action_ja=不明
+confidence=0.700
+prompt=car, manga style character, dynamic pose, expressive ink lines, detailed lineart, single continuous black line on plain white background, clean smooth strokes, no shading
