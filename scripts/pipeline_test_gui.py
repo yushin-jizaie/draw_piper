@@ -1231,6 +1231,19 @@ class ImageGenCalibWindow:
         self.var_cn = tk.DoubleVar(
             value=cfg["controlnet_conditioning_scale"])
         self.var_conf = tk.DoubleVar(value=cfg["confidence_threshold"])
+        # 解像度 (auto_from_panel ON / OFF + 手動指定)
+        self.var_auto_panel = tk.BooleanVar(
+            value=bool(cfg.get("auto_from_panel", False)))
+        res = cfg.get("resolution")
+        if isinstance(res, (list, tuple)) and len(res) == 2:
+            self.var_res_w = tk.IntVar(value=int(res[0]))
+            self.var_res_h = tk.IntVar(value=int(res[1]))
+        elif isinstance(res, (int, float)):
+            self.var_res_w = tk.IntVar(value=int(res))
+            self.var_res_h = tk.IntVar(value=int(res))
+        else:
+            self.var_res_w = tk.IntVar(value=1024)
+            self.var_res_h = tk.IntVar(value=1024)
         # 組込み defaults (リセット用)
         self._builtin_base = _BASE_TEMPLATE
         self._builtin_fallback = _FALLBACK_TEMPLATE
@@ -1238,8 +1251,11 @@ class ImageGenCalibWindow:
         # Window
         self.win = tk.Toplevel(parent_gui.root)
         self.win.title("SDXL / プロンプト 設定")
-        self.win.geometry("820x780")
+        self.win.geometry("840x880")
         self._build_ui(base, fallback, str(cfg["negative_prompt"]))
+        # panel readout + 初期 enable/disable は build 後に呼び出し
+        self._refresh_panel_readout()
+        self._on_auto_panel_toggle()
 
     def _build_ui(self, base, fallback, neg):
         # モデル preset (base + controlnet + LoRA を一括切替)
@@ -1303,6 +1319,51 @@ class ImageGenCalibWindow:
             , font=("Monaco", 9), foreground="#777"
         ).pack(side=tk.LEFT, padx=4)
 
+        # Panel 寸法 → 生成解像度 (SDXL bucket)
+        panel_box = ttk.LabelFrame(self.win,
+            text="Panel 寸法 → 生成解像度  "
+                 "(canvas_calibration ↔ 画像生成 の整合)",
+            padding=8)
+        panel_box.pack(fill=tk.X, padx=8, pady=(8, 4))
+        # readout (canvas mm + SDXL bucket)
+        self.lbl_panel_readout = ttk.Label(panel_box,
+            text="(panel 計測値読込中…)", font=("Monaco", 9),
+            foreground="#555", justify=tk.LEFT,
+            wraplength=820)
+        self.lbl_panel_readout.pack(fill=tk.X, padx=4, pady=(0, 6),
+                                      anchor=tk.W)
+        # auto toggle + manual override row
+        pr_row = ttk.Frame(panel_box)
+        pr_row.pack(fill=tk.X)
+        ttk.Checkbutton(pr_row,
+            text="auto_from_panel  (canvas 計測の aspect から SDXL bucket 自動選択)",
+            variable=self.var_auto_panel,
+            command=self._on_auto_panel_toggle,
+        ).pack(side=tk.LEFT, padx=4)
+        # manual W / H
+        mr_row = ttk.Frame(panel_box)
+        mr_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(mr_row, text="手動 (W × H):"
+                  ).pack(side=tk.LEFT, padx=4)
+        self.spin_res_w = tk.Spinbox(mr_row, from_=512, to=2048,
+            increment=64, width=6, textvariable=self.var_res_w)
+        self.spin_res_w.pack(side=tk.LEFT, padx=2)
+        ttk.Label(mr_row, text="×").pack(side=tk.LEFT, padx=2)
+        self.spin_res_h = tk.Spinbox(mr_row, from_=512, to=2048,
+            increment=64, width=6, textvariable=self.var_res_h)
+        self.spin_res_h.pack(side=tk.LEFT, padx=2)
+        ttk.Button(mr_row, text="🔄 再計測値で更新",
+            command=self._refresh_panel_readout, width=18,
+        ).pack(side=tk.LEFT, padx=8)
+        ttk.Button(mr_row, text="📐 bucket を手動欄に反映",
+            command=self._apply_bucket_to_manual, width=20,
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(panel_box,
+            text="(auto ON 時、 手動欄は保存対象から除外。 OFF 時のみ "
+                 "resolution=[W, H] が yaml に書かれる)",
+            font=("Monaco", 9), foreground="#777",
+        ).pack(anchor=tk.W, padx=4, pady=(2, 0))
+
         # プロンプト
         pr_box = ttk.LabelFrame(self.win,
             text="プロンプトテンプレート (英語、 "
@@ -1352,6 +1413,52 @@ class ImageGenCalibWindow:
         ttk.Button(b_row, text="💾 yaml に保存",
             command=self._save, width=18
         ).pack(side=tk.RIGHT, padx=2)
+
+    def _refresh_panel_readout(self):
+        """canvas_calibration.yaml を再読込し、 panel 寸法 + 推奨 SDXL bucket
+        を readout に表示。 物理 panel を計測し直した直後にこのボタンで反映。"""
+        try:
+            from modules.panel_geometry import load_panel_geometry
+            geom = load_panel_geometry()
+            mu, mv = geom.mm_per_px
+            self._last_bucket = geom.panel_image_size
+            txt = (
+                f"📏 panel: {geom.panel_size_mm[0]:.2f} × "
+                f"{geom.panel_size_mm[1]:.2f} mm  "
+                f"(aspect {geom.aspect:.3f}, source={geom.source})\n"
+                f"🪣 推奨 SDXL bucket: {geom.panel_image_size[0]} × "
+                f"{geom.panel_image_size[1]} px  "
+                f"(aspect err {geom.bucket_aspect_err * 100:.2f}%)\n"
+                f"📐 mm/px = ({mu:.4f}, {mv:.4f})  "
+                f"← 縦横で等しければ panel に貼った時に歪まない"
+            )
+            self.lbl_panel_readout.config(text=txt, foreground="#080")
+        except Exception as e:
+            self._last_bucket = None
+            self.lbl_panel_readout.config(
+                text=f"⚠ panel readout 読込失敗: {e}",
+                foreground="#a00")
+
+    def _on_auto_panel_toggle(self):
+        """auto_from_panel ON で 手動 W/H 欄を disable、 OFF で enable。"""
+        state = "disabled" if self.var_auto_panel.get() else "normal"
+        try:
+            self.spin_res_w.config(state=state)
+            self.spin_res_h.config(state=state)
+        except tk.TclError:
+            pass
+
+    def _apply_bucket_to_manual(self):
+        """推奨 bucket を 手動 W/H 欄に流し込む (auto OFF にして編集を引き継ぐ)。"""
+        if not getattr(self, "_last_bucket", None):
+            messagebox.showwarning("bucket 未取得",
+                "panel readout が未取得です。 先に「再計測値で更新」 を押下。")
+            return
+        w, h = self._last_bucket
+        self.var_res_w.set(int(w))
+        self.var_res_h.set(int(h))
+        self.var_auto_panel.set(False)
+        self._on_auto_panel_toggle()
 
     def _reset_to_builtin(self):
         if not messagebox.askyesno("既定値リセット",
@@ -1414,6 +1521,14 @@ class ImageGenCalibWindow:
         fb_for_yaml = None if fallback == self._builtin_fallback.strip() \
                       else fallback
         preset = self.var_preset.get().strip() or None
+        # 解像度: auto_from_panel ON のとき resolution は None で yaml に書かない、
+        # OFF のとき手動 W/H を [W, H] で書き出す。
+        auto_panel = bool(self.var_auto_panel.get())
+        if auto_panel:
+            resolution_to_save = None
+        else:
+            resolution_to_save = (int(self.var_res_w.get()),
+                                   int(self.var_res_h.get()))
         try:
             saved_path = self._save_cfg(
                 num_inference_steps=int(self.var_steps.get()),
@@ -1423,7 +1538,9 @@ class ImageGenCalibWindow:
                 base_template=base_for_yaml,
                 fallback_template=fb_for_yaml,
                 confidence_threshold=float(self.var_conf.get()),
-                preset=preset)
+                preset=preset,
+                resolution=resolution_to_save,
+                auto_from_panel=auto_panel)
         except Exception as e:
             messagebox.showerror("保存失敗", str(e))
             return

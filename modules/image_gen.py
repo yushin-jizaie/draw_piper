@@ -63,6 +63,22 @@ DEFAULT_NEGATIVE_PROMPT = (
 DEFAULT_RESOLUTION = 1024
 
 
+def _coerce_resolution(value) -> tuple[int, int]:
+    """resolution 引数を `(W, H)` tuple に正規化。
+
+    後方互換: int / float は `(n, n)` の正方形扱い。
+    (W, H) は `[W, H]` の list でも tuple でも OK。
+    """
+    if isinstance(value, (int, float)):
+        n = int(value)
+        return (n, n)
+    if isinstance(value, (tuple, list)) and len(value) == 2:
+        return (int(value[0]), int(value[1]))
+    raise ValueError(
+        f"resolution must be int or (W, H) tuple, got {value!r}"
+    )
+
+
 # ----- モデルプリセット (画風比較用) ---------------------------------------
 #
 # 各プリセットは ImageGenerator.from_preset(name) で読める。
@@ -362,6 +378,13 @@ def load_imagegen_config(path: Optional[_Path] = None) -> dict:
         "base_template": None,    # None = prompt_builder の既定を使う
         "fallback_template": None,
         "confidence_threshold": 0.3,
+        # 画像生成 解像度 ―― 以下の優先順:
+        #   1. resolution: [W, H] が yaml に明示
+        #   2. auto_from_panel: true なら canvas_calibration の panel aspect
+        #      から SDXL bucket を自動選択 (build_image_generator_from_config が解決)
+        #   3. どちらも無ければ DEFAULT_RESOLUTION (1024×1024 正方)
+        "resolution": None,
+        "auto_from_panel": False,
     }
     if not cfg_path.exists():
         return defaults
@@ -381,6 +404,16 @@ def load_imagegen_config(path: Optional[_Path] = None) -> dict:
               "controlnet_conditioning_scale", "negative_prompt"):
         if k in ig:
             out[k] = ig[k]
+    if "resolution" in ig:
+        res = ig["resolution"]
+        if isinstance(res, (list, tuple)) and len(res) == 2:
+            out["resolution"] = [int(res[0]), int(res[1])]
+        elif isinstance(res, (int, float)):
+            out["resolution"] = int(res)
+        elif res in (None, "", "auto", "null"):
+            out["resolution"] = None
+    if "auto_from_panel" in ig:
+        out["auto_from_panel"] = bool(ig["auto_from_panel"])
     if "base_template" in pr:
         out["base_template"] = pr["base_template"] or None
     if "fallback_template" in pr:
@@ -403,19 +436,29 @@ def save_imagegen_config(
     confidence_threshold: float = 0.3,
     preset: Optional[str] = None,
     path: Optional[_Path] = None,
+    resolution: Optional[Union[int, tuple, list]] = None,
+    auto_from_panel: bool = False,
 ) -> _Path:
     """imagegen_config.yaml に書き出し。"""
     cfg_path = _Path(path) if path else DEFAULT_IMAGEGEN_CONFIG_PATH
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     import yaml as _yaml
+    imagegen_block = {
+        "preset": preset or "",
+        "num_inference_steps": int(num_inference_steps),
+        "guidance_scale": float(guidance_scale),
+        "controlnet_conditioning_scale": float(controlnet_conditioning_scale),
+        "negative_prompt": str(negative_prompt),
+    }
+    if resolution is not None:
+        if isinstance(resolution, (tuple, list)) and len(resolution) == 2:
+            imagegen_block["resolution"] = [int(resolution[0]), int(resolution[1])]
+        else:
+            imagegen_block["resolution"] = int(resolution)
+    if auto_from_panel:
+        imagegen_block["auto_from_panel"] = True
     data = {
-        "imagegen": {
-            "preset": preset or "",
-            "num_inference_steps": int(num_inference_steps),
-            "guidance_scale": float(guidance_scale),
-            "controlnet_conditioning_scale": float(controlnet_conditioning_scale),
-            "negative_prompt": str(negative_prompt),
-        },
+        "imagegen": imagegen_block,
         "prompt": {
             "base_template": base_template or "",
             "fallback_template": fallback_template or "",
@@ -433,6 +476,12 @@ def build_image_generator_from_config(cfg: dict, *, verbose: bool = True) -> "Im
     preset が指定されていれば from_preset() で base + controlnet + LoRA を取り、
     numeric (steps / guidance / cn_scale) と negative_prompt は yaml の値で
     上書きする。
+
+    解像度の決定順:
+        1. cfg["resolution"] = [W, H] or int が明示されていればそれ
+        2. cfg["auto_from_panel"] = True なら canvas_calibration の panel aspect
+           から SDXL bucket を自動選択 (modules.panel_geometry 経由)
+        3. どちらも無ければ preset / ImageGenerator のデフォルト
     """
     preset = cfg.get("preset")
     overrides = {
@@ -443,6 +492,32 @@ def build_image_generator_from_config(cfg: dict, *, verbose: bool = True) -> "Im
             cfg["controlnet_conditioning_scale"]),
         "negative_prompt": str(cfg["negative_prompt"]),
     }
+
+    # 解像度解決
+    resolution_explicit = cfg.get("resolution")
+    if resolution_explicit:
+        overrides["resolution"] = resolution_explicit
+        if verbose:
+            print(f"[image_gen] resolution from yaml: {resolution_explicit}")
+    elif cfg.get("auto_from_panel"):
+        try:
+            from .panel_geometry import load_panel_geometry
+        except ImportError:
+            from modules.panel_geometry import load_panel_geometry  # type: ignore
+        try:
+            geom = load_panel_geometry()
+            overrides["resolution"] = list(geom.panel_image_size)
+            if verbose:
+                print(
+                    f"[image_gen] auto_from_panel: panel="
+                    f"{geom.panel_size_mm[0]:.1f}×{geom.panel_size_mm[1]:.1f} mm "
+                    f"-> SDXL bucket {geom.panel_image_size[0]}×"
+                    f"{geom.panel_image_size[1]} (source={geom.source})"
+                )
+        except Exception as e:
+            print(f"[image_gen] WARN: auto_from_panel failed ({e}); "
+                  "falling back to preset / 1024×1024 default")
+
     if preset and preset in MODEL_PRESETS:
         return ImageGenerator.from_preset(preset, **overrides)
     if preset:
@@ -452,7 +527,14 @@ def build_image_generator_from_config(cfg: dict, *, verbose: bool = True) -> "Im
     return ImageGenerator(**overrides)
 
 
-def _normalize_image(image: ImageLike, size: Optional[int] = None) -> Image.Image:
+def _normalize_image(image: ImageLike, size=None) -> Image.Image:
+    """ImageLike を RGB PIL に揃えて、 size (int or (W, H)) にリサイズ。
+
+    size:
+        None         → そのまま
+        int          → 正方 (size, size)
+        (W, H)       → そのまま resize
+    """
     if isinstance(image, Image.Image):
         img = image.convert("RGB") if image.mode != "RGB" else image
     elif isinstance(image, (str, Path)):
@@ -467,8 +549,10 @@ def _normalize_image(image: ImageLike, size: Optional[int] = None) -> Image.Imag
     else:
         raise TypeError(f"unsupported image type: {type(image)}")
 
-    if size is not None and img.size != (size, size):
-        img = img.resize((size, size), Image.LANCZOS)
+    if size is not None:
+        size_wh = _coerce_resolution(size)
+        if img.size != size_wh:
+            img = img.resize(size_wh, Image.LANCZOS)
     return img
 
 
@@ -563,7 +647,7 @@ class ImageGenerator:
         guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
         controlnet_conditioning_scale: float = DEFAULT_CONTROLNET_SCALE,
         negative_prompt: str = DEFAULT_NEGATIVE_PROMPT,
-        resolution: int = DEFAULT_RESOLUTION,
+        resolution=DEFAULT_RESOLUTION,
         variant: Optional[str] = "fp16",
         style_hint: str = "",
         lora_path: Optional[str] = None,
@@ -584,7 +668,8 @@ class ImageGenerator:
         self.guidance_scale = guidance_scale
         self.controlnet_conditioning_scale = controlnet_conditioning_scale
         self.negative_prompt = negative_prompt
-        self.resolution = resolution
+        # (W, H) tuple に正規化。 int 渡しも (n, n) として後方互換。
+        self.resolution: tuple[int, int] = _coerce_resolution(resolution)
         # HF variant ("fp16" / "fp32" / None)。 Animagine 等 fp16 variant
         # 無いモデルは None。 ControlNet 側にも同じ variant を試す。
         self.variant = variant
@@ -773,7 +858,7 @@ class ImageGenerator:
         if not self.is_loaded:
             self.load()
         if guide_image is None:
-            guide_image = Image.new("RGB", (self.resolution, self.resolution), (255, 255, 255))
+            guide_image = Image.new("RGB", self.resolution, (255, 255, 255))
         if self.verbose:
             print("[image_gen] warmup (1-step, discarded) ...")
         t0 = time.time()
@@ -816,6 +901,7 @@ class ImageGenerator:
         neg = negative_prompt if negative_prompt is not None else self.negative_prompt
 
         pil_guide = _normalize_image(guide_image, size=self.resolution)
+        gen_w, gen_h = self.resolution
         if self.guide_dilate_ksize > 1:
             pil_guide = _dilate_guide_lines(pil_guide,
                                               ksize=self.guide_dilate_ksize)
@@ -862,6 +948,8 @@ class ImageGenerator:
                 "guidance_scale": gs,
                 "controlnet_conditioning_scale": cn,
                 "generator": generator,
+                "height": gen_h,
+                "width": gen_w,
             }
         elif use_img2img:
             # init_image は元のユーザ画像 (dilate 前の生画像)。 白背景の
@@ -877,6 +965,8 @@ class ImageGenerator:
                 "guidance_scale": gs,
                 "controlnet_conditioning_scale": cn,
                 "generator": generator,
+                "height": gen_h,
+                "width": gen_w,
             }
         else:
             pipe_kwargs = {
@@ -887,6 +977,8 @@ class ImageGenerator:
                 "guidance_scale": gs,
                 "controlnet_conditioning_scale": cn,
                 "generator": generator,
+                "height": gen_h,
+                "width": gen_w,
             }
         # LoRA を有効にする場合は cross_attention_kwargs で scale を渡す
         # (load_lora_weights だけでは fuse されないので、 推論毎に指定が必要)

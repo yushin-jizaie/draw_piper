@@ -3,6 +3,14 @@ imagegen:
   num_inference_steps: 28
   guidance_scale: 6.5
   controlnet_conditioning_scale: 0.85
+  # 解像度方針:
+  #   auto_from_panel: true → canvas_calibration.whiteboard_computed の
+  #     panel 寸法 (mm) から panel aspect を読み、 SDXL bucket (64 倍数、
+  #     area ≈ 1024²) を自動選択。 これで生成画像が panel と同じ aspect
+  #     になり、 vectorize_to_panel の px → mm スケールが等方になる。
+  #   resolution: [W, H] を直接指定すると bucket 自動選択を上書き。
+  auto_from_panel: true
+  # resolution: [704, 1472]   # 明示指定する場合 (auto_from_panel を上書き)
 
 prompt:
   base_template: null
