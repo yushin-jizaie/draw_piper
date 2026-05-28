@@ -62,6 +62,12 @@
 
 ### benchmark (純関数シミュレータ、 mock 不要)
 
+**2026-05-28 更新 v5**: stroke 連続化の **接続線軽量化** 追加。
+`--merge-pen-lift-mm <N>` で merge 時に pen を N mm 持ち上げる
+(default 0 = 接続線描画)。 plan_clear_heights を 3-region (merge / near /
+far) に拡張、 Robot は clear_heights 経由で自動対応。 実機のペン圧 /
+spring 次第で 0.3-1.0 で接続線が消えるか薄くなる。
+
 **2026-05-28 更新 v4**: stroke ordering GIF アニメ生成 追加。
 default OFF、 user 明示 `--render-anim-out path.gif` (or GUI ボタン) で ON:
 - 1 stroke ずつ累積描画 frame を GIF 化、 最後の追加 stroke は赤強調
