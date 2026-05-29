@@ -20,8 +20,9 @@ RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
 
 ALIGN_BASE = "sketch_variations/align_noS2_all8_20260529_131555"
 SHIFT_BASE = "sketch_variations/shift_v3_compare_20260529_100542"
-# gacha は timestamp 付きなので auto-detect
+# gacha / composition は timestamp 付きなので auto-detect
 GACHA_GLOB = "sketch_variations/gacha_char_auto_all8_*"
+COMPOSITION_GLOB = "sketch_variations/composition_all8_*"
 
 INPUTS = [
     ("B_round_smiley",   "sketch_variations/_inputs/B_round_smiley.png",   "character"),
@@ -42,6 +43,39 @@ def read_companion(meta_p: Path) -> str:
         if ln.startswith("companion_subject="):
             return ln.split("=", 1)[1]
     return ""
+
+
+def find_composition_variants(sketch_id: str) -> list:
+    """composition_all8_* base から shift/align の 2 候補を見つける。
+
+    出力ファイルは 30_companion_strokes.png (shift) / 30_vectorized_strokes.png (align)。
+    """
+    matches = sorted((_ROOT).glob(COMPOSITION_GLOB))
+    if not matches:
+        return []
+    base_dir = matches[-1]   # 最新の timestamp
+    out = []
+    for mode, fn in [("shift", "30_companion_strokes.png"),
+                       ("align", "30_vectorized_strokes.png")]:
+        mode_dir = base_dir / f"{sketch_id}_{mode}"
+        png = mode_dir / fn
+        if not png.exists():
+            continue
+        # composition phrase を 00_auto_prompt.txt から読む
+        meta = mode_dir / "00_auto_prompt.txt"
+        comp = ""
+        if meta.exists():
+            for ln in meta.read_text().splitlines():
+                if ln.startswith("composition_refinement="):
+                    comp = ln.split("=", 1)[1]
+        out.append({
+            "route": f"composition {mode}",
+            "label": f"comp {mode}: {comp or '(none)'}",
+            "strokes_png": f"{RAW_BASE}/{png.relative_to(_ROOT)}",
+            "rel_path": str(mode_dir.relative_to(_ROOT)),
+            "companion": comp,
+        })
+    return out
 
 
 def find_gacha_variants(sketch_id: str) -> list:
@@ -94,6 +128,8 @@ def build_entries():
             })
         # 5-7) gacha v1/v2/v3
         cands += find_gacha_variants(sid)
+        # 8-9) composition shift/align (VLM 構図 refinement 入り)
+        cands += find_composition_variants(sid)
         entries.append({
             "sketch_id": sid,
             "type": stype,
