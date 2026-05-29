@@ -1,0 +1,6 @@
+category=character
+subject_ja=家
+location_ja=不明
+action_ja=不明
+confidence=0.900
+stage1_prompt=house, manga style character, dynamic pose, expressive ink lines, detailed lineart, single continuous black line on plain white background, clean smooth strokes, no shading
