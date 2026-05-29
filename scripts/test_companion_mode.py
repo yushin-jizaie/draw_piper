@@ -94,6 +94,10 @@ def main() -> int:
                     help="[align] img2img strength (F_angry_face 時と同じ 0.45 default)")
     ap.add_argument("--ip-scale", type=float, default=0.6,
                     help="[align] IP-Adapter scale (F_angry_face 時と同じ 0.6 default)")
+    ap.add_argument("--skip-stage2", action="store_true",
+                    help="[align] Stage 2 (IP-Adapter) を skip し Stage 1 inpaint "
+                         "出力をそのまま 最終結果に。 character pool の人物 ref が "
+                         "object 入力で anthropomorphic 化させる副作用を回避できる。")
     ap.add_argument("--companion-prompt-version", type=str, default="best",
                     choices=["v1", "v2", "v3", "best"],
                     help="[shift] VLM の companion 提案 prompt パターン: "
@@ -221,6 +225,8 @@ def main() -> int:
         ]
         if args.style_ref is not None:
             cmd += ["--style-ref", str(args.style_ref)]
+        if args.skip_stage2:
+            cmd.append("--skip-stage2")
         print(f"[companion]   subprocess: {' '.join(cmd)}")
         res_code = subprocess.run(cmd, cwd=str(_ROOT)).returncode
         if res_code != 0:
