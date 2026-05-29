@@ -172,9 +172,59 @@ class VLM:
     def __exit__(self, *exc) -> None:
         self.unload()
 
-    # 2026-05-29: shift モード用 companion subject 推論プロンプト。
+    # 2026-05-29: shift モード用 companion subject 推論プロンプト 3 パターン。
     # 入力 sketch の主題に対し、 隣に配置すると自然な「別の」 主題を 1 語で提案。
-    # 例示は「方向性のヒント」 で、 VLM がコピーせず汎化して連想することを促す。
+    # v1 = 現状 (関係パターンを方向ヒント)
+    # v2 = noun-only 強化 (形容詞 "angry" 失敗対策)
+    # v3 = 「動詞 + 物」 物語性重視 (情景的なフレーズ可)
+
+    _COMPANION_PROMPT_V2 = (
+        "You see a simple line-art sketch.\n"
+        "Look at it, then name ONE other concrete object/being that would "
+        "naturally appear next to it in the same drawing.\n\n"
+        "Strict rules — failure to follow voids the answer:\n"
+        "1. Output MUST be a noun (a thing you can point at), NOT an adjective "
+        "and NOT a feeling.\n"
+        "   - Wrong: angry, happy, fast, dark, sleeping, broken, sad\n"
+        "   - Right: bird, person, chair, cloud, hand, fish, lamp\n"
+        "2. The noun must refer to a DIFFERENT KIND of thing from what's drawn.\n"
+        "   - If the sketch is a face, do NOT propose another face.\n"
+        "3. Pick something a line-art artist can easily draw.\n"
+        "4. Lowercase. No article. No punctuation. Single word.\n\n"
+        "Think first about what naturally accompanies the main subject "
+        "(tools need users; vehicles need riders; plants need animals or "
+        "weather; foods need eaters; weather affects objects; buildings "
+        "anchor scenes). Then output one matching concrete noun.\n\n"
+        "Output:"
+    )
+
+    _COMPANION_PROMPT_V3 = (
+        "You see a simple line-art sketch.\n"
+        "Identify the main subject. Then imagine a short story moment that "
+        "completes the scene, and name what to draw NEXT TO the main subject "
+        "to tell that story.\n\n"
+        "The accompanying element should:\n"
+        "- be a concrete drawable thing (object, animal, person, weather, etc.)\n"
+        "- be DIFFERENT in kind from the main subject\n"
+        "- evoke an action or cause-and-effect with the main subject\n\n"
+        "Inspiration for the *kind of relationship* (these are pattern hints, "
+        "not vocabulary — apply the idea to whatever you see):\n"
+        "- a tool implies its user mid-action (scissors → cutting hand)\n"
+        "- a vehicle implies motion (bicycle → rider leaning)\n"
+        "- a plant implies a tiny visitor or weather (tree → bird flying, "
+        "tree → falling leaves)\n"
+        "- a container implies what fills it (bowl → steaming soup)\n"
+        "- weather implies who reacts (rain → person under umbrella)\n"
+        "- food implies eating (apple → bite mark)\n"
+        "- a creature implies its prey, pet, or counterpart\n\n"
+        "Output format: a short phrase 1-3 words (noun, optionally with a "
+        "describing verb participle). Lowercase, no article, no period.\n"
+        "Examples of acceptable phrase shapes (do not copy these literally):\n"
+        "  'flying bird'   'falling leaf'   'cutting hand'   'curled cat'\n\n"
+        "Output:"
+    )
+
+    # 互換: 既存 _COMPANION_PROMPT_TEXT は v1 として残す
     _COMPANION_PROMPT_TEXT = (
         "You are looking at a simple line-art sketch.\n"
         "Step 1: identify the main subject of the sketch silently in your head.\n"
@@ -203,7 +253,8 @@ class VLM:
         "punctuation, no explanation. Output ONLY the noun."
     )
 
-    def predict_companion_subject(self, image: ImageLike) -> str:
+    def predict_companion_subject(self, image: ImageLike,
+                                    prompt_version: str = "v1") -> str:
         """スケッチ画像から companion subject (関連する別の subject) を 1 単語で返す。
 
         shift モード (位置ずらし) 用。 入力主題と「同じもの」 ではなく、 自然に
@@ -218,13 +269,20 @@ class VLM:
         if not self.is_loaded:
             self.load()
         from qwen_vl_utils import process_vision_info
+        # prompt version 選択
+        prompt_map = {
+            "v1": self._COMPANION_PROMPT_TEXT,
+            "v2": self._COMPANION_PROMPT_V2,
+            "v3": self._COMPANION_PROMPT_V3,
+        }
+        prompt = prompt_map.get(prompt_version, self._COMPANION_PROMPT_TEXT)
         pil_image = _normalize_image(image)
         messages = [
             {
                 "role": "user",
                 "content": [
                     {"type": "image", "image": pil_image},
-                    {"type": "text", "text": self._COMPANION_PROMPT_TEXT},
+                    {"type": "text", "text": prompt},
                 ],
             }
         ]
@@ -253,18 +311,20 @@ class VLM:
         raw_text = self._processor.batch_decode(
             generated, skip_special_tokens=True
         )[0].strip()
-        # 1 単語抽出 (改行 / 句読点 / 「the」 「a」 等の冠詞を除去)
+        # 単語/フレーズ抽出 (改行 / 句読点 / 冠詞を除去)
         import re
         cleaned = re.sub(r"[^a-zA-Z\s-]", " ", raw_text).strip().lower()
         words = cleaned.split()
         # よくある article を除去
         articles = {"a", "an", "the"}
         words = [w for w in words if w not in articles]
-        companion = words[0] if words else "person"
+        # v3 は phrase (1-3 単語) 許容、 v1/v2 は単一単語
+        max_words = 3 if prompt_version == "v3" else 1
+        companion = " ".join(words[:max_words]) if words else "person"
         if self.verbose:
             print(
-                f"[vlm] companion '{companion}' from '{raw_text}' "
-                f"({infer_time:.2f}s)"
+                f"[vlm] companion ({prompt_version}) '{companion}' "
+                f"from '{raw_text}' ({infer_time:.2f}s)"
             )
         return companion
 

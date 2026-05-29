@@ -94,6 +94,12 @@ def main() -> int:
                     help="[align] img2img strength (F_angry_face 時と同じ 0.45 default)")
     ap.add_argument("--ip-scale", type=float, default=0.6,
                     help="[align] IP-Adapter scale (F_angry_face 時と同じ 0.6 default)")
+    ap.add_argument("--companion-prompt-version", type=str, default="v1",
+                    choices=["v1", "v2", "v3"],
+                    help="[shift] VLM の companion 提案 prompt パターン: "
+                         "v1=関係パターン方向ヒント (現状)、 "
+                         "v2=noun-only 強化 (形容詞回避)、 "
+                         "v3=動詞+物の物語性フレーズ (1-3 単語可)")
     args = ap.parse_args()
 
     if not args.auto_prompt and not args.prompt:
@@ -134,7 +140,10 @@ def main() -> int:
         with VLM(verbose=True) as vlm:
             guess = vlm.predict_intent(sketch_img)
             if args.placement == "shift":
-                companion_subject = vlm.predict_companion_subject(sketch_img)
+                companion_subject = vlm.predict_companion_subject(
+                    sketch_img,
+                    prompt_version=args.companion_prompt_version,
+                )
         # VLM unload は with の __exit__ で。 SDXL を subprocess で
         # 起動するためここで VRAM を解放しておく必要がある。
         print(f"[companion]   guess: {guess.to_text()} "
