@@ -1,0 +1,14 @@
+placement=shift
+subject_ja=家
+location_ja=不明
+action_ja=不明
+confidence=0.900
+companion_subject=umbrella
+companion_prompt_version=best
+companion_candidates:
+  v1: tree
+  v2: tree
+  v3: umbrella
+companion_judge_idx=2
+composition_refinement=dynamic perspective with dramatic angle
+prompt=a detailed Matsumoto-style umbrella, dynamic perspective with dramatic angle, manga style, expressive ink lines, single continuous black line on plain white background, clean smooth strokes, illustrative, no shading

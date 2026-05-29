@@ -1,0 +1,14 @@
+placement=shift
+subject_ja=木
+location_ja=不明
+action_ja=不明
+confidence=0.700
+companion_subject=bird perched
+companion_prompt_version=best
+companion_candidates:
+  v1: umbrella
+  v2: bird
+  v3: bird perched
+companion_judge_idx=2
+composition_refinement=dynamic plant with falling leaves
+prompt=a detailed Matsumoto-style bird perched, dynamic plant with falling leaves, manga style, expressive ink lines, single continuous black line on plain white background, clean smooth strokes, illustrative, no shading
