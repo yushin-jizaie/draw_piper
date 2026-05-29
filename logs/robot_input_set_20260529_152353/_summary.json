@@ -1,0 +1,146 @@
+{
+  "B_round_smiley_gacha_v3_s59628": {
+    "sketch_id": "B_round_smiley",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 232,
+    "n_points": 3220,
+    "out_dir": "logs/robot_input_set_20260529_152353/B_round_smiley_gacha_v3_s59628"
+  },
+  "B_round_smiley_shift_v2": {
+    "sketch_id": "B_round_smiley",
+    "route": "shift v2",
+    "gacha_seed": null,
+    "n_strokes": 40,
+    "n_points": 941,
+    "out_dir": "logs/robot_input_set_20260529_152353/B_round_smiley_shift_v2"
+  },
+  "B_round_smiley_align_s2_off": {
+    "sketch_id": "B_round_smiley",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 60,
+    "n_points": 1344,
+    "out_dir": "logs/robot_input_set_20260529_152353/B_round_smiley_align_s2_off"
+  },
+  "B_round_smiley_gacha_v1_s19093": {
+    "sketch_id": "B_round_smiley",
+    "route": "gacha v1",
+    "gacha_seed": "19093",
+    "n_strokes": 20,
+    "n_points": 554,
+    "out_dir": "logs/robot_input_set_20260529_152353/B_round_smiley_gacha_v1_s19093"
+  },
+  "B_round_smiley_gacha_v2_s60231": {
+    "sketch_id": "B_round_smiley",
+    "route": "gacha v2",
+    "gacha_seed": "60231",
+    "n_strokes": 33,
+    "n_points": 601,
+    "out_dir": "logs/robot_input_set_20260529_152353/B_round_smiley_gacha_v2_s60231"
+  },
+  "C_face_with_neck_align_s2_off": {
+    "sketch_id": "C_face_with_neck",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 40,
+    "n_points": 819,
+    "out_dir": "logs/robot_input_set_20260529_152353/C_face_with_neck_align_s2_off"
+  },
+  "C_face_with_neck_gacha_v3_s59628": {
+    "sketch_id": "C_face_with_neck",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 125,
+    "n_points": 2392,
+    "out_dir": "logs/robot_input_set_20260529_152353/C_face_with_neck_gacha_v3_s59628"
+  },
+  "D_stick_figure_align_s2_off": {
+    "sketch_id": "D_stick_figure",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 36,
+    "n_points": 971,
+    "out_dir": "logs/robot_input_set_20260529_152353/D_stick_figure_align_s2_off"
+  },
+  "F_angry_face_align_s2_off": {
+    "sketch_id": "F_angry_face",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 45,
+    "n_points": 1527,
+    "out_dir": "logs/robot_input_set_20260529_152353/F_angry_face_align_s2_off"
+  },
+  "F_angry_face_gacha_v3_s59628": {
+    "sketch_id": "F_angry_face",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 145,
+    "n_points": 2368,
+    "out_dir": "logs/robot_input_set_20260529_152353/F_angry_face_gacha_v3_s59628"
+  },
+  "tree_shift_v3": {
+    "sketch_id": "tree",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 23,
+    "n_points": 649,
+    "out_dir": "logs/robot_input_set_20260529_152353/tree_shift_v3"
+  },
+  "tree_shift_v2": {
+    "sketch_id": "tree",
+    "route": "shift v2",
+    "gacha_seed": null,
+    "n_strokes": 71,
+    "n_points": 1614,
+    "out_dir": "logs/robot_input_set_20260529_152353/tree_shift_v2"
+  },
+  "tree_align_s2_off": {
+    "sketch_id": "tree",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 35,
+    "n_points": 809,
+    "out_dir": "logs/robot_input_set_20260529_152353/tree_align_s2_off"
+  },
+  "cat_shift_v2": {
+    "sketch_id": "cat",
+    "route": "shift v2",
+    "gacha_seed": null,
+    "n_strokes": 102,
+    "n_points": 2052,
+    "out_dir": "logs/robot_input_set_20260529_152353/cat_shift_v2"
+  },
+  "cat_shift_v3": {
+    "sketch_id": "cat",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 96,
+    "n_points": 1865,
+    "out_dir": "logs/robot_input_set_20260529_152353/cat_shift_v3"
+  },
+  "cat_gacha_v3_s59628": {
+    "sketch_id": "cat",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 83,
+    "n_points": 1843,
+    "out_dir": "logs/robot_input_set_20260529_152353/cat_gacha_v3_s59628"
+  },
+  "car_gacha_v1_s19093": {
+    "sketch_id": "car",
+    "route": "gacha v1",
+    "gacha_seed": "19093",
+    "n_strokes": 84,
+    "n_points": 1541,
+    "out_dir": "logs/robot_input_set_20260529_152353/car_gacha_v1_s19093"
+  },
+  "car_align_s2_off": {
+    "sketch_id": "car",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 87,
+    "n_points": 1820,
+    "out_dir": "logs/robot_input_set_20260529_152353/car_align_s2_off"
+  }
+}
