@@ -24,14 +24,14 @@ SHIFT_BASE = "sketch_variations/shift_v3_compare_20260529_100542"
 GACHA_GLOB = "sketch_variations/gacha_char_auto_all8_*"
 
 INPUTS = [
-    ("B_round_smiley",   "logs/sketch_variations_20260528_084706/inputs/sketch_B_round_smiley.png",   "character"),
-    ("C_face_with_neck", "logs/sketch_variations_20260528_084706/inputs/sketch_C_face_with_neck.png", "character"),
-    ("D_stick_figure",   "logs/sketch_variations_20260528_084706/inputs/sketch_D_stick_figure.png",   "character"),
-    ("F_angry_face",     "logs/sketch_variations_20260528_084706/inputs/sketch_F_angry_face.png",     "character"),
-    ("house",            "logs/sketches_objects_20260528_183943/sketch_house.png",                    "object"),
-    ("tree",             "logs/sketches_objects_20260528_183943/sketch_tree.png",                     "object"),
-    ("cat",              "logs/sketches_objects_20260528_183943/sketch_cat.png",                      "object"),
-    ("car",              "logs/sketches_objects_20260528_183943/sketch_car.png",                      "object"),
+    ("B_round_smiley",   "sketch_variations/_inputs/B_round_smiley.png",   "character"),
+    ("C_face_with_neck", "sketch_variations/_inputs/C_face_with_neck.png", "character"),
+    ("D_stick_figure",   "sketch_variations/_inputs/D_stick_figure.png",   "character"),
+    ("F_angry_face",     "sketch_variations/_inputs/F_angry_face.png",     "character"),
+    ("house",            "sketch_variations/_inputs/house.png",            "object"),
+    ("tree",             "sketch_variations/_inputs/tree.png",             "object"),
+    ("cat",              "sketch_variations/_inputs/cat.png",              "object"),
+    ("car",              "sketch_variations/_inputs/car.png",              "object"),
 ]
 
 
@@ -150,8 +150,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         text-align: center; margin-bottom: 4px;
                         white-space: nowrap; overflow: hidden;
                         text-overflow: ellipsis; line-height: 1.2; }
-  .panel img { width: 100%; height: auto; display: block;
+  .panel img, .panel canvas { width: 100%; height: auto; display: block;
                 background: #fff; border-radius: 4px; aspect-ratio: 1; }
+  .panel.input img { aspect-ratio: 1; }
   .panel.selected .panel-label::after { content: " ✓"; color: var(--selected);
                                          font-weight: 700; }
   .summary { background: var(--panel); border-radius: 8px; padding: 16px;
@@ -219,6 +220,68 @@ function toggleSelection(sid, route) {
   render();
 }
 
+function loadImage(url) {
+  return new Promise((res, rej) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => res(img);
+    img.onerror = rej;
+    img.src = url;
+  });
+}
+
+async function makeOverlay(canvas, inputUrl, candUrl) {
+  // input + candidate を Canvas に合成 (input=青、 候補=黒、 背景=白)
+  const W = 256, H = 256;
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  // 白で初期化 (どちらかが load 失敗しても見える)
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, W, H);
+  try {
+    const [imgInp, imgCand] = await Promise.all([
+      loadImage(inputUrl), loadImage(candUrl)
+    ]);
+    // 候補を tmp canvas に
+    const c1 = document.createElement("canvas");
+    c1.width = W; c1.height = H;
+    const ctx1 = c1.getContext("2d");
+    ctx1.fillStyle = "#fff"; ctx1.fillRect(0, 0, W, H);
+    ctx1.drawImage(imgCand, 0, 0, W, H);
+    const candData = ctx1.getImageData(0, 0, W, H);
+    // input を tmp canvas に
+    const c2 = document.createElement("canvas");
+    c2.width = W; c2.height = H;
+    const ctx2 = c2.getContext("2d");
+    ctx2.fillStyle = "#fff"; ctx2.fillRect(0, 0, W, H);
+    ctx2.drawImage(imgInp, 0, 0, W, H);
+    const inpData = ctx2.getImageData(0, 0, W, H);
+    const out = ctx.createImageData(W, H);
+    for (let i = 0; i < W * H; i++) {
+      const j = i * 4;
+      const cp = candData.data[j];
+      const ip = inpData.data[j];
+      if (cp < 128) {
+        // 候補黒線 → 黒で上書き優先
+        out.data[j] = 0; out.data[j+1] = 0; out.data[j+2] = 0;
+      } else if (ip < 128) {
+        // input 黒線 → 青
+        out.data[j] = 100; out.data[j+1] = 150; out.data[j+2] = 255;
+      } else {
+        out.data[j] = 255; out.data[j+1] = 255; out.data[j+2] = 255;
+      }
+      out.data[j+3] = 255;
+    }
+    ctx.putImageData(out, 0, 0);
+  } catch (e) {
+    // load 失敗時は cand 画像をそのまま描画
+    try {
+      const cand = await loadImage(candUrl);
+      ctx.drawImage(cand, 0, 0, W, H);
+    } catch (e2) {}
+  }
+}
+
 function render() {
   main.innerHTML = "";
   for (const entry of ENTRIES) {
@@ -237,14 +300,18 @@ function render() {
     inp.innerHTML = `<div class="panel-label">INPUT</div>
                      <img src="${entry.input_png}" loading="lazy">`;
     grid.appendChild(inp);
-    // 候補 N つ
+    // 候補 N つ (Canvas で input overlay 合成)
     entry.candidates.forEach((cand) => {
       const p = document.createElement("div");
       p.className = "panel candidate";
       const sel = isSelected(entry.sketch_id, cand.route);
       if (sel) p.classList.add("selected");
-      p.innerHTML = `<div class="panel-label" title="${cand.label}">${cand.label}</div>
-                     <img src="${cand.strokes_png}" loading="lazy">`;
+      const safeLabel = String(cand.label).replace(/"/g, "&quot;");
+      p.innerHTML = `<div class="panel-label" title="${safeLabel}">${cand.label}</div>
+                     <canvas></canvas>`;
+      const cv = p.querySelector("canvas");
+      // 非同期で overlay 合成
+      makeOverlay(cv, entry.input_png, cand.strokes_png);
       p.addEventListener("click", () => toggleSelection(entry.sketch_id, cand.route));
       grid.appendChild(p);
     });
