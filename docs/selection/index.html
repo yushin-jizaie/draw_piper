@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>draw_piper — robot input selection</title>
+<style>
+  :root {
+    --bg: #1e1e1e; --fg: #ddd; --panel: #2a2a2a; --accent: #ff8c1a;
+    --border: #444; --selected: #2c7;
+  }
+  * { box-sizing: border-box; }
+  body { background: var(--bg); color: var(--fg); margin: 0;
+         font-family: -apple-system, system-ui, sans-serif; }
+  header { background: var(--panel); padding: 12px 24px;
+           border-bottom: 1px solid var(--border);
+           position: sticky; top: 0; z-index: 100;
+           display: flex; align-items: center; gap: 16px; }
+  header h1 { font-size: 18px; margin: 0; }
+  header .status { font-size: 14px; opacity: 0.8; }
+  header button { background: var(--accent); color: #000; border: 0;
+                   padding: 8px 16px; border-radius: 4px; font-weight: 600;
+                   cursor: pointer; font-size: 14px; }
+  header button:disabled { opacity: 0.4; cursor: not-allowed; }
+  header button.secondary { background: var(--panel); color: var(--fg);
+                            border: 1px solid var(--border); }
+  main { padding: 16px 24px; }
+  .row { background: var(--panel); border-radius: 8px; padding: 16px;
+         margin-bottom: 16px; border: 1px solid var(--border); }
+  .row h2 { margin: 0 0 12px 0; font-size: 16px; color: var(--accent); }
+  .row h2 .type { font-size: 12px; opacity: 0.6; margin-left: 8px; }
+  .candidates { display: grid;
+                grid-template-columns: 1fr 1fr 1fr 1fr 1fr; gap: 12px; }
+  .panel { background: #1a1a1a; border: 2px solid transparent;
+           border-radius: 6px; padding: 8px; cursor: pointer;
+           transition: border-color 0.15s, transform 0.1s; }
+  .panel:hover { transform: translateY(-2px); border-color: #666; }
+  .panel.input { cursor: default; opacity: 0.85; border-color: #333; }
+  .panel.input:hover { transform: none; border-color: #333; }
+  .panel.selected { border-color: var(--selected);
+                    box-shadow: 0 0 0 3px rgba(44, 204, 119, 0.25); }
+  .panel .panel-label { font-size: 11px; opacity: 0.8;
+                        text-align: center; margin-bottom: 4px;
+                        white-space: nowrap; overflow: hidden;
+                        text-overflow: ellipsis; }
+  .panel img { width: 100%; height: auto; display: block;
+                background: #fff; border-radius: 4px; aspect-ratio: 1; }
+  .panel.selected .panel-label::after { content: " ✓"; color: var(--selected);
+                                         font-weight: 700; }
+  .summary { background: var(--panel); border-radius: 8px; padding: 16px;
+             margin-top: 16px; border: 1px solid var(--border); }
+  .summary pre { background: #1a1a1a; padding: 12px; border-radius: 4px;
+                  overflow-x: auto; font-size: 12px; margin: 8px 0 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎨 draw_piper — input selection</h1>
+  <span class="status" id="status">0 / 8 選択中</span>
+  <div style="flex: 1"></div>
+  <button id="download-btn" disabled>選択結果を JSON でダウンロード</button>
+  <button class="secondary" id="reset-btn">リセット</button>
+</header>
+<main id="main"></main>
+<script>
+const ENTRIES = [{"sketch_id": "B_round_smiley", "type": "character", "input_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/logs/sketch_variations_20260528_084706/inputs/sketch_B_round_smiley.png", "candidates": [{"route": "align (S2 OFF)", "label": "align (S2 OFF)", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/align_noS2_all8_20260529_131555/B_round_smiley/30_vectorized_strokes.png", "rel_path": "sketch_variations/align_noS2_all8_20260529_131555/B_round_smiley"}, {"route": "shift v1", "label": "shift v1: balloon", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v1/B_round_smiley/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v1/B_round_smiley", "companion": "balloon"}, {"route": "shift v2", "label": "shift v2: cloud", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v2/B_round_smiley/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v2/B_round_smiley", "companion": "cloud"}, {"route": "shift v3", "label": "shift v3: smiling face", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v3/B_round_smiley/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v3/B_round_smiley", "companion": "smiling face"}]}, {"sketch_id": "C_face_with_neck", "type": "character", "input_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/logs/sketch_variations_20260528_084706/inputs/sketch_C_face_with_neck.png", "candidates": [{"route": "align (S2 OFF)", "label": "align (S2 OFF)", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/align_noS2_all8_20260529_131555/C_face_with_neck/30_vectorized_strokes.png", "rel_path": "sketch_variations/align_noS2_all8_20260529_131555/C_face_with_neck"}, {"route": "shift v1", "label": "shift v1: balloon", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v1/C_face_with_neck/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v1/C_face_with_neck", "companion": "balloon"}, {"route": "shift v2", "label": "shift v2: bird", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v2/C_face_with_neck/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v2/C_face_with_neck", "companion": "bird"}, {"route": "shift v3", "label": "shift v3: balloon", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v3/C_face_with_neck/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v3/C_face_with_neck", "companion": "balloon"}]}, {"sketch_id": "D_stick_figure", "type": "character", "input_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/logs/sketch_variations_20260528_084706/inputs/sketch_D_stick_figure.png", "candidates": [{"route": "align (S2 OFF)", "label": "align (S2 OFF)", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/align_noS2_all8_20260529_131555/D_stick_figure/30_vectorized_strokes.png", "rel_path": "sketch_variations/align_noS2_all8_20260529_131555/D_stick_figure"}, {"route": "shift v1", "label": "shift v1: umbrella", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v1/D_stick_figure/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v1/D_stick_figure", "companion": "umbrella"}, {"route": "shift v2", "label": "shift v2: bird", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v2/D_stick_figure/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v2/D_stick_figure", "companion": "bird"}, {"route": "shift v3", "label": "shift v3: umbrella", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v3/D_stick_figure/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v3/D_stick_figure", "companion": "umbrella"}]}, {"sketch_id": "F_angry_face", "type": "character", "input_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/logs/sketch_variations_20260528_084706/inputs/sketch_F_angry_face.png", "candidates": [{"route": "align (S2 OFF)", "label": "align (S2 OFF)", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/align_noS2_all8_20260529_131555/F_angry_face/30_vectorized_strokes.png", "rel_path": "sketch_variations/align_noS2_all8_20260529_131555/F_angry_face"}, {"route": "shift v1", "label": "shift v1: angry", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v1/F_angry_face/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v1/F_angry_face", "companion": "angry"}, {"route": "shift v2", "label": "shift v2: cloud", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v2/F_angry_face/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v2/F_angry_face", "companion": "cloud"}, {"route": "shift v3", "label": "shift v3: angry face", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v3/F_angry_face/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v3/F_angry_face", "companion": "angry face"}]}, {"sketch_id": "house", "type": "object", "input_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/logs/sketches_objects_20260528_183943/sketch_house.png", "candidates": [{"route": "align (S2 OFF)", "label": "align (S2 OFF)", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/align_noS2_all8_20260529_131555/house/30_vectorized_strokes.png", "rel_path": "sketch_variations/align_noS2_all8_20260529_131555/house"}, {"route": "shift v1", "label": "shift v1: tree", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v1/house/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v1/house", "companion": "tree"}, {"route": "shift v2", "label": "shift v2: tree", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v2/house/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v2/house", "companion": "tree"}, {"route": "shift v3", "label": "shift v3: umbrella", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v3/house/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v3/house", "companion": "umbrella"}]}, {"sketch_id": "tree", "type": "object", "input_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/logs/sketches_objects_20260528_183943/sketch_tree.png", "candidates": [{"route": "align (S2 OFF)", "label": "align (S2 OFF)", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/align_noS2_all8_20260529_131555/tree/30_vectorized_strokes.png", "rel_path": "sketch_variations/align_noS2_all8_20260529_131555/tree"}, {"route": "shift v1", "label": "shift v1: umbrella", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v1/tree/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v1/tree", "companion": "umbrella"}, {"route": "shift v2", "label": "shift v2: bird", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v2/tree/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v2/tree", "companion": "bird"}, {"route": "shift v3", "label": "shift v3: bird perched", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v3/tree/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v3/tree", "companion": "bird perched"}]}, {"sketch_id": "cat", "type": "object", "input_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/logs/sketches_objects_20260528_183943/sketch_cat.png", "candidates": [{"route": "align (S2 OFF)", "label": "align (S2 OFF)", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/align_noS2_all8_20260529_131555/cat/30_vectorized_strokes.png", "rel_path": "sketch_variations/align_noS2_all8_20260529_131555/cat"}, {"route": "shift v1", "label": "shift v1: bird", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v1/cat/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v1/cat", "companion": "bird"}, {"route": "shift v2", "label": "shift v2: mouse", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v2/cat/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v2/cat", "companion": "mouse"}, {"route": "shift v3", "label": "shift v3: playing mouse", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v3/cat/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v3/cat", "companion": "playing mouse"}]}, {"sketch_id": "car", "type": "object", "input_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/logs/sketches_objects_20260528_183943/sketch_car.png", "candidates": [{"route": "align (S2 OFF)", "label": "align (S2 OFF)", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/align_noS2_all8_20260529_131555/car/30_vectorized_strokes.png", "rel_path": "sketch_variations/align_noS2_all8_20260529_131555/car"}, {"route": "shift v1", "label": "shift v1: house", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v1/car/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v1/car", "companion": "house"}, {"route": "shift v2", "label": "shift v2: person", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v2/car/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v2/car", "companion": "person"}, {"route": "shift v3", "label": "shift v3: umbrella", "strokes_png": "https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/sketch_variations/shift_v3_compare_20260529_100542/v3/car/30_companion_strokes.png", "rel_path": "sketch_variations/shift_v3_compare_20260529_100542/v3/car", "companion": "umbrella"}]}];
+const STORAGE_KEY = "draw_piper_selections_v1";
+
+let selections = {};
+try { selections = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}"); }
+catch (e) { selections = {}; }
+
+const main = document.getElementById("main");
+const statusEl = document.getElementById("status");
+const dlBtn = document.getElementById("download-btn");
+const resetBtn = document.getElementById("reset-btn");
+
+function updateStatus() {
+  const n = Object.keys(selections).length;
+  statusEl.textContent = `${n} / ${ENTRIES.length} 選択中`;
+  dlBtn.disabled = n === 0;
+}
+
+function render() {
+  main.innerHTML = "";
+  for (const entry of ENTRIES) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = `
+      <h2>${entry.sketch_id} <span class="type">${entry.type}</span></h2>
+      <div class="candidates"></div>
+    `;
+    const grid = row.querySelector(".candidates");
+    // INPUT パネル
+    const inp = document.createElement("div");
+    inp.className = "panel input";
+    inp.innerHTML = `<div class="panel-label">INPUT</div>
+                     <img src="${entry.input_png}" loading="lazy">`;
+    grid.appendChild(inp);
+    // 候補 4 つ
+    entry.candidates.forEach((cand, idx) => {
+      const p = document.createElement("div");
+      p.className = "panel candidate";
+      const isSelected = selections[entry.sketch_id] === cand.route;
+      if (isSelected) p.classList.add("selected");
+      p.innerHTML = `<div class="panel-label" title="${cand.label}">${cand.label}</div>
+                     <img src="${cand.strokes_png}" loading="lazy">`;
+      p.addEventListener("click", () => {
+        if (selections[entry.sketch_id] === cand.route) {
+          delete selections[entry.sketch_id];
+        } else {
+          selections[entry.sketch_id] = cand.route;
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(selections));
+        render();
+      });
+      grid.appendChild(p);
+    });
+    main.appendChild(row);
+  }
+  // sticky summary at bottom
+  const summary = document.createElement("div");
+  summary.className = "summary";
+  const out = {};
+  for (const e of ENTRIES) {
+    const sel = selections[e.sketch_id];
+    if (sel) {
+      const cand = e.candidates.find(c => c.route === sel);
+      out[e.sketch_id] = {
+        route: sel,
+        strokes_png_path: cand.rel_path + "/30_" + (sel.startsWith("shift") ? "companion" : "vectorized") + "_strokes.png",
+        companion: cand.companion || null,
+      };
+    }
+  }
+  summary.innerHTML = "<h2 style=\"color:var(--accent);margin:0;font-size:14px\">現在の選択 (localStorage に自動保存)</h2><pre>" +
+    JSON.stringify(out, null, 2) + "</pre>";
+  main.appendChild(summary);
+  updateStatus();
+}
+
+dlBtn.addEventListener("click", () => {
+  const out = {};
+  for (const e of ENTRIES) {
+    const sel = selections[e.sketch_id];
+    if (sel) {
+      const cand = e.candidates.find(c => c.route === sel);
+      out[e.sketch_id] = {
+        route: sel,
+        type: e.type,
+        strokes_png_rel: cand.rel_path + "/30_" + (sel.startsWith("shift") ? "companion" : "vectorized") + "_strokes.png",
+        companion: cand.companion || null,
+      };
+    }
+  }
+  const blob = new Blob([JSON.stringify(out, null, 2)], {type: "application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "draw_piper_selections.json";
+  a.click();
+});
+
+resetBtn.addEventListener("click", () => {
+  if (confirm("すべての選択をリセットしますか?")) {
+    selections = {};
+    localStorage.removeItem(STORAGE_KEY);
+    render();
+  }
+});
+
+render();
+</script>
+</body>
+</html>
