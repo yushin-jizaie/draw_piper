@@ -328,6 +328,110 @@ class VLM:
             )
         return companion
 
+    def pick_best_companion(self, image: ImageLike,
+                              candidates: list) -> tuple:
+        """3 候補から best を 1 つ選ぶ meta-judging。
+
+        Parameters
+        ----------
+        image : ImageLike
+            入力 sketch (companion を選ぶ context)
+        candidates : list of (version, name) tuples or list of names
+            候補 companion 名のリスト。 例: [("v1", "balloon"), ("v2", "cloud"),
+            ("v3", "smiling face")]
+
+        Returns
+        -------
+        (chosen_index, chosen_name, infer_time_s) : tuple
+            chosen_index は候補リストの 0-indexed 位置。 不明な場合は 0。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        # candidates を正規化 ((version, name) → name のみのリスト)
+        names = []
+        labels = []
+        for c in candidates:
+            if isinstance(c, tuple) and len(c) >= 2:
+                labels.append(str(c[0]))
+                names.append(str(c[1]))
+            else:
+                labels.append(f"#{len(names)+1}")
+                names.append(str(c))
+        if not names:
+            return (0, "person", 0.0)
+        # judge prompt: 候補を提示して、 sketch との相性で 1 つ選ばせる
+        cand_list_text = "\n".join(
+            f"  {i+1}. {labels[i]}: {names[i]}"
+            for i in range(len(names))
+        )
+        judge_prompt = (
+            "You see a simple line-art sketch.\n\n"
+            "Three different ideas have been proposed for what to draw NEXT TO "
+            "the main subject as a scene companion:\n\n"
+            f"{cand_list_text}\n\n"
+            "Evaluate them against these criteria:\n"
+            "1. Is it a concrete drawable noun (not an adjective like 'angry')?\n"
+            "2. Is it DIFFERENT in kind from what's in the sketch (not the same "
+            "type of object)?\n"
+            "3. Does it form a natural, story-telling pair with the sketch?\n"
+            "4. Would it look good as a simple ink-line drawing next to the sketch?\n\n"
+            "Pick the SINGLE BEST candidate.\n"
+            "Output format: only the chosen number (1, 2, or 3). No explanation, "
+            "no punctuation, just one digit."
+        )
+        pil_image = _normalize_image(image)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": pil_image},
+                    {"type": "text", "text": judge_prompt},
+                ],
+            }
+        ]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        ).to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=8, do_sample=False
+            )
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True
+        )[0].strip()
+        # 1-3 の数字を抽出
+        import re
+        m = re.search(r"\b([123])\b", raw_text)
+        if m:
+            chosen_idx = int(m.group(1)) - 1
+        else:
+            chosen_idx = 0
+        chosen_idx = max(0, min(chosen_idx, len(names) - 1))
+        chosen_name = names[chosen_idx]
+        if self.verbose:
+            print(
+                f"[vlm] judge picked #{chosen_idx + 1} "
+                f"({labels[chosen_idx]}: '{chosen_name}') "
+                f"from {names} ({infer_time:.2f}s) raw='{raw_text}'"
+            )
+        return (chosen_idx, chosen_name, infer_time)
+
     def predict_intent(self, image: ImageLike) -> TopicGuess:
         """スケッチ画像から TopicGuess を返す。例外は投げない。"""
         if not self.is_loaded:

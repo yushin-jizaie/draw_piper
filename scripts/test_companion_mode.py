@@ -94,12 +94,11 @@ def main() -> int:
                     help="[align] img2img strength (F_angry_face 時と同じ 0.45 default)")
     ap.add_argument("--ip-scale", type=float, default=0.6,
                     help="[align] IP-Adapter scale (F_angry_face 時と同じ 0.6 default)")
-    ap.add_argument("--companion-prompt-version", type=str, default="v1",
-                    choices=["v1", "v2", "v3"],
+    ap.add_argument("--companion-prompt-version", type=str, default="best",
+                    choices=["v1", "v2", "v3", "best"],
                     help="[shift] VLM の companion 提案 prompt パターン: "
-                         "v1=関係パターン方向ヒント (現状)、 "
-                         "v2=noun-only 強化 (形容詞回避)、 "
-                         "v3=動詞+物の物語性フレーズ (1-3 単語可)")
+                         "v1/v2/v3 = 単独使用、 "
+                         "best (default) = 3 つ全部呼んで VLM judge で 1 つに絞る")
     args = ap.parse_args()
 
     if not args.auto_prompt and not args.prompt:
@@ -137,13 +136,30 @@ def main() -> int:
         # 例えば: 木 → 鳥や雲、 ハサミ → 持つ手、 自転車 → 乗る人、 傘 → 雨。
         # VLM への prompt は一般化されており、 ハードコード例ではなく方向性ヒント。
         companion_subject = None
+        companion_candidates = []   # 全候補 [(version, name)]
+        companion_judge_idx = -1    # judge が選んだ index (0 始まり)
         with VLM(verbose=True) as vlm:
             guess = vlm.predict_intent(sketch_img)
             if args.placement == "shift":
-                companion_subject = vlm.predict_companion_subject(
-                    sketch_img,
-                    prompt_version=args.companion_prompt_version,
-                )
+                if args.companion_prompt_version == "best":
+                    # 3 候補生成 → VLM judge で 1 つ選定
+                    for v in ("v1", "v2", "v3"):
+                        c = vlm.predict_companion_subject(
+                            sketch_img, prompt_version=v)
+                        companion_candidates.append((v, c))
+                    idx, chosen, _ = vlm.pick_best_companion(
+                        sketch_img, companion_candidates)
+                    companion_judge_idx = idx
+                    companion_subject = chosen
+                else:
+                    companion_subject = vlm.predict_companion_subject(
+                        sketch_img,
+                        prompt_version=args.companion_prompt_version,
+                    )
+                    companion_candidates = [
+                        (args.companion_prompt_version, companion_subject)
+                    ]
+                    companion_judge_idx = 0
         # VLM unload は with の __exit__ で。 SDXL を subprocess で
         # 起動するためここで VRAM を解放しておく必要がある。
         print(f"[companion]   guess: {guess.to_text()} "
@@ -168,6 +184,9 @@ def main() -> int:
             )
         print(f"[companion]   prompt: {args.prompt}")
         # 後段の参照用に prompt メタも残す
+        candidates_text = "\n".join(
+            f"  {v}: {c}" for v, c in companion_candidates
+        ) if companion_candidates else "  (none)"
         (args.output / "00_auto_prompt.txt").write_text(
             f"placement={args.placement}\n"
             f"subject_ja={guess.subject.ja}\n"
@@ -175,6 +194,9 @@ def main() -> int:
             f"action_ja={guess.action.ja}\n"
             f"confidence={guess.confidence:.3f}\n"
             f"companion_subject={companion_subject or ''}\n"
+            f"companion_prompt_version={args.companion_prompt_version}\n"
+            f"companion_candidates:\n{candidates_text}\n"
+            f"companion_judge_idx={companion_judge_idx}\n"
             f"prompt={args.prompt}\n",
             encoding="utf-8",
         )
