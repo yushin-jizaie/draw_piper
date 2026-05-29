@@ -1,0 +1,81 @@
+{
+  "B_round_smiley": {
+    "type": "character",
+    "selections": [
+      {"route": "gacha v3", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/B_round_smiley/v3_seed59628/30_vectorized_strokes.png", "companion": null, "gacha_seed": "59628"},
+      {"route": "shift v2", "strokes_png_rel": "sketch_variations/shift_v3_compare_20260529_100542/v2/B_round_smiley/30_companion_strokes.png", "companion": "cloud", "gacha_seed": null},
+      {"route": "align (S2 OFF)", "strokes_png_rel": "sketch_variations/align_noS2_all8_20260529_131555/B_round_smiley/30_vectorized_strokes.png", "companion": null, "gacha_seed": null},
+      {"route": "composition align", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/B_round_smiley_align/30_vectorized_strokes.png", "companion": "dynamic pose mid-stride", "gacha_seed": null},
+      {"route": "composition shift", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/B_round_smiley_shift/30_companion_strokes.png", "companion": "dynamic pose mid-stride", "gacha_seed": null},
+      {"route": "gacha v1", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/B_round_smiley/v1_seed19093/30_vectorized_strokes.png", "companion": null, "gacha_seed": "19093"},
+      {"route": "shift v1", "strokes_png_rel": "sketch_variations/shift_v3_compare_20260529_100542/v1/B_round_smiley/30_companion_strokes.png", "companion": "balloon", "gacha_seed": null}
+    ]
+  },
+  "C_face_with_neck": {
+    "type": "character",
+    "selections": [
+      {"route": "align (S2 OFF)", "strokes_png_rel": "sketch_variations/align_noS2_all8_20260529_131555/C_face_with_neck/30_vectorized_strokes.png", "companion": null, "gacha_seed": null},
+      {"route": "gacha v3", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/C_face_with_neck/v3_seed59628/30_vectorized_strokes.png", "companion": null, "gacha_seed": "59628"},
+      {"route": "gacha v2", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/C_face_with_neck/v2_seed60231/30_vectorized_strokes.png", "companion": null, "gacha_seed": "60231"},
+      {"route": "composition shift", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/C_face_with_neck_shift/30_companion_strokes.png", "companion": "dynamic pose mid-stride", "gacha_seed": null},
+      {"route": "composition align", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/C_face_with_neck_align/30_vectorized_strokes.png", "companion": "dynamic pose mid-stride", "gacha_seed": null}
+    ]
+  },
+  "D_stick_figure": {
+    "type": "character",
+    "selections": [
+      {"route": "align (S2 OFF)", "strokes_png_rel": "sketch_variations/align_noS2_all8_20260529_131555/D_stick_figure/30_vectorized_strokes.png", "companion": null, "gacha_seed": null},
+      {"route": "gacha v3", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/D_stick_figure/v3_seed59628/30_vectorized_strokes.png", "companion": null, "gacha_seed": "59628"},
+      {"route": "composition shift", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/D_stick_figure_shift/30_companion_strokes.png", "companion": "dynamic pose mid-stride", "gacha_seed": null}
+    ]
+  },
+  "F_angry_face": {
+    "type": "character",
+    "selections": [
+      {"route": "align (S2 OFF)", "strokes_png_rel": "sketch_variations/align_noS2_all8_20260529_131555/F_angry_face/30_vectorized_strokes.png", "companion": null, "gacha_seed": null},
+      {"route": "gacha v3", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/F_angry_face/v3_seed59628/30_vectorized_strokes.png", "companion": null, "gacha_seed": "59628"},
+      {"route": "gacha v1", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/F_angry_face/v1_seed19093/30_vectorized_strokes.png", "companion": null, "gacha_seed": "19093"},
+      {"route": "composition align", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/F_angry_face_align/30_vectorized_strokes.png", "companion": "dynamic pose mid-stride", "gacha_seed": null},
+      {"route": "composition shift", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/F_angry_face_shift/30_companion_strokes.png", "companion": "dynamic pose mid-stride", "gacha_seed": null}
+    ]
+  },
+  "house": {
+    "type": "object",
+    "selections": [
+      {"route": "gacha v3", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/house/v3_seed59628/30_vectorized_strokes.png", "companion": null, "gacha_seed": "59628"},
+      {"route": "composition shift", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/house_shift/30_companion_strokes.png", "companion": "dynamic perspective with dramatic angle", "gacha_seed": null},
+      {"route": "composition align", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/house_align/30_vectorized_strokes.png", "companion": "dynamic perspective with dramatic angle", "gacha_seed": null}
+    ]
+  },
+  "tree": {
+    "type": "object",
+    "selections": [
+      {"route": "shift v3", "strokes_png_rel": "sketch_variations/shift_v3_compare_20260529_100542/v3/tree/30_companion_strokes.png", "companion": "bird perched", "gacha_seed": null},
+      {"route": "shift v2", "strokes_png_rel": "sketch_variations/shift_v3_compare_20260529_100542/v2/tree/30_companion_strokes.png", "companion": "bird", "gacha_seed": null},
+      {"route": "align (S2 OFF)", "strokes_png_rel": "sketch_variations/align_noS2_all8_20260529_131555/tree/30_vectorized_strokes.png", "companion": null, "gacha_seed": null},
+      {"route": "gacha v3", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/tree/v3_seed59628/30_vectorized_strokes.png", "companion": null, "gacha_seed": "59628"},
+      {"route": "composition align", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/tree_align/30_vectorized_strokes.png", "companion": "dynamic plant with falling leaves", "gacha_seed": null}
+    ]
+  },
+  "cat": {
+    "type": "object",
+    "selections": [
+      {"route": "shift v2", "strokes_png_rel": "sketch_variations/shift_v3_compare_20260529_100542/v2/cat/30_companion_strokes.png", "companion": "mouse", "gacha_seed": null},
+      {"route": "shift v3", "strokes_png_rel": "sketch_variations/shift_v3_compare_20260529_100542/v3/cat/30_companion_strokes.png", "companion": "playing mouse", "gacha_seed": null},
+      {"route": "gacha v3", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/cat/v3_seed59628/30_vectorized_strokes.png", "companion": null, "gacha_seed": "59628"},
+      {"route": "composition shift", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/cat_shift/30_companion_strokes.png", "companion": "looking back over shoulder", "gacha_seed": null}
+    ]
+  },
+  "car": {
+    "type": "object",
+    "selections": [
+      {"route": "gacha v1", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/car/v1_seed19093/30_vectorized_strokes.png", "companion": null, "gacha_seed": "19093"},
+      {"route": "align (S2 OFF)", "strokes_png_rel": "sketch_variations/align_noS2_all8_20260529_131555/car/30_vectorized_strokes.png", "companion": null, "gacha_seed": null},
+      {"route": "gacha v3", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/car/v3_seed59628/30_vectorized_strokes.png", "companion": null, "gacha_seed": "59628"},
+      {"route": "shift v1", "strokes_png_rel": "sketch_variations/shift_v3_compare_20260529_100542/v1/car/30_companion_strokes.png", "companion": "house", "gacha_seed": null},
+      {"route": "composition align", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/car_align/30_vectorized_strokes.png", "companion": null, "gacha_seed": null},
+      {"route": "composition shift", "strokes_png_rel": "sketch_variations/composition_all8_20260529_154459/car_shift/30_companion_strokes.png", "companion": null, "gacha_seed": null},
+      {"route": "gacha v2", "strokes_png_rel": "sketch_variations/gacha_char_auto_all8_20260529_140249/car/v2_seed60231/30_vectorized_strokes.png", "companion": null, "gacha_seed": "60231"}
+    ]
+  }
+}

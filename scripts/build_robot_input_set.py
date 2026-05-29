@@ -37,22 +37,56 @@ def source_png_for_route(route: str, sketch_id: str, src_dir: Path) -> tuple:
     -------
     (vec_source_png, user_image_or_none, generated_preview_png)
     """
-    if route.startswith("align"):
-        # align (S2 OFF): Stage 1 inpaint 出力 (illustrious_v2_inpaint.png)
+    # "composition shift" → cv2 blob 後の最終合成 PNG (shift mode と同じ扱い)
+    # "composition align" → Stage 1 inpaint 出力 (align mode と同じ扱い)
+    if route == "composition shift" or "shift" in route and "composition" in route:
+        comp_png = src_dir / "30_companion_strokes.png"
+        return (comp_png, None, comp_png)
+    if route == "composition align" or "align" in route and "composition" in route:
         stage1_png = src_dir / "stage1" / "illustrious_v2_inpaint.png"
         if not stage1_png.exists():
             stage1_png = src_dir / "20_final_no_ip_adapter.png"
-        # diff 用 user_image は元入力 sketch (test_ip_adapter_two_stage の
-        # category=character かつ skip_stage2 経路では user_image diff を使う)
+        return (stage1_png, _ROOT / INPUT_PATHS[sketch_id], stage1_png)
+    if route.startswith("align"):
+        stage1_png = src_dir / "stage1" / "illustrious_v2_inpaint.png"
+        if not stage1_png.exists():
+            stage1_png = src_dir / "20_final_no_ip_adapter.png"
         return (stage1_png, _ROOT / INPUT_PATHS[sketch_id], stage1_png)
     elif route.startswith("shift"):
-        # shift: 最終合成済 PNG (30_companion_strokes.png) を再 Vectorize
-        # cv2 blob で配置加工された 「input + transformed gen」 が黒線で描画されている
         comp_png = src_dir / "30_companion_strokes.png"
-        # 合成 PNG は user_image=None で全 strokes を抽出
         return (comp_png, None, comp_png)
+    elif route.startswith("gacha"):
+        # gacha: Stage 2 後 PNG (20_stage2_*.png) を Vectorize、 user_image diff
+        stage2_pngs = sorted(src_dir.glob("20_stage2_*.png"))
+        if stage2_pngs:
+            return (stage2_pngs[0],
+                    _ROOT / INPUT_PATHS[sketch_id],
+                    stage2_pngs[0])
+        # fallback
+        png = src_dir / "30_vectorized_strokes.png"
+        return (png, None, png)
     else:
         raise ValueError(f"unknown route: {route}")
+
+
+def sanitize_route(route: str) -> str:
+    """route 名を dir 名向けに正規化。"""
+    return (route.replace("(", "")
+                  .replace(")", "")
+                  .replace(" ", "_")
+                  .lower())
+
+
+def _expand_selections(raw: dict) -> list:
+    """v1 (single) / v2 (array) 両形式を list of (sid, entry) に展開。"""
+    items = []
+    for sid, entry in raw.items():
+        if "selections" in entry and isinstance(entry["selections"], list):
+            for sel in entry["selections"]:
+                items.append((sid, {**sel, "type": entry.get("type", "?")}))
+        else:
+            items.append((sid, entry))
+    return items
 
 
 def vectorize_and_save(sel_json_path: Path, out_root: Path) -> dict:
@@ -60,16 +94,22 @@ def vectorize_and_save(sel_json_path: Path, out_root: Path) -> dict:
     from PIL import Image
     from modules.vectorizer import Vectorizer
 
-    selections = json.loads(sel_json_path.read_text())
+    selections_raw = json.loads(sel_json_path.read_text())
+    items = _expand_selections(selections_raw)
+    print(f"[build] {len(items)} selections to process")
     vec = Vectorizer()
     summary = {}
 
-    for sid, entry in selections.items():
+    for sid, entry in items:
         route = entry["route"]
         strokes_rel = entry["strokes_png_rel"]
         companion = entry.get("companion")
         type_ = entry.get("type", "?")
-        print(f"\n[{sid}] route={route} (type={type_})")
+        gacha_seed = entry.get("gacha_seed")
+        key = f"{sid}_{sanitize_route(route)}"
+        if gacha_seed:
+            key += f"_s{gacha_seed}"
+        print(f"\n[{key}] route={route} (type={type_})")
         # 選定された 30_*.png から src_dir を逆算
         strokes_full = _ROOT / strokes_rel
         src_dir = strokes_full.parent
@@ -89,8 +129,8 @@ def vectorize_and_save(sel_json_path: Path, out_root: Path) -> dict:
             user_img = None
         result = vec.vectorize(generated_image=gen_img, user_image=user_img)
         print(f"  strokes={result.n_strokes}, points={result.n_points}")
-        # 出力 dir
-        out_dir = out_root / sid
+        # 出力 dir (v2 array: key = <sid>_<route>[_s<seed>])
+        out_dir = out_root / key
         out_dir.mkdir(parents=True, exist_ok=True)
         # strokes.json (test_vlm_to_image.py と同じ形式)
         strokes_payload = {
@@ -137,8 +177,10 @@ def vectorize_and_save(sel_json_path: Path, out_root: Path) -> dict:
             json.dumps(topic, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        summary[sid] = {
+        summary[key] = {
+            "sketch_id": sid,
             "route": route,
+            "gacha_seed": gacha_seed,
             "n_strokes": result.n_strokes,
             "n_points": result.n_points,
             "out_dir": str(out_dir.relative_to(_ROOT)),
