@@ -1,0 +1,50 @@
+{
+  "B_round_smiley": {
+    "route": "align (S2 OFF)",
+    "n_strokes": 60,
+    "n_points": 1344,
+    "out_dir": "logs/robot_input_set_20260529_143905/B_round_smiley"
+  },
+  "C_face_with_neck": {
+    "route": "align (S2 OFF)",
+    "n_strokes": 40,
+    "n_points": 819,
+    "out_dir": "logs/robot_input_set_20260529_143905/C_face_with_neck"
+  },
+  "D_stick_figure": {
+    "route": "align (S2 OFF)",
+    "n_strokes": 36,
+    "n_points": 971,
+    "out_dir": "logs/robot_input_set_20260529_143905/D_stick_figure"
+  },
+  "F_angry_face": {
+    "route": "align (S2 OFF)",
+    "n_strokes": 45,
+    "n_points": 1527,
+    "out_dir": "logs/robot_input_set_20260529_143905/F_angry_face"
+  },
+  "house": {
+    "route": "shift v3",
+    "n_strokes": 39,
+    "n_points": 898,
+    "out_dir": "logs/robot_input_set_20260529_143905/house"
+  },
+  "tree": {
+    "route": "shift v3",
+    "n_strokes": 23,
+    "n_points": 649,
+    "out_dir": "logs/robot_input_set_20260529_143905/tree"
+  },
+  "cat": {
+    "route": "shift v3",
+    "n_strokes": 96,
+    "n_points": 1865,
+    "out_dir": "logs/robot_input_set_20260529_143905/cat"
+  },
+  "car": {
+    "route": "align (S2 OFF)",
+    "n_strokes": 87,
+    "n_points": 1820,
+    "out_dir": "logs/robot_input_set_20260529_143905/car"
+  }
+}
