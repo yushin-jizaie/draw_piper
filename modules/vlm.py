@@ -172,6 +172,102 @@ class VLM:
     def __exit__(self, *exc) -> None:
         self.unload()
 
+    # 2026-05-29: shift モード用 companion subject 推論プロンプト。
+    # 入力 sketch の主題に対し、 隣に配置すると自然な「別の」 主題を 1 語で提案。
+    # 例示は「方向性のヒント」 で、 VLM がコピーせず汎化して連想することを促す。
+    _COMPANION_PROMPT_TEXT = (
+        "You are looking at a simple line-art sketch.\n"
+        "Step 1: identify the main subject of the sketch silently in your head.\n"
+        "Step 2: propose ONE different subject that would naturally accompany or "
+        "complement the main subject, as if drawn next to it in the same scene.\n\n"
+        "Guidelines:\n"
+        "- The proposed companion must NOT be the same kind of object as the main subject.\n"
+        "- Choose something that makes the scene feel richer, tells a small story, or "
+        "shows a natural cause/effect relationship.\n"
+        "- Pick a single, concrete, drawable thing — preferably one word.\n"
+        "- Avoid abstract concepts (love, time, music). Prefer tangible things "
+        "(animal, person, weather, object, plant, furniture, vehicle).\n\n"
+        "Examples of the *shape* of relationship to use (do NOT copy these literally, "
+        "just understand the pattern):\n"
+        "- tool → its user or what it acts upon\n"
+        "- vehicle → its rider, passenger, or the road\n"
+        "- plant → an animal, weather, or season element near it\n"
+        "- container → its content or what fills it\n"
+        "- food → an eater, utensil, or table setting\n"
+        "- weather → what it affects (umbrella, puddle, shivering person)\n"
+        "- building → a person entering it, a vehicle near it, or a tree beside it\n\n"
+        "Apply the same kind of associative thinking to whatever you see. "
+        "If the main subject is unclear, pick any plausible companion that "
+        "would form a coherent line-art scene.\n\n"
+        "Output format: a single English noun in lowercase, no article, no "
+        "punctuation, no explanation. Output ONLY the noun."
+    )
+
+    def predict_companion_subject(self, image: ImageLike) -> str:
+        """スケッチ画像から companion subject (関連する別の subject) を 1 単語で返す。
+
+        shift モード (位置ずらし) 用。 入力主題と「同じもの」 ではなく、 自然に
+        組み合わさる別の subject を VLM に提案させる。 例えば:
+          ハサミ → hand、 自転車 → rider、 木 → bird、 傘 → rain、 鍋 → soup
+        例示は VLM に渡す prompt の「方向性ヒント」 として埋め込み済 (汎化を促す)。
+
+        Returns
+        -------
+        英語の単数名詞 (lowercase、 article なし)。 例: "bird", "person", "umbrella"
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        pil_image = _normalize_image(image)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": pil_image},
+                    {"type": "text", "text": self._COMPANION_PROMPT_TEXT},
+                ],
+            }
+        ]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        ).to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=16, do_sample=False
+            )
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True
+        )[0].strip()
+        # 1 単語抽出 (改行 / 句読点 / 「the」 「a」 等の冠詞を除去)
+        import re
+        cleaned = re.sub(r"[^a-zA-Z\s-]", " ", raw_text).strip().lower()
+        words = cleaned.split()
+        # よくある article を除去
+        articles = {"a", "an", "the"}
+        words = [w for w in words if w not in articles]
+        companion = words[0] if words else "person"
+        if self.verbose:
+            print(
+                f"[vlm] companion '{companion}' from '{raw_text}' "
+                f"({infer_time:.2f}s)"
+            )
+        return companion
+
     def predict_intent(self, image: ImageLike) -> TopicGuess:
         """スケッチ画像から TopicGuess を返す。例外は投げない。"""
         if not self.is_loaded:

@@ -126,22 +126,37 @@ def main() -> int:
             CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE,
         )
         sketch_img = Image.open(args.user_sketch).convert("RGB")
+        # 2026-05-29 shift モード改修: 入力主題と「同じもの」 を生成するのではなく、
+        # 入力主題から連想される「別の subject」 を VLM に提案させて生成する。
+        # 例えば: 木 → 鳥や雲、 ハサミ → 持つ手、 自転車 → 乗る人、 傘 → 雨。
+        # VLM への prompt は一般化されており、 ハードコード例ではなく方向性ヒント。
+        companion_subject = None
         with VLM(verbose=True) as vlm:
             guess = vlm.predict_intent(sketch_img)
+            if args.placement == "shift":
+                companion_subject = vlm.predict_companion_subject(sketch_img)
         # VLM unload は with の __exit__ で。 SDXL を subprocess で
         # 起動するためここで VRAM を解放しておく必要がある。
         print(f"[companion]   guess: {guess.to_text()} "
               f"(conf={guess.confidence:.2f})")
         if args.placement == "align":
             base_tpl, fb_tpl = CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE
-        else:
-            base_tpl, fb_tpl = COMPANION_TEMPLATE, COMPANION_FALLBACK_TEMPLATE
-        args.prompt = build_prompt(
-            guess,
-            confidence_threshold=args.confidence_threshold,
-            base_template=base_tpl,
-            fallback_template=fb_tpl,
-        )
+            args.prompt = build_prompt(
+                guess,
+                confidence_threshold=args.confidence_threshold,
+                base_template=base_tpl,
+                fallback_template=fb_tpl,
+            )
+        else:   # placement == "shift"
+            print(f"[companion]   companion subject (VLM 提案): {companion_subject}")
+            # shift モード: 入力主題ではなく companion subject を SDXL に渡す
+            # SDXL prompt は Matsumoto style + companion subject で構築
+            args.prompt = (
+                f"a detailed Matsumoto-style {companion_subject}, "
+                f"manga style, expressive ink lines, "
+                f"single continuous black line on plain white background, "
+                f"clean smooth strokes, illustrative, no shading"
+            )
         print(f"[companion]   prompt: {args.prompt}")
         # 後段の参照用に prompt メタも残す
         (args.output / "00_auto_prompt.txt").write_text(
@@ -150,6 +165,7 @@ def main() -> int:
             f"location_ja={guess.location.ja}\n"
             f"action_ja={guess.action.ja}\n"
             f"confidence={guess.confidence:.3f}\n"
+            f"companion_subject={companion_subject or ''}\n"
             f"prompt={args.prompt}\n",
             encoding="utf-8",
         )
