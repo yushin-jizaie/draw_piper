@@ -282,7 +282,7 @@ function render() {
         const tip = `Frida: n=${fr.n_strokes} avg=${fr.avg_pts}pts` +
                     (nw ? " | " + (fr.warns || []).join(" | ") : "  (Frida OK)");
         const safeTip = String(tip).replace(/"/g, "&quot;");
-        fridaHtml = `<span class="frida-badge ${cls}" title="${safeTip}">${icon} ${fr.n_strokes}</span>`;
+        fridaHtml = `<span class="frida-badge ${cls}" title="${safeTip}">Frida ${icon} ${fr.n_strokes}</span>`;
       }
       p.innerHTML = `<div class="panel-label" title="${safeLabel}">${cand.label}</div>
                      <div class="img-stack">
