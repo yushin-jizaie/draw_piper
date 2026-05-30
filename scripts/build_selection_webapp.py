@@ -241,14 +241,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .row h2 .type { font-size: 12px; opacity: 0.6; margin-left: 8px; }
   .row h2 .count { font-size: 12px; opacity: 0.7; margin-left: 12px;
                     color: var(--selected); font-weight: normal; }
+  /* 2026-05-30: 6 列 wrap (max 6 個/行、 7 個目から自動で次行へ段下げ) */
   .candidates { display: grid;
-                grid-template-columns: 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr; gap: 8px; }
+                grid-template-columns: repeat(6, 1fr); gap: 8px; }
   .panel { background: #1a1a1a; border: 2px solid transparent;
            border-radius: 6px; padding: 6px; cursor: pointer;
-           transition: border-color 0.15s, transform 0.1s; position: relative; }
-  .panel:hover { transform: translateY(-2px); border-color: #666; }
+           transition: transform 0.18s ease, border-color 0.15s,
+                       box-shadow 0.18s; position: relative; }
+  /* 2026-05-30: hover で大きく拡大表示 (z-index で最前面、 shadow で浮かす) */
+  .panel.candidate:hover {
+    transform: scale(2.3);
+    z-index: 200;
+    border-color: var(--accent);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+  }
   .panel.input { cursor: default; opacity: 0.85; border-color: #333; }
-  .panel.input:hover { transform: none; border-color: #333; }
+  .panel.input:hover {
+    transform: scale(2.3);
+    z-index: 200;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+  }
   .panel.selected { border-color: var(--selected);
                     box-shadow: 0 0 0 3px rgba(44, 204, 119, 0.25); }
   .panel .panel-label { font-size: 10px; opacity: 0.8;
@@ -396,7 +408,7 @@ function render() {
     const nsel = (selections[entry.sketch_id] || []).length;
     row.innerHTML = `
       <h2>${entry.sketch_id} <span class="type">${entry.type}</span>${nsel > 0 ? `<span class="count">★ ${nsel} 件選択</span>` : ""}</h2>
-      <div class="candidates" style="grid-template-columns: repeat(${ncands + 1}, 1fr)"></div>
+      <div class="candidates"></div>
     `;
     const grid = row.querySelector(".candidates");
     // INPUT パネル
