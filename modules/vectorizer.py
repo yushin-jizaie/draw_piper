@@ -55,10 +55,14 @@ DEFAULT_DIFF_DILATE_KSIZE = 21
 # 2026-05-27: 細部 (顔の目・口・鼻 等) が大量に削除される問題への対処。
 # min_pixels 50 → 20、 min_length 10 → 5、 approx_epsilon 2.0 → 1.0
 # で短い曲線を保持しやすく。 旧値は vectorizer_config.yaml で上書き可。
-DEFAULT_MIN_PIXELS = 20
+# 2026-05-30 (robot 描画向け再調整): 細かいストローク量産を抑制。
+# DEFAULT_MIN_PIXELS 20 → 40 (小さい連結成分のゴミ除外を強化)
+# DEFAULT_MIN_LENGTH 5 → 15 (短い stroke を除外、 robot 描画時間短縮)
+# DEFAULT_APPROX_EPSILON 1.0 → 2.0 (polyline 簡略化を強める、 細かい曲がりを直線化)
+DEFAULT_MIN_PIXELS = 40
 DEFAULT_CLOSE_KSIZE = 3
-DEFAULT_APPROX_EPSILON = 1.0
-DEFAULT_MIN_LENGTH = 5
+DEFAULT_APPROX_EPSILON = 2.0
+DEFAULT_MIN_LENGTH = 15
 
 
 log = logging.getLogger(__name__)
