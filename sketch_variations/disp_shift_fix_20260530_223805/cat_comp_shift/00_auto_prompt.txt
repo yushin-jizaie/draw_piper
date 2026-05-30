@@ -1,0 +1,14 @@
+placement=shift
+subject_ja=猫
+location_ja=不明
+action_ja=不明
+confidence=0.700
+companion_subject=playing mouse
+companion_prompt_version=best
+companion_candidates:
+  v1: bird
+  v2: mouse
+  v3: playing mouse
+companion_judge_idx=2
+composition_refinement=looking back over shoulder
+prompt=a detailed Matsumoto-style playing mouse, looking back over shoulder, large central subject filling 80% of the frame, bold thick contours, simple iconic shape, manga style, expressive ink lines, single continuous black line on plain white background, clean smooth strokes, illustrative, discrete clean contours per element, no shading, no hatching, no cross-hatching, approximately 20 to 40 separate strokes

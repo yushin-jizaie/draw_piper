@@ -1,0 +1,27 @@
+{
+  "prompt": "a detailed Matsumoto-style playing mouse, large central subject filling 80% of the frame, bold thick contours, simple iconic shape, manga style, expressive ink lines, single continuous black line on plain white background, clean smooth strokes, illustrative, discrete clean contours per element, no shading, no hatching, no cross-hatching, approximately 20 to 40 separate strokes",
+  "negative_prompt": "color, colored, blue background, cyan, sky, gradient, hatching, crosshatch, screentone, halftone, dot pattern, filled background, paper texture, scribble, sketchy, shading, gray, sepia, watermark, signature, text, frame, border, blurry, noise, jpeg artifacts",
+  "seed": 19093,
+  "guide_image": "logs/sketches_objects_20260528_183943/sketch_cat.png",
+  "presets": [
+    {
+      "name": "illustrious_v2_object",
+      "config": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.65,
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.0,
+        "inpaint_mode": false
+      },
+      "style_hint": "monochrome, lineart, sketch, ink illustration, white_background, simple_background, no humans",
+      "elapsed_load_s": 6.06,
+      "elapsed_gen_s": 23.59,
+      "output_png": "illustrious_v2_object.png",
+      "status": "ok"
+    }
+  ]
+}

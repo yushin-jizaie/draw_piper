@@ -23,6 +23,9 @@ RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
 BRANCH_ROBOT = "claude/robot-input-set-20260529"
 RAW_BASE_ROBOT = f"https://raw.githubusercontent.com/{REPO}/{BRANCH_ROBOT}"
 ROBOT_INPUT_SET_DIR = "logs/robot_input_set_v2_20260530_174341"
+# 2026-05-30: shift mode を large subject prompt で再生成した 8 件
+# (object × {shift v3, composition shift}) は別 logs dir。
+ROBOT_INPUT_SET_DIR_SHIFTFIX = "logs/robot_input_set_shift_fix_20260530_225557"
 
 ALIGN_BASE = "sketch_variations/align_noS2_all8_20260529_131555"
 SHIFT_BASE = "sketch_variations/shift_v3_compare_20260529_100542"
@@ -44,7 +47,20 @@ def _sanitize_route(route: str) -> str:
 
 
 def skeleton_png_url(sid: str, route: str, gacha_seed: str | None = None) -> str:
-    """robot-input-set ブランチの vec_debug/06_strokes.png URL を組み立てる。"""
+    """robot-input-set ブランチの vec_debug/06_strokes.png URL を組み立てる。
+
+    shift_fix 系 (disp:shift_fix_*) は別 logs dir に出力されている。
+    route の "/ " 以降の subroute (例: "shift v3", "composition shift")
+    から build_robot_input_set の key を再構築して URL を返す。
+    """
+    if "shift_fix" in route:
+        if " / " in route:
+            sub_route = route.split(" / ", 1)[1].strip()
+        else:
+            sub_route = route
+        key = f"{sid}_{_sanitize_route(sub_route)}"
+        return (f"{RAW_BASE_ROBOT}/{ROBOT_INPUT_SET_DIR_SHIFTFIX}/"
+                f"{key}/vec_debug/06_strokes.png")
     key = f"{sid}_{_sanitize_route(route)}"
     if gacha_seed:
         key += f"_s{gacha_seed}"
@@ -80,7 +96,15 @@ def frida_info(sid: str, route: str, gacha_seed: str | None = None) -> dict:
     key = _build_key(sid, route, gacha_seed)
     json_p = (_ROOT / ROBOT_INPUT_SET_DIR / key / "strokes.json")
     if not json_p.exists():
-        return {}
+        # shift_fix 系 fallback (別 logs dir、 別 key 計算)
+        if "shift_fix" in route:
+            sub_route = (route.split(" / ", 1)[1].strip()
+                         if " / " in route else route)
+            alt_key = f"{sid}_{_sanitize_route(sub_route)}"
+            json_p = (_ROOT / ROBOT_INPUT_SET_DIR_SHIFTFIX
+                      / alt_key / "strokes.json")
+        if not json_p.exists():
+            return {}
     try:
         data = json.loads(json_p.read_text())
         strokes = data.get("strokes", [])
