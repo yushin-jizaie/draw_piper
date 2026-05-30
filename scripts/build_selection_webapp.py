@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import glob
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -48,6 +49,15 @@ def skeleton_png_url(sid: str, route: str, gacha_seed: str | None = None) -> str
     if gacha_seed:
         key += f"_s{gacha_seed}"
     return f"{RAW_BASE_ROBOT}/{ROBOT_INPUT_SET_DIR}/{key}/vec_debug/06_strokes.png"
+
+
+_DATE_RE = re.compile(r"(20\d{6})")
+
+
+def date_for_rel_path(rel_path: str) -> str:
+    """rel_path から YYYYMMDD を抽出 (見つからなければ ""). """
+    m = _DATE_RE.search(rel_path)
+    return m.group(1) if m else ""
 
 
 def _build_key(sid: str, route: str, gacha_seed: str | None = None) -> str:
@@ -150,6 +160,7 @@ def find_dispatcher_variants(sketch_id: str) -> list:
                 "rel_path": str(sub.relative_to(_ROOT)),
                 "companion": comp or comp_phrase,
                 "frida": frida_info(sketch_id, r),
+                "date": date_for_rel_path(str(sub.relative_to(_ROOT))),
             })
         # パターン 2: <sid>/v*_seed*/ サブディレクトリ
         sid_dir = base / sketch_id
@@ -176,6 +187,7 @@ def find_dispatcher_variants(sketch_id: str) -> list:
                     "companion": comp_phrase,
                     "gacha_seed": seed,
                     "frida": frida_info(sketch_id, r, seed),
+                    "date": date_for_rel_path(str(seed_dir.relative_to(_ROOT))),
                 })
     return out
 
@@ -212,6 +224,7 @@ def find_composition_variants(sketch_id: str) -> list:
             "rel_path": str(mode_dir.relative_to(_ROOT)),
             "companion": comp,
             "frida": frida_info(sketch_id, r),
+            "date": date_for_rel_path(str(mode_dir.relative_to(_ROOT))),
         })
     return out
 
@@ -241,6 +254,7 @@ def find_gacha_variants(sketch_id: str) -> list:
                 "rel_path": str(seed_dir.relative_to(_ROOT)),
                 "gacha_seed": seed,
                 "frida": frida_info(sketch_id, r, seed),
+                "date": date_for_rel_path(str(seed_dir.relative_to(_ROOT))),
             })
     return out
 
@@ -257,6 +271,7 @@ def build_entries():
             "skeleton_png": skeleton_png_url(sid, "align (S2 OFF)"),
             "rel_path": f"{ALIGN_BASE}/{sid}",
             "frida": frida_info(sid, "align (S2 OFF)"),
+            "date": date_for_rel_path(ALIGN_BASE),
         })
         # 2-4) shift v1/v2/v3
         for v in ("v1", "v2", "v3"):
@@ -270,6 +285,7 @@ def build_entries():
                 "rel_path": f"{SHIFT_BASE}/{v}/{sid}",
                 "companion": comp,
                 "frida": frida_info(sid, f"shift {v}"),
+                "date": date_for_rel_path(SHIFT_BASE),
             })
         # 5-7) gacha v1/v2/v3
         cands += find_gacha_variants(sid)
@@ -416,6 +432,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <h1>🎨 draw_piper — input selection v2</h1>
   <span class="status" id="status">0 件選択</span>
   <span class="hint">クリックで複数選択 / 解除可</span>
+  <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+    生成日:
+    <select id="date-filter" style="background:#1a1a1a;color:#ddd;border:1px solid #555;border-radius:4px;padding:4px 8px;font-size:13px">
+      <option value="all">すべて</option>
+    </select>
+  </label>
   <div style="flex: 1"></div>
   <button id="download-btn" disabled>選択結果を JSON でダウンロード</button>
   <button class="secondary" id="reset-btn">リセット</button>
@@ -439,6 +461,30 @@ const main = document.getElementById("main");
 const statusEl = document.getElementById("status");
 const dlBtn = document.getElementById("download-btn");
 const resetBtn = document.getElementById("reset-btn");
+const dateFilterEl = document.getElementById("date-filter");
+const DATE_FILTER_KEY = "draw_piper_date_filter";
+
+// プルダウンに 日付選択肢を populate (entries 内の全 cand.date を unique → 新しい順)
+(function populateDateFilter() {
+  const dates = new Set();
+  for (const e of ENTRIES) {
+    for (const c of e.candidates) {
+      if (c.date) dates.add(c.date);
+    }
+  }
+  const sorted = Array.from(dates).sort().reverse();
+  for (const d of sorted) {
+    const opt = document.createElement("option");
+    opt.value = d;
+    // YYYYMMDD → YYYY-MM-DD
+    opt.textContent = d.length === 8
+      ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}` : d;
+    dateFilterEl.appendChild(opt);
+  }
+  // 復元
+  const saved = localStorage.getItem(DATE_FILTER_KEY) || "all";
+  dateFilterEl.value = saved;
+})();
 
 function totalSelected() {
   let n = 0;
@@ -534,13 +580,22 @@ async function makeOverlay(canvas, inputUrl, candUrl) {
 
 function render() {
   main.innerHTML = "";
+  const dateFilter = dateFilterEl.value;
   for (const entry of ENTRIES) {
+    // 日付 filter 適用 (all なら全部表示)
+    const filtered = dateFilter === "all"
+      ? entry.candidates
+      : entry.candidates.filter(c => c.date === dateFilter);
+    if (filtered.length === 0 && dateFilter !== "all") continue;
     const row = document.createElement("div");
     row.className = "row";
-    const ncands = entry.candidates.length;
-    const nsel = (selections[entry.sketch_id] || []).length;
+    const ncands = filtered.length;
+    const nsel = (selections[entry.sketch_id] || []).filter(
+      r => entry.candidates.find(c => c.route === r &&
+                                       (dateFilter === "all" || c.date === dateFilter))
+    ).length;
     row.innerHTML = `
-      <h2>${entry.sketch_id} <span class="type">${entry.type}</span>${nsel > 0 ? `<span class="count">★ ${nsel} 件選択</span>` : ""}</h2>
+      <h2>${entry.sketch_id} <span class="type">${entry.type}</span>${nsel > 0 ? `<span class="count">★ ${nsel} 件選択</span>` : ""}<span class="type" style="margin-left:8px">(${ncands} 候補)</span></h2>
       <div class="candidates"></div>
     `;
     const grid = row.querySelector(".candidates");
@@ -551,7 +606,7 @@ function render() {
                      <img src="${entry.input_png}" loading="lazy">`;
     grid.appendChild(inp);
     // 候補 N つ (Canvas で input overlay 合成)
-    entry.candidates.forEach((cand) => {
+    filtered.forEach((cand) => {
       const p = document.createElement("div");
       p.className = "panel candidate";
       // 2026-05-30 v3.2: 新規 disp_* (新 dispatcher) 候補に NEW バッジ
@@ -646,6 +701,11 @@ resetBtn.addEventListener("click", () => {
     localStorage.removeItem(STORAGE_KEY);
     render();
   }
+});
+
+dateFilterEl.addEventListener("change", () => {
+  localStorage.setItem(DATE_FILTER_KEY, dateFilterEl.value);
+  render();
 });
 
 render();
