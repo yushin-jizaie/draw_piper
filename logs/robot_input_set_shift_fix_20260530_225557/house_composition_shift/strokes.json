@@ -1,0 +1,73 @@
+{
+  "image_shape": [
+    1024,
+    1024
+  ],
+  "n_strokes": 1,
+  "n_points": 13,
+  "total_length_px": 1246.028561115265,
+  "strokes": [
+    [
+      [
+        555.0,
+        15.0
+      ],
+      [
+        483.0,
+        232.0
+      ],
+      [
+        485.0,
+        244.0
+      ],
+      [
+        455.0,
+        328.0
+      ],
+      [
+        484.0,
+        245.0
+      ],
+      [
+        494.0,
+        237.0
+      ],
+      [
+        547.0,
+        110.0
+      ],
+      [
+        582.0,
+        17.0
+      ],
+      [
+        549.0,
+        105.0
+      ],
+      [
+        494.0,
+        237.0
+      ],
+      [
+        485.0,
+        243.0
+      ],
+      [
+        483.0,
+        232.0
+      ],
+      [
+        554.0,
+        16.0
+      ]
+    ]
+  ],
+  "_meta": {
+    "route": "composition shift",
+    "type": "object",
+    "companion": null,
+    "source_png": "sketch_variations/shift_fix_20260530_223805/house_comp_shift/30_companion_strokes.png",
+    "vectorize_method": "skeleton",
+    "selection_source": "draw_piper_selections.json"
+  }
+}

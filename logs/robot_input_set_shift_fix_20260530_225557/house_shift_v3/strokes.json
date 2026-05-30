@@ -1,0 +1,18 @@
+{
+  "image_shape": [
+    1024,
+    1024
+  ],
+  "n_strokes": 0,
+  "n_points": 0,
+  "total_length_px": 0.0,
+  "strokes": [],
+  "_meta": {
+    "route": "shift v3",
+    "type": "object",
+    "companion": null,
+    "source_png": "sketch_variations/shift_fix_20260530_223805/house_shift_v3/30_companion_strokes.png",
+    "vectorize_method": "skeleton",
+    "selection_source": "draw_piper_selections.json"
+  }
+}

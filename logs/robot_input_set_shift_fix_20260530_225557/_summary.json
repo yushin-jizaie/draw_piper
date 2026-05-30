@@ -1,0 +1,74 @@
+{
+  "house_shift_v3": {
+    "sketch_id": "house",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 0,
+    "n_points": 0,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_shift_fix_20260530_225557/house_shift_v3"
+  },
+  "house_composition_shift": {
+    "sketch_id": "house",
+    "route": "composition shift",
+    "gacha_seed": null,
+    "n_strokes": 1,
+    "n_points": 13,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_shift_fix_20260530_225557/house_composition_shift"
+  },
+  "tree_shift_v3": {
+    "sketch_id": "tree",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 5,
+    "n_points": 175,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_shift_fix_20260530_225557/tree_shift_v3"
+  },
+  "tree_composition_shift": {
+    "sketch_id": "tree",
+    "route": "composition shift",
+    "gacha_seed": null,
+    "n_strokes": 4,
+    "n_points": 163,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_shift_fix_20260530_225557/tree_composition_shift"
+  },
+  "cat_shift_v3": {
+    "sketch_id": "cat",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 4,
+    "n_points": 152,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_shift_fix_20260530_225557/cat_shift_v3"
+  },
+  "cat_composition_shift": {
+    "sketch_id": "cat",
+    "route": "composition shift",
+    "gacha_seed": null,
+    "n_strokes": 3,
+    "n_points": 214,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_shift_fix_20260530_225557/cat_composition_shift"
+  },
+  "car_shift_v3": {
+    "sketch_id": "car",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 5,
+    "n_points": 106,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_shift_fix_20260530_225557/car_shift_v3"
+  },
+  "car_composition_shift": {
+    "sketch_id": "car",
+    "route": "composition shift",
+    "gacha_seed": null,
+    "n_strokes": 5,
+    "n_points": 106,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_shift_fix_20260530_225557/car_composition_shift"
+  }
+}
