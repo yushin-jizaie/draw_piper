@@ -49,6 +49,45 @@ def skeleton_png_url(sid: str, route: str, gacha_seed: str | None = None) -> str
         key += f"_s{gacha_seed}"
     return f"{RAW_BASE_ROBOT}/{ROBOT_INPUT_SET_DIR}/{key}/vec_debug/06_strokes.png"
 
+
+def _build_key(sid: str, route: str, gacha_seed: str | None = None) -> str:
+    key = f"{sid}_{_sanitize_route(route)}"
+    if gacha_seed:
+        key += f"_s{gacha_seed}"
+    return key
+
+
+def frida_info(sid: str, route: str, gacha_seed: str | None = None) -> dict:
+    """robot-input-set ブランチ logs/ から strokes.json を読み、
+    Frida 適合度を判定して dict を返す (n_strokes, avg_pts, warns)。
+
+    logs/ が無い場合は {} (webapp 側で safe fallback)。
+    """
+    try:
+        from scripts.check_frida_friendly import frida_friendly  # type: ignore
+    except ImportError:
+        return {}
+    key = _build_key(sid, route, gacha_seed)
+    json_p = (_ROOT / ROBOT_INPUT_SET_DIR / key / "strokes.json")
+    if not json_p.exists():
+        return {}
+    try:
+        data = json.loads(json_p.read_text())
+        strokes = data.get("strokes", [])
+        shape = data.get("image_shape", [768, 768])
+        canvas_w = shape[1] if len(shape) > 1 else 768
+        warns = frida_friendly(strokes, canvas_w=canvas_w)
+        n = len(strokes)
+        pts = sum(len(s) for s in strokes)
+        return {
+            "n_strokes": n,
+            "n_points": pts,
+            "avg_pts": round(pts / max(n, 1), 1),
+            "warns": warns,
+        }
+    except Exception:
+        return {}
+
 INPUTS = [
     ("B_round_smiley",   "sketch_variations/_inputs/B_round_smiley.png",   "character"),
     ("C_face_with_neck", "sketch_variations/_inputs/C_face_with_neck.png", "character"),
@@ -110,6 +149,7 @@ def find_dispatcher_variants(sketch_id: str) -> list:
                 "skeleton_png": skeleton_png_url(sketch_id, r),
                 "rel_path": str(sub.relative_to(_ROOT)),
                 "companion": comp or comp_phrase,
+                "frida": frida_info(sketch_id, r),
             })
         # パターン 2: <sid>/v*_seed*/ サブディレクトリ
         sid_dir = base / sketch_id
@@ -135,6 +175,7 @@ def find_dispatcher_variants(sketch_id: str) -> list:
                     "rel_path": str(seed_dir.relative_to(_ROOT)),
                     "companion": comp_phrase,
                     "gacha_seed": seed,
+                    "frida": frida_info(sketch_id, r, seed),
                 })
     return out
 
@@ -170,6 +211,7 @@ def find_composition_variants(sketch_id: str) -> list:
             "skeleton_png": skeleton_png_url(sketch_id, r),
             "rel_path": str(mode_dir.relative_to(_ROOT)),
             "companion": comp,
+            "frida": frida_info(sketch_id, r),
         })
     return out
 
@@ -198,6 +240,7 @@ def find_gacha_variants(sketch_id: str) -> list:
                 "skeleton_png": skeleton_png_url(sketch_id, r, seed),
                 "rel_path": str(seed_dir.relative_to(_ROOT)),
                 "gacha_seed": seed,
+                "frida": frida_info(sketch_id, r, seed),
             })
     return out
 
@@ -213,6 +256,7 @@ def build_entries():
             "strokes_png": f"{RAW_BASE}/{ALIGN_BASE}/{sid}/30_vectorized_strokes.png",
             "skeleton_png": skeleton_png_url(sid, "align (S2 OFF)"),
             "rel_path": f"{ALIGN_BASE}/{sid}",
+            "frida": frida_info(sid, "align (S2 OFF)"),
         })
         # 2-4) shift v1/v2/v3
         for v in ("v1", "v2", "v3"):
@@ -225,6 +269,7 @@ def build_entries():
                 "skeleton_png": skeleton_png_url(sid, f"shift {v}"),
                 "rel_path": f"{SHIFT_BASE}/{v}/{sid}",
                 "companion": comp,
+                "frida": frida_info(sid, f"shift {v}"),
             })
         # 5-7) gacha v1/v2/v3
         cands += find_gacha_variants(sid)
@@ -347,6 +392,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     pointer-events: none; font-weight: 600; letter-spacing: 0.3px;
     z-index: 5;
   }
+  /* 2026-05-30 v3.4: Frida 適合度バッジ (panel 右下、 strokes 数 + warn count) */
+  .frida-badge {
+    position: absolute; bottom: 4px; right: 4px;
+    font-size: 9px; padding: 2px 5px; border-radius: 3px;
+    font-weight: 700; letter-spacing: 0.3px;
+    z-index: 8;
+    cursor: help;
+  }
+  .frida-badge.ok { background: rgba(44, 204, 119, 0.85); color: #fff; }
+  .frida-badge.warn { background: rgba(255, 165, 0, 0.9); color: #000; }
+  .frida-badge.bad { background: rgba(220, 60, 60, 0.9); color: #fff; }
   .panel.selected .panel-label::after { content: " ✓"; color: var(--selected);
                                          font-weight: 700; }
   .summary { background: var(--panel); border-radius: 8px; padding: 16px;
@@ -506,6 +562,18 @@ function render() {
       if (sel) p.classList.add("selected");
       const safeLabel = String(cand.label).replace(/"/g, "&quot;");
       const skelUrl = cand.skeleton_png || "";
+      // Frida 適合度バッジ: n_strokes + warns 件数。 warn 0 = ok / 1 = warn / 2+ = bad
+      const fr = cand.frida || {};
+      let fridaHtml = "";
+      if (fr.n_strokes != null) {
+        const nw = (fr.warns || []).length;
+        const cls = nw === 0 ? "ok" : (nw === 1 ? "warn" : "bad");
+        const icon = nw === 0 ? "✓" : "⚠";
+        const tip = `Frida: n=${fr.n_strokes} avg=${fr.avg_pts}pts` +
+                    (nw ? "\n" + (fr.warns || []).join("\n") : "  (Frida OK)");
+        const safeTip = String(tip).replace(/"/g, "&quot;");
+        fridaHtml = `<span class="frida-badge ${cls}" title="${safeTip}">${icon} ${fr.n_strokes}</span>`;
+      }
       p.innerHTML = `<div class="panel-label" title="${safeLabel}">${cand.label}</div>
                      <div class="img-stack">
                        <div style="position:relative">
@@ -518,6 +586,7 @@ function render() {
                               onerror="this.style.opacity=0.2;this.alt='(no skeleton)'">
                        </div>
                      </div>
+                     ${fridaHtml}
                      <div class="hires-preview">
                        <div class="label">${safeLabel}</div>
                        <img src="${cand.strokes_png}" alt="hires">

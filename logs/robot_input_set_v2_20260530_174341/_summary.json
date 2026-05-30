@@ -1,0 +1,416 @@
+{
+  "B_round_smiley_disp_align_20260530_154651_v3_seed59628_s59628": {
+    "sketch_id": "B_round_smiley",
+    "route": "disp:align_20260530_154651 / v3_seed59628",
+    "gacha_seed": "59628",
+    "n_strokes": 40,
+    "n_points": 865,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_disp_align_20260530_154651_v3_seed59628_s59628"
+  },
+  "B_round_smiley_gacha_v2_s60231": {
+    "sketch_id": "B_round_smiley",
+    "route": "gacha v2",
+    "gacha_seed": "60231",
+    "n_strokes": 2,
+    "n_points": 30,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_gacha_v2_s60231"
+  },
+  "B_round_smiley_gacha_v3_s59628": {
+    "sketch_id": "B_round_smiley",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 29,
+    "n_points": 607,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_gacha_v3_s59628"
+  },
+  "B_round_smiley_disp_align_20260530_154651_v2_seed60231_s60231": {
+    "sketch_id": "B_round_smiley",
+    "route": "disp:align_20260530_154651 / v2_seed60231",
+    "gacha_seed": "60231",
+    "n_strokes": 18,
+    "n_points": 413,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_disp_align_20260530_154651_v2_seed60231_s60231"
+  },
+  "B_round_smiley_gacha_v1_s19093": {
+    "sketch_id": "B_round_smiley",
+    "route": "gacha v1",
+    "gacha_seed": "19093",
+    "n_strokes": 8,
+    "n_points": 242,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_gacha_v1_s19093"
+  },
+  "B_round_smiley_shift_v3": {
+    "sketch_id": "B_round_smiley",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 9,
+    "n_points": 178,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_shift_v3"
+  },
+  "B_round_smiley_shift_v2": {
+    "sketch_id": "B_round_smiley",
+    "route": "shift v2",
+    "gacha_seed": null,
+    "n_strokes": 8,
+    "n_points": 218,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_shift_v2"
+  },
+  "B_round_smiley_shift_v1": {
+    "sketch_id": "B_round_smiley",
+    "route": "shift v1",
+    "gacha_seed": null,
+    "n_strokes": 10,
+    "n_points": 149,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_shift_v1"
+  },
+  "B_round_smiley_align_s2_off": {
+    "sketch_id": "B_round_smiley",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 14,
+    "n_points": 354,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_align_s2_off"
+  },
+  "B_round_smiley_composition_shift": {
+    "sketch_id": "B_round_smiley",
+    "route": "composition shift",
+    "gacha_seed": null,
+    "n_strokes": 17,
+    "n_points": 224,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_composition_shift"
+  },
+  "B_round_smiley_composition_align": {
+    "sketch_id": "B_round_smiley",
+    "route": "composition align",
+    "gacha_seed": null,
+    "n_strokes": 9,
+    "n_points": 259,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/B_round_smiley_composition_align"
+  },
+  "C_face_with_neck_disp_align_nocomp_20260530_162655_v3_seed59628_s59628": {
+    "sketch_id": "C_face_with_neck",
+    "route": "disp:align_nocomp_20260530_162655 / v3_seed59628",
+    "gacha_seed": "59628",
+    "n_strokes": 41,
+    "n_points": 987,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/C_face_with_neck_disp_align_nocomp_20260530_162655_v3_seed59628_s59628"
+  },
+  "C_face_with_neck_disp_align_20260530_154651_v3_seed59628_s59628": {
+    "sketch_id": "C_face_with_neck",
+    "route": "disp:align_20260530_154651 / v3_seed59628",
+    "gacha_seed": "59628",
+    "n_strokes": 41,
+    "n_points": 1044,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/C_face_with_neck_disp_align_20260530_154651_v3_seed59628_s59628"
+  },
+  "C_face_with_neck_align_s2_off": {
+    "sketch_id": "C_face_with_neck",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 12,
+    "n_points": 293,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/C_face_with_neck_align_s2_off"
+  },
+  "C_face_with_neck_gacha_v2_s60231": {
+    "sketch_id": "C_face_with_neck",
+    "route": "gacha v2",
+    "gacha_seed": "60231",
+    "n_strokes": 2,
+    "n_points": 39,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/C_face_with_neck_gacha_v2_s60231"
+  },
+  "C_face_with_neck_gacha_v3_s59628": {
+    "sketch_id": "C_face_with_neck",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 30,
+    "n_points": 777,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/C_face_with_neck_gacha_v3_s59628"
+  },
+  "C_face_with_neck_composition_align": {
+    "sketch_id": "C_face_with_neck",
+    "route": "composition align",
+    "gacha_seed": null,
+    "n_strokes": 13,
+    "n_points": 286,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/C_face_with_neck_composition_align"
+  },
+  "C_face_with_neck_disp_align_20260530_154651_v2_seed60231_s60231": {
+    "sketch_id": "C_face_with_neck",
+    "route": "disp:align_20260530_154651 / v2_seed60231",
+    "gacha_seed": "60231",
+    "n_strokes": 12,
+    "n_points": 291,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/C_face_with_neck_disp_align_20260530_154651_v2_seed60231_s60231"
+  },
+  "C_face_with_neck_gacha_v1_s19093": {
+    "sketch_id": "C_face_with_neck",
+    "route": "gacha v1",
+    "gacha_seed": "19093",
+    "n_strokes": 9,
+    "n_points": 180,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/C_face_with_neck_gacha_v1_s19093"
+  },
+  "D_stick_figure_disp_align_20260530_154651_v3_seed59628_s59628": {
+    "sketch_id": "D_stick_figure",
+    "route": "disp:align_20260530_154651 / v3_seed59628",
+    "gacha_seed": "59628",
+    "n_strokes": 26,
+    "n_points": 702,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/D_stick_figure_disp_align_20260530_154651_v3_seed59628_s59628"
+  },
+  "D_stick_figure_gacha_v3_s59628": {
+    "sketch_id": "D_stick_figure",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 23,
+    "n_points": 566,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/D_stick_figure_gacha_v3_s59628"
+  },
+  "D_stick_figure_align_s2_off": {
+    "sketch_id": "D_stick_figure",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 9,
+    "n_points": 299,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/D_stick_figure_align_s2_off"
+  },
+  "F_angry_face_gacha_v3_s59628": {
+    "sketch_id": "F_angry_face",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 28,
+    "n_points": 627,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/F_angry_face_gacha_v3_s59628"
+  },
+  "F_angry_face_composition_align": {
+    "sketch_id": "F_angry_face",
+    "route": "composition align",
+    "gacha_seed": null,
+    "n_strokes": 14,
+    "n_points": 425,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/F_angry_face_composition_align"
+  },
+  "F_angry_face_composition_shift": {
+    "sketch_id": "F_angry_face",
+    "route": "composition shift",
+    "gacha_seed": null,
+    "n_strokes": 10,
+    "n_points": 296,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/F_angry_face_composition_shift"
+  },
+  "F_angry_face_align_s2_off": {
+    "sketch_id": "F_angry_face",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 22,
+    "n_points": 653,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/F_angry_face_align_s2_off"
+  },
+  "F_angry_face_shift_v1": {
+    "sketch_id": "F_angry_face",
+    "route": "shift v1",
+    "gacha_seed": null,
+    "n_strokes": 14,
+    "n_points": 153,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/F_angry_face_shift_v1"
+  },
+  "F_angry_face_shift_v3": {
+    "sketch_id": "F_angry_face",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 14,
+    "n_points": 207,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/F_angry_face_shift_v3"
+  },
+  "F_angry_face_shift_v2": {
+    "sketch_id": "F_angry_face",
+    "route": "shift v2",
+    "gacha_seed": null,
+    "n_strokes": 11,
+    "n_points": 218,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/F_angry_face_shift_v2"
+  },
+  "house_composition_shift": {
+    "sketch_id": "house",
+    "route": "composition shift",
+    "gacha_seed": null,
+    "n_strokes": 8,
+    "n_points": 109,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/house_composition_shift"
+  },
+  "house_gacha_v3_s59628": {
+    "sketch_id": "house",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 21,
+    "n_points": 486,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/house_gacha_v3_s59628"
+  },
+  "tree_shift_v2": {
+    "sketch_id": "tree",
+    "route": "shift v2",
+    "gacha_seed": null,
+    "n_strokes": 9,
+    "n_points": 257,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/tree_shift_v2"
+  },
+  "tree_shift_v3": {
+    "sketch_id": "tree",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 6,
+    "n_points": 176,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/tree_shift_v3"
+  },
+  "tree_gacha_v3_s59628": {
+    "sketch_id": "tree",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 15,
+    "n_points": 276,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/tree_gacha_v3_s59628"
+  },
+  "tree_composition_shift": {
+    "sketch_id": "tree",
+    "route": "composition shift",
+    "gacha_seed": null,
+    "n_strokes": 6,
+    "n_points": 188,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/tree_composition_shift"
+  },
+  "tree_disp_align_20260530_154651_v1_seed19093_s19093": {
+    "sketch_id": "tree",
+    "route": "disp:align_20260530_154651 / v1_seed19093",
+    "gacha_seed": "19093",
+    "n_strokes": 26,
+    "n_points": 944,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/tree_disp_align_20260530_154651_v1_seed19093_s19093"
+  },
+  "cat_disp_align_20260530_154651_v3_seed59628_s59628": {
+    "sketch_id": "cat",
+    "route": "disp:align_20260530_154651 / v3_seed59628",
+    "gacha_seed": "59628",
+    "n_strokes": 33,
+    "n_points": 957,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/cat_disp_align_20260530_154651_v3_seed59628_s59628"
+  },
+  "cat_shift_v3": {
+    "sketch_id": "cat",
+    "route": "shift v3",
+    "gacha_seed": null,
+    "n_strokes": 12,
+    "n_points": 313,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/cat_shift_v3"
+  },
+  "cat_disp_align_20260530_154651_v2_seed60231_s60231": {
+    "sketch_id": "cat",
+    "route": "disp:align_20260530_154651 / v2_seed60231",
+    "gacha_seed": "60231",
+    "n_strokes": 14,
+    "n_points": 324,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/cat_disp_align_20260530_154651_v2_seed60231_s60231"
+  },
+  "cat_composition_shift": {
+    "sketch_id": "cat",
+    "route": "composition shift",
+    "gacha_seed": null,
+    "n_strokes": 11,
+    "n_points": 282,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/cat_composition_shift"
+  },
+  "cat_gacha_v3_s59628": {
+    "sketch_id": "cat",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 26,
+    "n_points": 759,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/cat_gacha_v3_s59628"
+  },
+  "cat_shift_v2": {
+    "sketch_id": "cat",
+    "route": "shift v2",
+    "gacha_seed": null,
+    "n_strokes": 8,
+    "n_points": 333,
+    "method": "skeleton",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/cat_shift_v2"
+  },
+  "car_composition_align": {
+    "sketch_id": "car",
+    "route": "composition align",
+    "gacha_seed": null,
+    "n_strokes": 17,
+    "n_points": 474,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/car_composition_align"
+  },
+  "car_gacha_v3_s59628": {
+    "sketch_id": "car",
+    "route": "gacha v3",
+    "gacha_seed": "59628",
+    "n_strokes": 18,
+    "n_points": 463,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/car_gacha_v3_s59628"
+  },
+  "car_align_s2_off": {
+    "sketch_id": "car",
+    "route": "align (S2 OFF)",
+    "gacha_seed": null,
+    "n_strokes": 17,
+    "n_points": 474,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/car_align_s2_off"
+  },
+  "car_gacha_v1_s19093": {
+    "sketch_id": "car",
+    "route": "gacha v1",
+    "gacha_seed": "19093",
+    "n_strokes": 14,
+    "n_points": 291,
+    "method": "canny",
+    "out_dir": "logs/robot_input_set_v2_20260530_174341/car_gacha_v1_s19093"
+  }
+}
