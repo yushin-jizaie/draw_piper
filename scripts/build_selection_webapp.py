@@ -17,12 +17,37 @@ _ROOT = Path(__file__).resolve().parent.parent
 REPO = "yushin-jizaie/draw_piper"
 BRANCH = "claude/style-pool-rebalance-20260529"
 RAW_BASE = f"https://raw.githubusercontent.com/{REPO}/{BRANCH}"
+# 2026-05-30: skeleton 化された strokes (vec_debug/06_strokes.png) は
+# robot-input-set ブランチ logs/ にある。 webapp 側で並列表示する。
+BRANCH_ROBOT = "claude/robot-input-set-20260529"
+RAW_BASE_ROBOT = f"https://raw.githubusercontent.com/{REPO}/{BRANCH_ROBOT}"
+ROBOT_INPUT_SET_DIR = "logs/robot_input_set_v2_20260530_174341"
 
 ALIGN_BASE = "sketch_variations/align_noS2_all8_20260529_131555"
 SHIFT_BASE = "sketch_variations/shift_v3_compare_20260529_100542"
 # gacha / composition は timestamp 付きなので auto-detect
 GACHA_GLOB = "sketch_variations/gacha_char_auto_all8_*"
 COMPOSITION_GLOB = "sketch_variations/composition_all8_*"
+
+
+def _sanitize_route(route: str) -> str:
+    """build_robot_input_set.py の sanitize_route と同じロジック。"""
+    return (route.replace("(", "")
+                  .replace(")", "")
+                  .replace(":", "_")
+                  .replace("/", "_")
+                  .replace(" ", "_")
+                  .replace("__", "_")
+                  .replace("__", "_")
+                  .lower())
+
+
+def skeleton_png_url(sid: str, route: str, gacha_seed: str | None = None) -> str:
+    """robot-input-set ブランチの vec_debug/06_strokes.png URL を組み立てる。"""
+    key = f"{sid}_{_sanitize_route(route)}"
+    if gacha_seed:
+        key += f"_s{gacha_seed}"
+    return f"{RAW_BASE_ROBOT}/{ROBOT_INPUT_SET_DIR}/{key}/vec_debug/06_strokes.png"
 
 INPUTS = [
     ("B_round_smiley",   "sketch_variations/_inputs/B_round_smiley.png",   "character"),
@@ -77,10 +102,12 @@ def find_dispatcher_variants(sketch_id: str) -> list:
                         comp_phrase = ln.split("=", 1)[1]
             label_extra = f": {comp_phrase}" if comp_phrase else (
                 f": {comp}" if comp else "")
+            r = f"disp:{base.name[5:]} / {route}"
             out.append({
-                "route": f"disp:{base.name[5:]} / {route}",
+                "route": r,
                 "label": f"disp {route}{label_extra}",
                 "strokes_png": f"{RAW_BASE}/{png.relative_to(_ROOT)}",
+                "skeleton_png": skeleton_png_url(sketch_id, r),
                 "rel_path": str(sub.relative_to(_ROOT)),
                 "companion": comp or comp_phrase,
             })
@@ -99,10 +126,12 @@ def find_dispatcher_variants(sketch_id: str) -> list:
                         if ln.startswith("composition_refinement="):
                             comp_phrase = ln.split("=", 1)[1]
                 label_extra = f": {comp_phrase}" if comp_phrase else ""
+                r = f"disp:{base.name[5:]} / {seed_dir.name}"
                 out.append({
-                    "route": f"disp:{base.name[5:]} / {seed_dir.name}",
+                    "route": r,
                     "label": f"disp {seed_dir.name}{label_extra}",
                     "strokes_png": f"{RAW_BASE}/{png.relative_to(_ROOT)}",
+                    "skeleton_png": skeleton_png_url(sketch_id, r, seed),
                     "rel_path": str(seed_dir.relative_to(_ROOT)),
                     "companion": comp_phrase,
                     "gacha_seed": seed,
@@ -133,10 +162,12 @@ def find_composition_variants(sketch_id: str) -> list:
             for ln in meta.read_text().splitlines():
                 if ln.startswith("composition_refinement="):
                     comp = ln.split("=", 1)[1]
+        r = f"composition {mode}"
         out.append({
-            "route": f"composition {mode}",
+            "route": r,
             "label": f"comp {mode}: {comp or '(none)'}",
             "strokes_png": f"{RAW_BASE}/{png.relative_to(_ROOT)}",
+            "skeleton_png": skeleton_png_url(sketch_id, r),
             "rel_path": str(mode_dir.relative_to(_ROOT)),
             "companion": comp,
         })
@@ -159,10 +190,12 @@ def find_gacha_variants(sketch_id: str) -> list:
             png_rel = (
                 seed_dir.relative_to(_ROOT) / "30_vectorized_strokes.png"
             )
+            r = f"gacha {v}"
             out.append({
-                "route": f"gacha {v}",
+                "route": r,
                 "label": f"gacha {v} (seed={seed})",
                 "strokes_png": f"{RAW_BASE}/{png_rel}",
+                "skeleton_png": skeleton_png_url(sketch_id, r, seed),
                 "rel_path": str(seed_dir.relative_to(_ROOT)),
                 "gacha_seed": seed,
             })
@@ -178,6 +211,7 @@ def build_entries():
             "route": "align (S2 OFF)",
             "label": "align (S2 OFF)",
             "strokes_png": f"{RAW_BASE}/{ALIGN_BASE}/{sid}/30_vectorized_strokes.png",
+            "skeleton_png": skeleton_png_url(sid, "align (S2 OFF)"),
             "rel_path": f"{ALIGN_BASE}/{sid}",
         })
         # 2-4) shift v1/v2/v3
@@ -188,6 +222,7 @@ def build_entries():
                 "route": f"shift {v}",
                 "label": f"shift {v}: {comp}",
                 "strokes_png": f"{RAW_BASE}/{SHIFT_BASE}/{v}/{sid}/30_companion_strokes.png",
+                "skeleton_png": skeleton_png_url(sid, f"shift {v}"),
                 "rel_path": f"{SHIFT_BASE}/{v}/{sid}",
                 "companion": comp,
             })
@@ -297,6 +332,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   .panel img, .panel canvas { width: 100%; height: auto; display: block;
                 background: #fff; border-radius: 4px; aspect-ratio: 1; }
   .panel.input img { aspect-ratio: 1; }
+  /* 2026-05-30 v3.3: panel 内に 「元 PNG canvas + skeleton img」 を縦 2 段 */
+  .panel .img-stack { display: grid; grid-template-rows: 1fr 1fr; gap: 3px; }
+  .panel .img-stack > * { width: 100%; aspect-ratio: 1; background: #fff;
+                          border-radius: 3px; display: block; }
+  .panel .img-stack .stack-tag {
+    position: absolute; font-size: 9px; padding: 1px 4px;
+    background: rgba(0,0,0,0.7); color: #fff; border-radius: 2px;
+    pointer-events: none; font-weight: 600; letter-spacing: 0.3px;
+  }
+  .panel .img-stack .tag-orig { z-index: 5; }
+  .panel .img-stack .tag-skel { z-index: 5; }
   .panel.selected .panel-label::after { content: " ✓"; color: var(--selected);
                                          font-weight: 700; }
   .summary { background: var(--panel); border-radius: 8px; padding: 16px;
@@ -455,8 +501,19 @@ function render() {
       const sel = isSelected(entry.sketch_id, cand.route);
       if (sel) p.classList.add("selected");
       const safeLabel = String(cand.label).replace(/"/g, "&quot;");
+      const skelUrl = cand.skeleton_png || "";
       p.innerHTML = `<div class="panel-label" title="${safeLabel}">${cand.label}</div>
-                     <canvas></canvas>
+                     <div class="img-stack">
+                       <div style="position:relative">
+                         <span class="stack-tag tag-orig" style="top:2px;left:2px">元</span>
+                         <canvas></canvas>
+                       </div>
+                       <div style="position:relative">
+                         <span class="stack-tag tag-skel" style="top:2px;left:2px;background:rgba(255,140,26,0.85)">skel</span>
+                         <img class="skeleton-img" src="${skelUrl}" alt="skeleton" loading="lazy"
+                              onerror="this.style.opacity=0.2;this.alt='(no skeleton)'">
+                       </div>
+                     </div>
                      <div class="hires-preview">
                        <div class="label">${safeLabel}</div>
                        <img src="${cand.strokes_png}" alt="hires">
