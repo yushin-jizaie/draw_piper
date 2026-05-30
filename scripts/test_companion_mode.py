@@ -345,7 +345,17 @@ def main() -> int:
     for i, b in enumerate(blobs[:5]):
         print(f"[companion]     #{i+1} bbox={b.bbox} centroid=({b.centroid[0]:.0f},{b.centroid[1]:.0f}) area={b.area}")
     input_bbox = union_bbox(blobs)
-    empty_rect = find_largest_empty_rect(input_bbox, res, res, padding=40, expand_bbox=30)
+    empty_rect = find_largest_empty_rect(input_bbox, res, res, padding=15, expand_bbox=20)
+    # object 系で input が canvas 中央に大きいと empty_rect が狭くなり companion が
+    # 小さく描画 → vectorize で細部 (鳥の顔、 cat のヒゲ等) が消える問題への対処。
+    # 配置先が canvas の 30% 未満なら canvas 全体に拡張 (input と重なる代わりに
+    # companion を 大きく描画して 細部を保持)。
+    min_area_ratio = 0.30
+    if empty_rect[2] * empty_rect[3] < res * res * min_area_ratio:
+        old = empty_rect
+        empty_rect = (15, 15, res - 30, res - 30)
+        print(f"[companion]   empty_rect {old} too small "
+              f"(<{min_area_ratio:.0%} of canvas), expanded to full canvas: {empty_rect}")
     print(f"[companion]   input union bbox: {input_bbox}")
     print(f"[companion]   empty rect (target): {empty_rect}")
 
