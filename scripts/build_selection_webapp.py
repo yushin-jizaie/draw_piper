@@ -570,7 +570,7 @@ function render() {
         const cls = nw === 0 ? "ok" : (nw === 1 ? "warn" : "bad");
         const icon = nw === 0 ? "✓" : "⚠";
         const tip = `Frida: n=${fr.n_strokes} avg=${fr.avg_pts}pts` +
-                    (nw ? "\n" + (fr.warns || []).join("\n") : "  (Frida OK)");
+                    (nw ? " | " + (fr.warns || []).join(" | ") : "  (Frida OK)");
         const safeTip = String(tip).replace(/"/g, "&quot;");
         fridaHtml = `<span class="frida-badge ${cls}" title="${safeTip}">${icon} ${fr.n_strokes}</span>`;
       }
