@@ -32,3 +32,4 @@ training/lora/*.bin
 training/lora/*.pt
 # dataset (リサイズ済み画像 + caption) も漏れ防止のため除外
 training/*/dataset/
+!logs/robot_input_set_*/
