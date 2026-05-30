@@ -330,6 +330,66 @@ class VLM:
                   f"({infer_time:.2f}s)")
         return phrase
 
+    # カード分類 (predict_intent) が "不明" のときの保険。 カードに縛らず、
+    # 線画が「何に見えるか」 を素直に英語 1-2 語で言わせる。 円→"circle"、
+    # 棒人間→"stick figure" 等。 これを生成 prompt の subject に使うと、 汎用
+    # フォールバック ("abstract line drawing") より入力に即した絵が出せる。
+    _LITERAL_PROMPT_TEXT = (
+        "Look at this simple line drawing. What everyday object or shape does "
+        "it most look like? Answer with ONE or TWO plain English words only "
+        "(e.g. circle, ball, face, sun, star, house, fish). "
+        "Lowercase, no article, no punctuation, no explanation. Output ONLY "
+        "the word(s)."
+    )
+
+    def describe_literal(self, image: ImageLike) -> str:
+        """線画を「何に見えるか」 で英語 1-2 語に記述 (カード非依存の保険)。
+
+        predict_intent が "不明" を返したときの fallback subject 用。
+        失敗時は空文字を返す (生成を止めない)。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        import re
+        pil_image = _normalize_image(image)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": self._LITERAL_PROMPT_TEXT},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template],
+            images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt",
+        ).to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=16, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0]
+        cleaned = raw_text.replace("\n", " ").replace('"', "").replace("'", "")
+        cleaned = re.sub(r"[.!?,;:]+", " ", cleaned).strip().lower()
+        # 英字と空白のみ残し 先頭 2 語まで
+        cleaned = re.sub(r"[^a-z\s]", "", cleaned)
+        phrase = " ".join(cleaned.split()[:2])
+        if self.verbose:
+            print(f"[vlm] literal '{phrase}' from '{raw_text.strip()}' "
+                  f"({infer_time:.2f}s)")
+        return phrase
+
     def predict_companion_subject(self, image: ImageLike,
                                     prompt_version: str = "v1") -> str:
         """スケッチ画像から companion subject (関連する別の subject) を 1 単語で返す。
@@ -569,6 +629,15 @@ class VLM:
             infer_time_s=infer_time,
             n_tokens=n_tokens,
         )
+        # カード分類が "不明" / 低 confidence のときは、 カード非依存のリテラル
+        # 記述 (例: "circle") を保険として取り、 build_prompt がそれを subject に
+        # 使えるようにする (汎用 fallback より入力に即した絵が出せる)。
+        if not result.has_known_subject() or result.confidence < 0.3:
+            try:
+                result.literal_en = self.describe_literal(pil_image)
+            except Exception as e:  # noqa: BLE001 - 保険なので失敗しても続行
+                if self.verbose:
+                    print(f"[vlm] describe_literal failed: {e}")
         if self.verbose:
             status = "OK" if result.has_known_subject() else "UNKNOWN"
             print(

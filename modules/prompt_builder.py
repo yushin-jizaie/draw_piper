@@ -98,9 +98,15 @@ def build_prompt(guess: TopicGuess, confidence_threshold: float = 0.3,
     """
     base = base_template if base_template else _BASE_TEMPLATE
     fallback = fallback_template if fallback_template else _FALLBACK_TEMPLATE
-    if guess.confidence < confidence_threshold:
-        return _normalize_spaces(fallback)
-    if guess.subject is UNKNOWN_SUBJECT:
+
+    if guess.confidence < confidence_threshold or guess.subject is UNKNOWN_SUBJECT:
+        # カード分類が低 confidence / 不明。 リテラル記述 (例: "circle") が
+        # あれば、 それを subject として base テンプレに埋める (汎用フォールバック
+        # は入力を完全に無視するため、 リテラル記述の方が入力に即した絵になる)。
+        literal = (getattr(guess, "literal_en", "") or "").strip()
+        if literal:
+            return _normalize_spaces(base.format(
+                subject_en=literal, action_en="", location_en=""))
         return _normalize_spaces(fallback)
 
     return _normalize_spaces(base.format(
