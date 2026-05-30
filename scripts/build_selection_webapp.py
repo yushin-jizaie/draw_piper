@@ -45,6 +45,71 @@ def read_companion(meta_p: Path) -> str:
     return ""
 
 
+def find_dispatcher_variants(sketch_id: str) -> list:
+    """Phase 3: 新 dispatcher dir を auto-detect。
+
+    対象パターン (sketch_variations/ 配下):
+      - disp_*/<sid>_<route>/30_companion_strokes.png  (shift / composition shift)
+      - disp_*/<sid>_<route>/30_vectorized_strokes.png (align / composition align / gacha)
+      - disp_*/<sid>/v*_seed*/30_vectorized_strokes.png (gacha-style)
+
+    各 dir の 00_auto_prompt.txt から composition_refinement / companion_subject
+    を読み取って label に表示。
+    """
+    out = []
+    for base in sorted(_ROOT.glob("sketch_variations/disp_*")):
+        # パターン 1: <sid>_<route>/ サブディレクトリ
+        for sub in sorted(base.glob(f"{sketch_id}_*")):
+            if not sub.is_dir():
+                continue
+            route = sub.name[len(sketch_id) + 1:].replace("_", " ")
+            png = (sub / "30_companion_strokes.png"
+                    if "shift" in route
+                    else sub / "30_vectorized_strokes.png")
+            if not png.exists():
+                continue
+            meta = sub / "00_auto_prompt.txt"
+            comp = read_companion(meta)
+            comp_phrase = ""
+            if meta.exists():
+                for ln in meta.read_text().splitlines():
+                    if ln.startswith("composition_refinement="):
+                        comp_phrase = ln.split("=", 1)[1]
+            label_extra = f": {comp_phrase}" if comp_phrase else (
+                f": {comp}" if comp else "")
+            out.append({
+                "route": f"disp:{base.name[5:]} / {route}",
+                "label": f"disp {route}{label_extra}",
+                "strokes_png": f"{RAW_BASE}/{png.relative_to(_ROOT)}",
+                "rel_path": str(sub.relative_to(_ROOT)),
+                "companion": comp or comp_phrase,
+            })
+        # パターン 2: <sid>/v*_seed*/ サブディレクトリ
+        sid_dir = base / sketch_id
+        if sid_dir.is_dir():
+            for seed_dir in sorted(sid_dir.glob("v*_seed*")):
+                png = seed_dir / "30_vectorized_strokes.png"
+                if not png.exists():
+                    continue
+                seed = seed_dir.name.split("_seed")[1]
+                meta = base / "00_auto_prompt.txt"
+                comp_phrase = ""
+                if meta.exists():
+                    for ln in meta.read_text().splitlines():
+                        if ln.startswith("composition_refinement="):
+                            comp_phrase = ln.split("=", 1)[1]
+                label_extra = f": {comp_phrase}" if comp_phrase else ""
+                out.append({
+                    "route": f"disp:{base.name[5:]} / {seed_dir.name}",
+                    "label": f"disp {seed_dir.name}{label_extra}",
+                    "strokes_png": f"{RAW_BASE}/{png.relative_to(_ROOT)}",
+                    "rel_path": str(seed_dir.relative_to(_ROOT)),
+                    "companion": comp_phrase,
+                    "gacha_seed": seed,
+                })
+    return out
+
+
 def find_composition_variants(sketch_id: str) -> list:
     """composition_all8_* base から shift/align の 2 候補を見つける。
 
@@ -130,6 +195,10 @@ def build_entries():
         cands += find_gacha_variants(sid)
         # 8-9) composition shift/align (VLM 構図 refinement 入り)
         cands += find_composition_variants(sid)
+        # 10+) Phase 3 (2026-05-30): 新 dispatcher dir を auto-detect
+        # sketch_variations/disp_*/<sid>_<route>/ or
+        # sketch_variations/disp_*/<sid>/v*_seed*/ をスキャン
+        cands += find_dispatcher_variants(sid)
         entries.append({
             "sketch_id": sid,
             "type": stype,

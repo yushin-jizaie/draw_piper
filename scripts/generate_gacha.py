@@ -53,6 +53,11 @@ def main() -> int:
                     help="各 variant で test_ip_adapter_two_stage に --skip-stage2 を渡す "
                          "(Stage 2 IP-Adapter を skip、 Stage 1 のみで Vectorize)。 "
                          "object mode で推奨。")
+    ap.add_argument("--with-composition", action="store_true",
+                    help="Phase 1 (2026-05-30): VLM の predict_composition_refinement "
+                         "を呼んで、 stage1_prompt の subject 直後に「構図 phrase」 "
+                         "(例: 'looking back over shoulder') を挿入する。 "
+                         "modules/vlm.py に method 必要。 --auto-prompt と併用推奨。")
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
@@ -70,8 +75,20 @@ def main() -> int:
             CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE,
         )
         sketch_img = _Image.open(args.user_sketch).convert("RGB")
+        # Phase 1 (2026-05-30): --with-composition で 構図 refinement も取得
+        composition_refinement = ""
         with VLM(verbose=True) as vlm:
             guess = vlm.predict_intent(sketch_img)
+            if args.with_composition:
+                _fn = getattr(vlm, "predict_composition_refinement", None)
+                if callable(_fn):
+                    try:
+                        composition_refinement = _fn(sketch_img)
+                    except Exception as _e:
+                        print(f"[gacha] composition skip: {_e}")
+                else:
+                    print("[gacha] predict_composition_refinement not found "
+                          "(skip --with-composition)")
         print(f"[gacha]   guess: {guess.to_text()} "
               f"(conf={guess.confidence:.2f})")
         if args.category == "character":
@@ -79,7 +96,6 @@ def main() -> int:
         elif args.category == "object":
             base_tpl, fb_tpl = COMPANION_TEMPLATE, COMPANION_FALLBACK_TEMPLATE
         else:
-            # "other" は既存 default を維持しつつ subject だけ前置
             base_tpl, fb_tpl = CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE
         args.stage1_prompt = build_prompt(
             guess,
@@ -87,6 +103,10 @@ def main() -> int:
             base_template=base_tpl,
             fallback_template=fb_tpl,
         )
+        # 構図 refinement を subject 直後に挿入
+        if composition_refinement and "," in args.stage1_prompt:
+            head, rest = args.stage1_prompt.split(",", 1)
+            args.stage1_prompt = f"{head}, {composition_refinement},{rest}"
         print(f"[gacha]   stage1_prompt: {args.stage1_prompt}")
         (args.output / "00_auto_prompt.txt").write_text(
             f"category={args.category}\n"
@@ -94,6 +114,7 @@ def main() -> int:
             f"location_ja={guess.location.ja}\n"
             f"action_ja={guess.action.ja}\n"
             f"confidence={guess.confidence:.3f}\n"
+            f"composition_refinement={composition_refinement or ''}\n"
             f"stage1_prompt={args.stage1_prompt}\n",
             encoding="utf-8",
         )

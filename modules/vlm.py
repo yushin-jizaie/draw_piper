@@ -253,6 +253,83 @@ class VLM:
         "punctuation, no explanation. Output ONLY the noun."
     )
 
+    # 2026-05-30 (Phase 1): composition refinement プロンプト 正式化。
+    # 入力 sketch の主題を「より魅力的な構図」 に翻訳。 orientation や pose、
+    # angle、 motion などを含む。 ハードコード例なし、 方向ヒントで汎化。
+    _COMPOSITION_PROMPT_TEXT = (
+        "You see a simple line-art sketch.\n"
+        "The user drew the main subject in a basic pose / viewpoint, but "
+        "rendering it as-is in detail would feel static and boring.\n"
+        "Propose a more interesting composition for the SAME subject "
+        "(do not change what the subject is — only refine HOW it is posed/"
+        "viewed/captured).\n\n"
+        "Apply ONE of these kinds of refinement (or invent a similar one):\n"
+        "- animals: face one way, body another (looking back, twisting, "
+        "mid-jump, curled)\n"
+        "- vehicles: 3/4 angle, motion blur, slight tilt, in motion\n"
+        "- people: dynamic pose, mid-stride, action, leaning, gesture\n"
+        "- buildings/structures: low-angle view, perspective, dramatic angle\n"
+        "- plants: low-angle, weather element (wind-bent, with falling leaves)\n"
+        "- static objects: tilted angle, partial occlusion, dramatic lighting hint\n\n"
+        "These are *patterns* to apply — do not copy literally. Look at the "
+        "actual sketch and invent a refinement that fits it.\n\n"
+        "Output format: a short phrase (3-8 words) describing the refinement. "
+        "Lowercase, no period, no quotes. Just the phrase.\n"
+        "Examples of the *shape* of acceptable phrases (not vocabulary to "
+        "copy):\n"
+        "  'looking back over shoulder'   'in mid-stride from behind'\n"
+        "  'three-quarter view with motion'   'low-angle dramatic'\n"
+        "  'curled up sleeping pose'   'leaning with one foot raised'\n\n"
+        "Output:"
+    )
+
+    def predict_composition_refinement(self, image: ImageLike) -> str:
+        """sketch から「魅力的な構図」 refinement phrase を 1 つ返す。
+
+        例: 正面の猫 → 'looking back over shoulder'、
+        横向きの車 → '3/4 angle with motion lines' 等。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        pil_image = _normalize_image(image)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": self._COMPOSITION_PROMPT_TEXT},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template],
+            images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt",
+        ).to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=32, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0].strip()
+        import re
+        cleaned = raw_text.replace("\n", " ").replace('"', "").replace("'", "")
+        cleaned = re.sub(r"[.!?,;:]+$", "", cleaned).strip().lower()
+        words = cleaned.split()
+        phrase = " ".join(words[:8])
+        if self.verbose:
+            print(f"[vlm] composition '{phrase}' from '{raw_text}' "
+                  f"({infer_time:.2f}s)")
+        return phrase
+
     def predict_companion_subject(self, image: ImageLike,
                                     prompt_version: str = "v1") -> str:
         """スケッチ画像から companion subject (関連する別の subject) を 1 単語で返す。

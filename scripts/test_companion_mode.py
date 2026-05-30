@@ -98,6 +98,18 @@ def main() -> int:
                     help="[align] Stage 2 (IP-Adapter) を skip し Stage 1 inpaint "
                          "出力をそのまま 最終結果に。 character pool の人物 ref が "
                          "object 入力で anthropomorphic 化させる副作用を回避できる。")
+    ap.add_argument("--with-composition", action="store_true",
+                    help="VLM の predict_composition_refinement を呼び、 SDXL "
+                         "prompt に「魅力的な構図」 phrase を embed (例: 'looking "
+                         "back over shoulder')。 modules/vlm.py に method 必要。")
+    ap.add_argument("--gacha-n", type=int, default=1,
+                    help="Phase 2 (2026-05-30): align モードで N variants を seed "
+                         "sweep 生成 (master-seed=100 で gacha と同じ seed 列)。 "
+                         "default 1 = 単発。 n>=2 で N variants を v1_seed*/v2_seed*/... "
+                         "サブ dir に出力 + gacha_grid.png 合成。 shift モードでは無視。")
+    ap.add_argument("--gacha-master-seed", type=int, default=100,
+                    help="[--gacha-n N>=2 時] seed 生成 base。 同じ master-seed なら "
+                         "同じ seed 列。 default 100 (既存 gacha と一致)。")
     ap.add_argument("--companion-prompt-version", type=str, default="best",
                     choices=["v1", "v2", "v3", "best"],
                     help="[shift] VLM の companion 提案 prompt パターン: "
@@ -142,8 +154,20 @@ def main() -> int:
         companion_subject = None
         companion_candidates = []   # 全候補 [(version, name)]
         companion_judge_idx = -1    # judge が選んだ index (0 始まり)
+        # Phase 1 (2026-05-30): VLM 構図 refinement (--with-composition フラグ時)
+        composition_refinement = ""
         with VLM(verbose=True) as vlm:
             guess = vlm.predict_intent(sketch_img)
+            if args.with_composition:
+                _fn = getattr(vlm, "predict_composition_refinement", None)
+                if callable(_fn):
+                    try:
+                        composition_refinement = _fn(sketch_img)
+                    except Exception as _e:
+                        print(f"[companion] composition skip: {_e}")
+                else:
+                    print("[companion] predict_composition_refinement not found "
+                          "(skip --with-composition)")
             if args.placement == "shift":
                 if args.companion_prompt_version == "best":
                     # 3 候補生成 → VLM judge で 1 つ選定
@@ -168,20 +192,27 @@ def main() -> int:
         # 起動するためここで VRAM を解放しておく必要がある。
         print(f"[companion]   guess: {guess.to_text()} "
               f"(conf={guess.confidence:.2f})")
+        comp_frag = f", {composition_refinement}" if composition_refinement else ""
         if args.placement == "align":
             base_tpl, fb_tpl = CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE
-            args.prompt = build_prompt(
+            base_prompt = build_prompt(
                 guess,
                 confidence_threshold=args.confidence_threshold,
                 base_template=base_tpl,
                 fallback_template=fb_tpl,
             )
+            # composition を base_prompt の subject 直後に挿入
+            if composition_refinement and "," in base_prompt:
+                head, rest = base_prompt.split(",", 1)
+                args.prompt = f"{head}{comp_frag},{rest}"
+            else:
+                args.prompt = base_prompt
         else:   # placement == "shift"
             print(f"[companion]   companion subject (VLM 提案): {companion_subject}")
             # shift モード: 入力主題ではなく companion subject を SDXL に渡す
-            # SDXL prompt は Matsumoto style + companion subject で構築
+            # SDXL prompt は Matsumoto style + companion subject (+ composition) で構築
             args.prompt = (
-                f"a detailed Matsumoto-style {companion_subject}, "
+                f"a detailed Matsumoto-style {companion_subject}{comp_frag}, "
                 f"manga style, expressive ink lines, "
                 f"single continuous black line on plain white background, "
                 f"clean smooth strokes, illustrative, no shading"
@@ -201,6 +232,7 @@ def main() -> int:
             f"companion_prompt_version={args.companion_prompt_version}\n"
             f"companion_candidates:\n{candidates_text}\n"
             f"companion_judge_idx={companion_judge_idx}\n"
+            f"composition_refinement={composition_refinement or ''}\n"
             f"prompt={args.prompt}\n",
             encoding="utf-8",
         )
@@ -211,6 +243,41 @@ def main() -> int:
     # ============================================================
     if args.placement == "align":
         print(f"[companion] === ALIGN MODE (位置合わせ、 F_angry_face 経路) ===")
+        # Phase 2: --gacha-n N で seed sweep variants 生成
+        if args.gacha_n >= 2:
+            import random as _random
+            rng = _random.Random(args.gacha_master_seed)
+            seeds = [rng.randint(0, 100000) for _ in range(args.gacha_n)]
+            print(f"[companion] align gacha N={args.gacha_n}, seeds={seeds}")
+            failed = 0
+            for i, sd in enumerate(seeds):
+                sub = args.output / f"v{i+1}_seed{sd}"
+                sub.mkdir(parents=True, exist_ok=True)
+                cmd = [
+                    "./venv/bin/python", "-m", "scripts.test_ip_adapter_two_stage",
+                    "--user-sketch", str(args.user_sketch),
+                    "--category", "character",
+                    "--output", str(sub),
+                    "--stage1-prompt", args.prompt,
+                    "--stage2-strength", str(args.stage2_strength),
+                    "--ip-scale", str(args.ip_scale),
+                    "--seed", str(sd),
+                    "--stage1-resolution", "1024",
+                    "--resolution", "768",
+                ]
+                if args.style_ref is not None:
+                    cmd += ["--style-ref", str(args.style_ref)]
+                if args.skip_stage2:
+                    cmd.append("--skip-stage2")
+                print(f"[companion] === {i+1}/{args.gacha_n}: seed={sd} ===")
+                rc = subprocess.run(cmd, cwd=str(_ROOT)).returncode
+                if rc != 0:
+                    print(f"[companion]   variant failed rc={rc}")
+                    failed += 1
+            print(f"\n[companion] ALIGN GACHA DONE. {args.gacha_n - failed}/"
+                  f"{args.gacha_n} succeeded")
+            print(f"  出力: {args.output}/v{{1..{args.gacha_n}}}_seed*/")
+            return 0 if failed == 0 else 1
         cmd = [
             "./venv/bin/python", "-m", "scripts.test_ip_adapter_two_stage",
             "--user-sketch", str(args.user_sketch),
