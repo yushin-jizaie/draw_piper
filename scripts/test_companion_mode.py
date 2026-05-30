@@ -70,9 +70,10 @@ def main() -> int:
     ap.add_argument("--confidence-threshold", type=float, default=0.3,
                     help="VLM 信頼度がこの値未満なら fallback prompt を使う。")
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--resolution", type=int, default=1024,
-                    help="Stage 1 解像度 (shift モード) / align モードは 768 固定 "
-                         "(F_angry_face 時と同じ 1024 → 768 経路で test_ip_adapter_two_stage 内で処理)")
+    ap.add_argument("--resolution", type=str, default=None,
+                    help="解像度。 'N' / 'WxH' 可。 省略時は panel aspect の "
+                         "SDXL bucket (= ボードと同じ縦横比)。 shift モードの合成 "
+                         "キャンバスと align モードの 2-stage 経路の両方に適用。")
     # ============================================================
     # 位置合わせ vs 位置ずらし モード切替 (2026-05-28 統合)
     # shift = M16 object preset で生成 → cv2 blob で 入力の空白地帯に配置
@@ -121,7 +122,12 @@ def main() -> int:
         ap.error("either --prompt or --auto-prompt is required")
 
     args.output.mkdir(parents=True, exist_ok=True)
-    res = args.resolution
+
+    # 解像度: 省略時は panel aspect の SDXL bucket (= ボードと同じ縦横比)。
+    from modules.panel_geometry import parse_resolution, panel_image_resolution
+    res_w, res_h = parse_resolution(args.resolution) or panel_image_resolution()
+    res_arg = f"{res_w}x{res_h}"
+    print(f"[companion] resolution: {res_w}x{res_h}")
 
     from PIL import Image
     from modules.vectorizer import Vectorizer
@@ -271,8 +277,8 @@ def main() -> int:
                     "--stage2-strength", str(args.stage2_strength),
                     "--ip-scale", str(args.ip_scale),
                     "--seed", str(sd),
-                    "--stage1-resolution", "1024",
-                    "--resolution", "768",
+                    "--stage1-resolution", res_arg,
+                    "--resolution", res_arg,
                 ]
                 if args.style_ref is not None:
                     cmd += ["--style-ref", str(args.style_ref)]
@@ -296,8 +302,8 @@ def main() -> int:
             "--stage2-strength", str(args.stage2_strength),
             "--ip-scale", str(args.ip_scale),
             "--seed", str(args.seed),
-            "--stage1-resolution", "1024",
-            "--resolution", "768",
+            "--stage1-resolution", res_arg,
+            "--resolution", res_arg,
         ]
         if args.style_ref is not None:
             cmd += ["--style-ref", str(args.style_ref)]
@@ -325,7 +331,7 @@ def main() -> int:
         "--prompt", args.prompt,
         "--presets", "illustrious_v2_object",
         "--seed", str(args.seed),
-        "--resolution", str(res),
+        "--resolution", res_arg,
         "--out", str(s1_dir),
     ], cwd=str(_ROOT)).returncode
     if res_code != 0:
@@ -348,21 +354,21 @@ def main() -> int:
     # Step 3: 入力 sketch から blob 検出 + 空白矩形計算
     # ============================================================
     print(f"[companion] Step 3: input blob 検出 + 空白地帯")
-    input_img = Image.open(args.user_sketch).convert("L").resize((res, res))
+    input_img = Image.open(args.user_sketch).convert("L").resize((res_w, res_h))
     blobs = detect_blobs(input_img)
     print(f"[companion]   {len(blobs)} blobs in input:")
     for i, b in enumerate(blobs[:5]):
         print(f"[companion]     #{i+1} bbox={b.bbox} centroid=({b.centroid[0]:.0f},{b.centroid[1]:.0f}) area={b.area}")
     input_bbox = union_bbox(blobs)
-    empty_rect = find_largest_empty_rect(input_bbox, res, res, padding=15, expand_bbox=20)
+    empty_rect = find_largest_empty_rect(input_bbox, res_w, res_h, padding=15, expand_bbox=20)
     # object 系で input が canvas 中央に大きいと empty_rect が狭くなり companion が
     # 小さく描画 → vectorize で細部 (鳥の顔、 cat のヒゲ等) が消える問題への対処。
     # 配置先が canvas の 30% 未満なら canvas 全体に拡張 (input と重なる代わりに
     # companion を 大きく描画して 細部を保持)。
     min_area_ratio = 0.30
-    if empty_rect[2] * empty_rect[3] < res * res * min_area_ratio:
+    if empty_rect[2] * empty_rect[3] < res_w * res_h * min_area_ratio:
         old = empty_rect
-        empty_rect = (15, 15, res - 30, res - 30)
+        empty_rect = (15, 15, res_w - 30, res_h - 30)
         print(f"[companion]   empty_rect {old} too small "
               f"(<{min_area_ratio:.0%} of canvas), expanded to full canvas: {empty_rect}")
     print(f"[companion]   input union bbox: {input_bbox}")
@@ -383,7 +389,7 @@ def main() -> int:
     # Step 5: 入力 sketch も Vectorize → input strokes (元位置)
     # ============================================================
     print(f"[companion] Step 5: input sketch を Vectorize")
-    input_rgb = Image.open(args.user_sketch).convert("RGB").resize((res, res))
+    input_rgb = Image.open(args.user_sketch).convert("RGB").resize((res_w, res_h))
     input_r = vec.vectorize(generated_image=input_rgb, user_image=None)
     input_strokes = input_r.strokes
     print(f"[companion]   input strokes: {input_r.n_strokes} / {input_r.n_points} pts")
@@ -394,13 +400,13 @@ def main() -> int:
     print(f"[companion] Step 6: combine + render")
     combined = combine_strokes(input_strokes, transformed)
     combined_render = render_strokes_to_image(
-        combined, width=res, height=res, line_width=2)
+        combined, width=res_w, height=res_h, line_width=2)
     combined_render.save(args.output / "30_companion_strokes.png")
     print(f"[companion]   saved: {args.output / '30_companion_strokes.png'}")
     # 個別保存も
-    render_strokes_to_image(input_strokes, width=res, height=res, line_width=2
+    render_strokes_to_image(input_strokes, width=res_w, height=res_h, line_width=2
                             ).save(args.output / "20_input_strokes.png")
-    render_strokes_to_image(transformed, width=res, height=res, line_width=2
+    render_strokes_to_image(transformed, width=res_w, height=res_h, line_width=2
                             ).save(args.output / "21_transformed_gen_strokes.png")
 
     print(f"\n[companion] DONE.")

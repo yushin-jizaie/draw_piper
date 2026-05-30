@@ -35,8 +35,10 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=5, help="生成枚数")
     ap.add_argument("--ip-scale", type=float, default=0.6)
     ap.add_argument("--stage2-strength", type=float, default=0.45)
-    ap.add_argument("--stage1-resolution", type=int, default=1024)
-    ap.add_argument("--resolution", type=int, default=768)
+    ap.add_argument("--stage1-resolution", type=str, default=None,
+                    help="'N' / 'WxH' 可。 省略時は panel aspect の SDXL bucket。")
+    ap.add_argument("--resolution", type=str, default=None,
+                    help="'N' / 'WxH' 可。 省略時は panel aspect の SDXL bucket。")
     ap.add_argument("--master-seed", type=int, default=None,
                     help="再現性が欲しい時の master seed。 省略時は system 時刻")
     ap.add_argument("--stage1-prompt", type=str,
@@ -61,6 +63,15 @@ def main() -> int:
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
+
+    # 解像度: 省略時は panel aspect の SDXL bucket (= ボードと同じ縦横比)。
+    from modules.panel_geometry import parse_resolution, panel_image_resolution
+    panel_wh = panel_image_resolution()
+    s1_w, s1_h = parse_resolution(args.stage1_resolution) or panel_wh
+    s2_w, s2_h = parse_resolution(args.resolution) or panel_wh
+    stage1_res_arg = f"{s1_w}x{s1_h}"
+    stage2_res_arg = f"{s2_w}x{s2_h}"
+    print(f"[gacha] resolution: stage1={stage1_res_arg}, stage2={stage2_res_arg}")
 
     # --auto-prompt: VLM 推論 1 回 → category に応じた template で
     # stage1_prompt を上書き。 subprocess loop が走る前に VLM を unload
@@ -134,8 +145,8 @@ def main() -> int:
             "--user-sketch", str(args.user_sketch),
             "--category", args.category,
             "--output", str(sub),
-            "--stage1-resolution", str(args.stage1_resolution),
-            "--resolution", str(args.resolution),
+            "--stage1-resolution", stage1_res_arg,
+            "--resolution", stage2_res_arg,
             "--stage2-strength", str(args.stage2_strength),
             "--ip-scale", str(args.ip_scale),
             "--stage1-prompt", args.stage1_prompt,

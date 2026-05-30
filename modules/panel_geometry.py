@@ -254,6 +254,58 @@ def load_panel_geometry(
     return geom
 
 
+def parse_resolution(value) -> Optional[tuple[int, int]]:
+    """CLI / config の resolution 指定を `(W, H)` tuple に正規化。
+
+    受け付ける形:
+        None / ""           → None (呼び元で panel bucket 等に fallback)
+        int / float         → (n, n) 正方形 (後方互換)
+        "1024"              → (1024, 1024)
+        "704x1472" / "704X1472" / "704,1472" → (704, 1472)
+        (W, H) / [W, H]     → そのまま
+    """
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        n = int(value)
+        return (n, n)
+    if isinstance(value, (tuple, list)) and len(value) == 2:
+        return (int(value[0]), int(value[1]))
+    if isinstance(value, str):
+        s = value.strip().lower()
+        if not s:
+            return None
+        for sep in ("x", ","):
+            if sep in s:
+                a, b = s.split(sep, 1)
+                return (int(a), int(b))
+        return (int(s), int(s))
+    raise ValueError(f"cannot parse resolution from {value!r}")
+
+
+def panel_image_resolution(
+    canvas_path: Path = DEFAULT_CANVAS_YAML,
+    panel_frame_path: Path = DEFAULT_PANEL_FRAME_YAML,
+    *,
+    fallback: tuple[int, int] = (1024, 1024),
+) -> tuple[int, int]:
+    """panel aspect に合った SDXL bucket `(W, H)` を返す共有 entry。
+
+    canvas / panel_frame から panel 寸法が読めない場合は `fallback`
+    (既定 1024×1024 正方形) を返し、 例外で生成を止めない。
+
+    画像生成スクリプト (two_stage / companion / gacha 等) はここを通すことで、
+    生成画像のアスペクトを実測 panel と一致させる (= ロボット描画時に等方スケール)。
+    """
+    try:
+        geom = load_panel_geometry(canvas_path, panel_frame_path)
+    except Exception as e:  # noqa: BLE001 - fallback で生成を継続させる
+        log.warning("panel_image_resolution: falling back to %s (%s)",
+                    fallback, e)
+        return fallback
+    return (int(geom.panel_image_size[0]), int(geom.panel_image_size[1]))
+
+
 def write_geometry_to_panel_frame(
     geom: PanelGeometry,
     panel_frame_path: Path = DEFAULT_PANEL_FRAME_YAML,
@@ -308,6 +360,8 @@ __all__ = [
     "SDXL_BUCKETS",
     "select_sdxl_bucket",
     "load_panel_geometry",
+    "parse_resolution",
+    "panel_image_resolution",
     "write_geometry_to_panel_frame",
     "DEFAULT_CANVAS_YAML",
     "DEFAULT_PANEL_FRAME_YAML",

@@ -112,10 +112,12 @@ def main() -> int:
                     help="img2img strength (0.3=構図維持、 0.6=大きく変える)")
     ap.add_argument("--ip-scale", type=float, default=0.6)
     ap.add_argument("--seed", type=int, default=42)
-    ap.add_argument("--resolution", type=int, default=768,
-                    help="Stage 2 (IP-Adapter) 用の解像度")
-    ap.add_argument("--stage1-resolution", type=int, default=1024,
-                    help="Stage 1 (Plan E) 用の解像度。 1024 が face/body 構図に有利")
+    ap.add_argument("--resolution", type=str, default=None,
+                    help="Stage 2 (IP-Adapter) 用の解像度。 'N' / 'WxH' 可。 "
+                         "省略時は panel aspect の SDXL bucket (= ボードと同じ縦横比)。")
+    ap.add_argument("--stage1-resolution", type=str, default=None,
+                    help="Stage 1 (Plan E) 用の解像度。 'N' / 'WxH' 可。 "
+                         "省略時は panel aspect の SDXL bucket。")
     # 2026-05-29 (style-pool-rebalance): Stage 2 (IP-Adapter) skip フラグ。
     # Stage 1 を LoRA 込み preset で強化したので、 Stage 2 不要な場面が増えた。
     ap.add_argument("--skip-stage2", action="store_true",
@@ -126,7 +128,14 @@ def main() -> int:
     args = ap.parse_args()
 
     args.output.mkdir(parents=True, exist_ok=True)
-    res = args.resolution
+
+    # 解像度: 省略時は panel aspect の SDXL bucket (= ボードと同じ縦横比)。
+    # Stage 1 / Stage 2 を同一解像度で揃え、 init/final のアスペクト不整合を防ぐ。
+    from modules.panel_geometry import parse_resolution, panel_image_resolution
+    panel_wh = panel_image_resolution()
+    res_w, res_h = parse_resolution(args.resolution) or panel_wh
+    s1_w, s1_h = parse_resolution(args.stage1_resolution) or panel_wh
+    print(f"[2stage] resolution: stage1={s1_w}x{s1_h}, stage2={res_w}x{res_h}")
 
     # stage1 preset 解決
     if args.stage1_preset is None:
@@ -165,7 +174,7 @@ def main() -> int:
         "--prompt", args.stage1_prompt,
         "--presets", args.stage1_preset,
         "--seed", str(args.seed),
-        "--resolution", str(args.stage1_resolution),
+        "--resolution", f"{s1_w}x{s1_h}",
         "--out", str(s1_dir),
     ], cwd=str(_ROOT)).returncode
     if res_code != 0:
@@ -185,7 +194,7 @@ def main() -> int:
         # Stage 2 skip mode: Stage 1 の出力をそのまま 最終結果に
         from modules.vectorizer import Vectorizer
         from modules.stroke_render import render_strokes_to_image
-        final = Image.open(s1_out).convert("RGB").resize((res, res))
+        final = Image.open(s1_out).convert("RGB").resize((res_w, res_h))
         final.save(args.output / f"20_final_no_ip_adapter.png")
         vec = Vectorizer()
         # object mode は img2img で sketch を stylize するため、 Vectorizer
@@ -197,7 +206,7 @@ def main() -> int:
             r = vec.vectorize(generated_image=final, user_image=None)
             mode_label = "object (no diff)"
         else:
-            user_full = Image.open(args.user_sketch).convert("RGB").resize((res, res))
+            user_full = Image.open(args.user_sketch).convert("RGB").resize((res_w, res_h))
             r = vec.vectorize(generated_image=final, user_image=user_full)
             mode_label = "other (diff vs user)"
         rendered = render_strokes_to_image(
@@ -235,8 +244,8 @@ def main() -> int:
     )
     pipe.set_ip_adapter_scale(args.ip_scale)
 
-    init = Image.open(s1_out).convert("RGB").resize((res, res))
-    style_ref_img = Image.open(style_ref).convert("RGB").resize((res, res))
+    init = Image.open(s1_out).convert("RGB").resize((res_w, res_h))
+    style_ref_img = Image.open(style_ref).convert("RGB").resize((res_w, res_h))
     init.save(args.output / "10_init_from_stage1.png")
     style_ref_img.save(args.output / "11_style_ref.png")
 
@@ -274,7 +283,7 @@ def main() -> int:
     from modules.vectorizer import Vectorizer
     from modules.stroke_render import render_strokes_to_image
     vec = Vectorizer()
-    user_full = Image.open(args.user_sketch).convert("RGB").resize((res, res))
+    user_full = Image.open(args.user_sketch).convert("RGB").resize((res_w, res_h))
     r = vec.vectorize(generated_image=result.images[0], user_image=user_full)
     rendered = render_strokes_to_image(
         r.strokes, width=r.image_shape[1], height=r.image_shape[0],
