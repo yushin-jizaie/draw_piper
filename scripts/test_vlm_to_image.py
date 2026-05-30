@@ -315,6 +315,13 @@ def main() -> int:
         "--camera-countdown", type=int, default=3,
         help="--use-camera 時、各サイクルのキャプチャ前カウントダウン秒数 (0 で無効)",
     )
+    parser.add_argument(
+        "--no-warp", action="store_true",
+        help="--use-camera 時に PanelCropper の perspective warp を skip し、 "
+             "カメラ生フレーム (横長) をそのまま入力にする。 通常は warp で "
+             "縦長キャンバスを矩形補正クロップしてから生成に渡す (panel_frame.yaml "
+             "の phase_a_calibration が必要)。",
+    )
     args = parser.parse_args()
 
     log, log_file = setup_logging(args.log_dir)
@@ -393,6 +400,24 @@ def main() -> int:
         )
         camera.open()
 
+    # Camera → panel UV の perspective warp (縦長キャンバスを矩形補正クロップ)。
+    # phase_a_calibration が未設定/未キャリブなら warp 無しで生フレームを使う。
+    cropper = None
+    if args.use_camera and not args.no_warp:
+        try:
+            from modules.panel_crop import PanelCropper
+            cropper = PanelCropper(
+                ROOT / "calibration" / "panel_frame.yaml", verbose=True)
+            log.info("panel warp: %s", cropper.summary())
+            log.info("panel warp 出力サイズ = %dx%d (px)",
+                     cropper.panel_image_size[0], cropper.panel_image_size[1])
+        except Exception as e:  # noqa: BLE001
+            log.warning(
+                "PanelCropper を読めません (%s)。 warp を skip して生フレームを "
+                "使います。 scripts/calibrate_panel.py で phase_a_calibration を "
+                "作成してください。", e)
+            cropper = None
+
     run_root = args.log_dir / f"vlm_to_image_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     run_root.mkdir(parents=True, exist_ok=True)
 
@@ -437,6 +462,23 @@ def main() -> int:
                     captured_path, captured.shape, capture_elapsed,
                 )
                 sketch_path_for_cycle = captured_path
+
+                # perspective warp: カメラ生フレーム(横長) → 縦長キャンバスを
+                # 矩形補正クロップ。 これを生成パイプラインの入力にする。
+                if cropper is not None:
+                    try:
+                        warped = cropper.warp(captured)
+                        warped_path = cycle_dir / "warped.png"
+                        cv2.imwrite(str(warped_path), warped)
+                        log.info(
+                            "  warp -> %s shape=%s (panel UV %dx%d)",
+                            warped_path, warped.shape,
+                            cropper.panel_image_size[0],
+                            cropper.panel_image_size[1])
+                        sketch_path_for_cycle = warped_path
+                    except Exception as e:  # noqa: BLE001
+                        log.warning(
+                            "warp に失敗 (%s)。 生フレームを入力に使います。", e)
             else:
                 sketch_path_for_cycle = args.sketch
 

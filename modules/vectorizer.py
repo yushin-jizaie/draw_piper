@@ -350,20 +350,120 @@ def _skeletonize(mask: np.ndarray) -> np.ndarray:
     return (skel * 255).astype(np.uint8)
 
 
+def _trace_skeleton(mask: np.ndarray) -> List[np.ndarray]:
+    """1px-wide skeleton mask を 中央線 polyline の列に変換 (graph trace)。
+
+    cv2.findContours は 1px 線の 「境界」 を返してしまい forward+backward
+    の racetrack が出力されるので、 skeleton 自体を 8-connectivity の
+    graph として 端点 → 端点 (or 端点 → 分岐点) で trace する。
+
+    閉ループ (端点なし) は任意のピクセルから 1 周 trace。
+
+    Returns
+    -------
+    list of (N, 2) int ndarray、 各要素は [(x, y), ...] 順。
+    """
+    if mask.size == 0:
+        return []
+    binary = (mask > 0).astype(np.uint8)
+    h, w = binary.shape
+
+    # 各 pixel の 8-neighbor count
+    nb = np.zeros_like(binary, dtype=np.int32)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            if dy == 0 and dx == 0:
+                continue
+            # 境界処理しつつ shift
+            ys0, ys1 = max(0, dy), min(h, h + dy)
+            xs0, xs1 = max(0, dx), min(w, w + dx)
+            yt0, yt1 = max(0, -dy), min(h, h - dy)
+            xt0, xt1 = max(0, -dx), min(w, w - dx)
+            nb[yt0:yt1, xt0:xt1] += binary[ys0:ys1, xs0:xs1]
+    nb *= binary  # 非 skeleton pixel は count 0
+
+    visited = np.zeros_like(binary, dtype=bool)
+    polylines: List[np.ndarray] = []
+
+    def _walk_from(sy, sx):
+        """sy/sx から trace。 分岐点 / 既訪問 / 範囲外で停止。"""
+        poly = [(int(sx), int(sy))]
+        visited[sy, sx] = True
+        cy, cx = sy, sx
+        while True:
+            best = None
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dy == 0 and dx == 0:
+                        continue
+                    ny, nx = cy + dy, cx + dx
+                    if not (0 <= ny < h and 0 <= nx < w):
+                        continue
+                    if binary[ny, nx] == 0 or visited[ny, nx]:
+                        continue
+                    # 分岐点 (count >= 3) は cell 1 個分だけ含めて停止
+                    best = (ny, nx, nb[ny, nx] >= 3)
+                    if not best[2]:
+                        break
+                if best is not None and not best[2]:
+                    break
+            if best is None:
+                break
+            ny, nx, is_junction = best
+            poly.append((int(nx), int(ny)))
+            visited[ny, nx] = True
+            if is_junction:
+                break
+            cy, cx = ny, nx
+        return poly
+
+    # 1. 端点 (count == 1) から trace
+    endpoints = np.argwhere((binary == 1) & (nb == 1))
+    for y, x in endpoints:
+        if not visited[y, x]:
+            poly = _walk_from(int(y), int(x))
+            if len(poly) >= 2:
+                polylines.append(
+                    np.array(poly, dtype=np.int32))
+
+    # 2. 残った pixel (= 端点無し閉ループ or 分岐点) を消化
+    while True:
+        unvisited = np.argwhere((binary == 1) & (~visited))
+        if len(unvisited) == 0:
+            break
+        y, x = unvisited[0]
+        poly = _walk_from(int(y), int(x))
+        if len(poly) >= 2:
+            polylines.append(np.array(poly, dtype=np.int32))
+
+    return polylines
+
+
 def _vectorize_polylines(
     mask: np.ndarray, epsilon: float, min_length: int
 ) -> List[np.ndarray]:
-    """findContours → approxPolyDP でポリラインに変換し、点数 < min_length を捨てる。
+    """skeleton trace → approxPolyDP でポリラインに変換し、長さ < min_length を捨てる。
 
     返り値は (N, 2) の int 座標 ndarray のリスト ((x, y) 順、画像座標)。
+    2026-05-31 修正: 旧版は cv2.findContours で skeleton の境界 (racetrack)
+    を取ってしまい forward+backward の二度書き polyline を出していた。
+    skeleton を graph として trace する _trace_skeleton に置換。
+    2026-05-31 修正(2): min_length フィルタを approxPolyDP の「前」、生トレース
+    点数 (≒弧長 px) に対して適用する。 approxPolyDP 後の頂点数で足切りすると、
+    滑らかな曲線が少数頂点 (<15) に簡略化されて全部 drop され 0 strokes になる
+    回帰があった (skeleton trace 化で頂点が正しく減ったため顕在化)。
     """
-    contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    raw_polylines = _trace_skeleton(mask)
     polylines: List[np.ndarray] = []
-    for cnt in contours:
-        if len(cnt) < 2:
+    for poly in raw_polylines:
+        # 生トレース点数 = 1px skeleton をたどった点数 ≒ 弧長(px)。
+        # ここで長さフィルタをかける (簡略化後の頂点数ではない)。
+        if len(poly) < max(2, min_length):
             continue
-        approx = cv2.approxPolyDP(cnt, epsilon, closed=False)
-        if len(approx) < min_length:
+        approx = cv2.approxPolyDP(
+            poly.reshape(-1, 1, 2).astype(np.int32),
+            epsilon, closed=False)
+        if len(approx) < 2:
             continue
         polylines.append(approx.reshape(-1, 2))
     return polylines
