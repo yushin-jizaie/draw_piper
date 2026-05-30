@@ -246,20 +246,47 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 grid-template-columns: repeat(6, 1fr); gap: 8px; }
   .panel { background: #1a1a1a; border: 2px solid transparent;
            border-radius: 6px; padding: 6px; cursor: pointer;
-           transition: transform 0.18s ease, border-color 0.15s,
-                       box-shadow 0.18s; position: relative; }
-  /* 2026-05-30: hover で大きく拡大表示 (z-index で最前面、 shadow で浮かす) */
-  .panel.candidate:hover {
-    transform: scale(2.3);
-    z-index: 200;
-    border-color: var(--accent);
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
-  }
+           transition: border-color 0.15s, box-shadow 0.15s; position: relative; }
+  .panel:hover { border-color: #888; }
   .panel.input { cursor: default; opacity: 0.85; border-color: #333; }
-  .panel.input:hover {
-    transform: scale(2.3);
-    z-index: 200;
-    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.7);
+  /* 2026-05-30 v3.2: hover で画面中央に元解像度 floating preview (Canvas
+     合成済 256px ではなく、 raw strokes_png をそのまま表示) */
+  .hires-preview {
+    display: none;
+    position: fixed;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 1000;
+    width: min(80vh, 80vw);
+    height: min(80vh, 80vw);
+    background: rgba(20, 20, 20, 0.96);
+    border: 4px solid var(--accent);
+    border-radius: 12px;
+    padding: 16px;
+    box-shadow: 0 24px 64px rgba(0, 0, 0, 0.8);
+    pointer-events: none;
+  }
+  .hires-preview img {
+    width: 100%; height: calc(100% - 24px);
+    object-fit: contain; background: white; border-radius: 6px;
+  }
+  .hires-preview .label {
+    color: var(--accent); font-size: 14px; font-weight: 600;
+    text-align: center; margin-bottom: 8px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .panel:hover .hires-preview { display: flex; flex-direction: column; }
+  /* 2026-05-30 v3.2: 新規 disp_* (新 dispatcher) 候補に NEW バッジ */
+  .panel.is-new::before {
+    content: "NEW";
+    position: absolute;
+    top: 4px; right: 4px;
+    background: #ff4081; color: white;
+    font-size: 9px; font-weight: 700;
+    padding: 2px 6px; border-radius: 3px;
+    z-index: 10;
+    letter-spacing: 0.5px;
+    box-shadow: 0 2px 6px rgba(255, 64, 129, 0.5);
   }
   .panel.selected { border-color: var(--selected);
                     box-shadow: 0 0 0 3px rgba(44, 204, 119, 0.25); }
@@ -421,13 +448,21 @@ function render() {
     entry.candidates.forEach((cand) => {
       const p = document.createElement("div");
       p.className = "panel candidate";
+      // 2026-05-30 v3.2: 新規 disp_* (新 dispatcher) 候補に NEW バッジ
+      if (cand.route && cand.route.startsWith("disp:")) {
+        p.classList.add("is-new");
+      }
       const sel = isSelected(entry.sketch_id, cand.route);
       if (sel) p.classList.add("selected");
       const safeLabel = String(cand.label).replace(/"/g, "&quot;");
       p.innerHTML = `<div class="panel-label" title="${safeLabel}">${cand.label}</div>
-                     <canvas></canvas>`;
+                     <canvas></canvas>
+                     <div class="hires-preview">
+                       <div class="label">${safeLabel}</div>
+                       <img src="${cand.strokes_png}" alt="hires">
+                     </div>`;
       const cv = p.querySelector("canvas");
-      // 非同期で overlay 合成
+      // 非同期で overlay 合成 (通常表示用)
       makeOverlay(cv, entry.input_png, cand.strokes_png);
       p.addEventListener("click", () => toggleSelection(entry.sketch_id, cand.route));
       grid.appendChild(p);
