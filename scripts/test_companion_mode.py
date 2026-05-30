@@ -211,11 +211,20 @@ def main() -> int:
             print(f"[companion]   companion subject (VLM 提案): {companion_subject}")
             # shift モード: 入力主題ではなく companion subject を SDXL に渡す
             # SDXL prompt は Matsumoto style + companion subject (+ composition) で構築
+            # 2026-05-30: object × shift で細部消失する問題への対処として
+            # 「large subject + bold thick contours」 と Frida 制約を追加。
+            # 生成画像で subject を大きく + 線を太く描かせて、 vectorize で
+            # 細部 (鳥の顔、 cat の目鼻) が残るようにする。
             args.prompt = (
                 f"a detailed Matsumoto-style {companion_subject}{comp_frag}, "
+                f"large central subject filling 80% of the frame, "
+                f"bold thick contours, simple iconic shape, "
                 f"manga style, expressive ink lines, "
                 f"single continuous black line on plain white background, "
-                f"clean smooth strokes, illustrative, no shading"
+                f"clean smooth strokes, illustrative, "
+                f"discrete clean contours per element, no shading, "
+                f"no hatching, no cross-hatching, "
+                f"approximately 20 to 40 separate strokes"
             )
         print(f"[companion]   prompt: {args.prompt}")
         # 後段の参照用に prompt メタも残す
