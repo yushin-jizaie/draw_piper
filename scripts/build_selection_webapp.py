@@ -149,6 +149,17 @@ INPUTS = [
     ("scatter",          "sketch_variations/_inputs/scatter_input.png",    "character"),
 ]
 
+# 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
+# upload_to_webapp.py が sketch_variations/disp_gui_uploads/_inputs.json に
+# {"sid","input","kind"} を追記する。 ここで INPUTS にマージして列を生やす。
+_GUI_EXTRA = _ROOT / "sketch_variations" / "disp_gui_uploads" / "_inputs.json"
+if _GUI_EXTRA.exists():
+    try:
+        for _e in json.loads(_GUI_EXTRA.read_text()):
+            INPUTS.append((_e["sid"], _e["input"], _e.get("kind", "object")))
+    except Exception as _ex:   # noqa: BLE001
+        print(f"[webapp] GUI upload inputs 読み込み失敗 (skip): {_ex}")
+
 
 def read_companion(meta_p: Path) -> str:
     if not meta_p.exists():

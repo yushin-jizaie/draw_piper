@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -68,6 +68,11 @@ class PipelineTestGUI:
         # literal-only: カード推論をやめ「何に見えるか」 を生成 prompt に使い、
         # vectorize も full 抽出 (diff しない) でテストする。
         self.var_literal_only = tk.BooleanVar(value=False)
+        # 透明ボード線抽出 (背景差分 + 色フィルタ) 用の state
+        self.background_bgr = None          # 空ボード基準フレーム (np.ndarray BGR)
+        self.var_line_mode = tk.StringVar(value="dark")   # dark/black/blue/red/green
+        self.var_line_diff = tk.IntVar(value=30)          # 背景差分 閾値
+        self.var_line_dark_v = tk.IntVar(value=90)        # 暗い線の V 上限
 
         self._build_ui()
 
@@ -135,6 +140,35 @@ class PipelineTestGUI:
             text="カメラ閉じる",
             command=self.on_camera_close, width=12)
         self.btn_cam_close.pack(side=tk.LEFT, padx=2)
+
+        # 透明ボード線抽出 (背景差分 + 特定色) — カメラモード時のみ意味あり
+        self.lineext_frame = ttk.LabelFrame(input_frame,
+            text="透明ボード線抽出 (背景差分 + 特定色)", padding=6)
+        self.lineext_frame.pack(fill=tk.X, pady=(6, 2))
+        row1 = ttk.Frame(self.lineext_frame); row1.pack(fill=tk.X)
+        self.btn_bg_capture = ttk.Button(row1,
+            text="背景キャプチャ (空ボード)",
+            command=self.on_capture_background, width=24)
+        self.btn_bg_capture.pack(side=tk.LEFT, padx=2)
+        self.lbl_bg_status = ttk.Label(row1, text="背景: 未取得",
+            font=("Monaco", 9), foreground="#a33")
+        self.lbl_bg_status.pack(side=tk.LEFT, padx=8)
+        row2 = ttk.Frame(self.lineext_frame); row2.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(row2, text="線の色:").pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Combobox(row2, textvariable=self.var_line_mode, width=7,
+            state="readonly",
+            values=["dark", "black", "blue", "red", "green"]
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(row2, text="差分閾値:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(row2, from_=5, to=120, width=4,
+            textvariable=self.var_line_diff).pack(side=tk.LEFT, padx=2)
+        ttk.Label(row2, text="暗線V上限:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(row2, from_=30, to=200, width=4,
+            textvariable=self.var_line_dark_v).pack(side=tk.LEFT, padx=2)
+        self.btn_extract_lines = ttk.Button(row2,
+            text="線抽出 → 入力に設定",
+            command=self.on_extract_lines, width=20)
+        self.btn_extract_lines.pack(side=tk.LEFT, padx=(10, 2))
 
         # ② パイプライン実行
         run_frame = ttk.LabelFrame(self.root,
@@ -264,6 +298,11 @@ class PipelineTestGUI:
             command=self.on_view_topic, width=18,
             state=tk.DISABLED)
         self.btn_view_topic.pack(side=tk.LEFT, padx=2)
+        self.btn_upload = ttk.Button(btn_row,
+            text="⬆ webapp にアップロード",
+            command=self.on_upload_webapp, width=22,
+            state=tk.DISABLED)
+        self.btn_upload.pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_row,
             text="🔧 二値化キャリブ",
             command=self.on_binarize_calib, width=18
@@ -450,6 +489,67 @@ class PipelineTestGUI:
         self.log("カメラ閉じました")
         self._refresh_input_buttons()
 
+    # ---------- 透明ボード線抽出 (背景差分 + 特定色) ----------
+
+    def on_capture_background(self):
+        """空ボードを 1 枚撮って背景差分の基準にする。"""
+        if self.camera is None:
+            messagebox.showinfo("カメラ未起動",
+                "先に「カメラ起動」 してから、 線を消した空ボードを撮ってください。")
+            return
+        try:
+            self.background_bgr = self.camera.capture_single()
+        except Exception as e:
+            self.log(f"背景キャプチャ失敗: {e}")
+            messagebox.showerror("背景キャプチャ失敗", str(e))
+            return
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        bg_path = LOGS_DIR / f"line_background_{ts}.png"
+        cv2.imwrite(str(bg_path), self.background_bgr)
+        self.lbl_bg_status.config(text=f"背景: 取得済 ({ts})", foreground="#262")
+        self.log(f"背景キャプチャ → {bg_path}")
+
+    def on_extract_lines(self):
+        """現在の入力画像から線を抽出して selected_sketch_path に差し替える。
+
+        背景差分 (背景取得済なら) + 特定色フィルタ。 背景未取得でも色のみで動く。
+        """
+        if self.selected_sketch_path is None or \
+                not self.selected_sketch_path.exists():
+            messagebox.showinfo("入力なし",
+                "先にカメラ撮影 (またはファイル選択) で線入りの画像を確定してください。")
+            return
+        try:
+            from modules.line_extract import extract_lines_image
+        except Exception as e:
+            messagebox.showerror("line_extract import 失敗", str(e))
+            return
+        frame = cv2.imread(str(self.selected_sketch_path))
+        if frame is None:
+            messagebox.showerror("読み込み失敗",
+                f"画像を読めません:\n{self.selected_sketch_path}")
+            return
+        mode = self.var_line_mode.get()
+        try:
+            img = extract_lines_image(
+                frame, self.background_bgr, mode=mode,
+                dark_v_max=int(self.var_line_dark_v.get()),
+                diff_thresh=int(self.var_line_diff.get()))
+        except Exception as e:
+            self.log(f"線抽出失敗: {e}")
+            messagebox.showerror("線抽出失敗", str(e))
+            return
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = LOGS_DIR / f"line_extracted_{ts}.png"
+        img.save(out_path)
+        self.selected_sketch_path = out_path
+        bg_note = "背景差分+色" if self.background_bgr is not None else "色のみ(背景未取得)"
+        self.log(f"線抽出完了 ({mode}, {bg_note}) → {out_path}")
+        self.lbl_file_path.config(text=str(out_path), foreground="black")
+        if Image is not None:
+            self._show_preview_pil(img)
+
     # ---------- パイプライン実行 ----------
 
     def on_run_pipeline(self):
@@ -598,6 +698,8 @@ class PipelineTestGUI:
                 self.btn_view_strokes.config(state=tk.NORMAL))
             self.root.after(0, lambda:
                 self.btn_view_topic.config(state=tk.NORMAL))
+            self.root.after(0, lambda:
+                self.btn_upload.config(state=tk.NORMAL))
         if rc == 0:
             self.root.after(0, lambda:
                 self._set_status(
@@ -833,6 +935,65 @@ class PipelineTestGUI:
         st.pack(fill=tk.BOTH, expand=True)
         st.insert("1.0", text)
         st.config(state=tk.DISABLED)
+
+    def on_upload_webapp(self):
+        """直近の cycle_dir を選定 webapp の候補としてアップロード。
+
+        ローカル再ビルド (push なし) が既定。 確認ダイアログで push も選べる。
+        upload_to_webapp.py を subprocess で実行 (重い import を別プロセス化)。
+        """
+        if not self.last_cycle_dir or not self.last_cycle_dir.exists():
+            messagebox.showinfo("結果なし",
+                "先にパイプラインを実行して結果を生成してください。")
+            return
+        if not (self.last_cycle_dir / "strokes.json").exists():
+            messagebox.showerror("strokes なし",
+                f"strokes.json が見つかりません:\n{self.last_cycle_dir}")
+            return
+        label = simpledialog.askstring("webapp アップロード",
+            "候補の表示名 (sketch_id) を入力:", initialvalue="camera",
+            parent=self.root)
+        if not label:
+            return
+        do_push = messagebox.askyesno("公開設定",
+            "GitHub に push してオンライン (GitHub Pages) でも見られるように "
+            "しますか?\n\n"
+            "「はい」 = push (リモートでも見える、 反映まで ~1 分)\n"
+            "「いいえ」 = ローカルのみ (scripts/webapp_local で確認)")
+        mode_arg = "--push" if do_push else "--local"
+        cmd = [sys.executable, "-m", "scripts.upload_to_webapp",
+               "--cycle", str(self.last_cycle_dir),
+               "--label", label, mode_arg]
+        if self.selected_sketch_path and self.selected_sketch_path.exists():
+            cmd += ["--input", str(self.selected_sketch_path)]
+        self.log(f"webapp アップロード中... ({'push' if do_push else 'local'})")
+        self._set_status("webapp アップロード中...", "blue")
+
+        def _worker():
+            try:
+                r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True,
+                                   text=True, timeout=300)
+            except Exception as e:
+                self.root.after(0, lambda: self._upload_done(False, str(e)))
+                return
+            ok = (r.returncode == 0)
+            msg = (r.stdout or "") + (r.stderr or "")
+            self.root.after(0, lambda: self._upload_done(ok, msg[-800:]))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _upload_done(self, ok: bool, msg: str):
+        if ok:
+            self._set_status("webapp アップロード完了", "green")
+            self.log("webapp アップロード完了")
+            messagebox.showinfo("完了",
+                "webapp に候補を追加しました。\n\n"
+                "ローカル確認: scripts/webapp_local を起動\n"
+                "(push した場合) オンライン: GitHub Pages に ~1 分で反映")
+        else:
+            self._set_status("webapp アップロード失敗", "red")
+            self.log(f"webapp アップロード失敗:\n{msg}")
+            messagebox.showerror("アップロード失敗", msg or "不明なエラー")
 
     def _show_image_popup(self, path: Path, title: str):
         if Image is None or ImageTk is None:

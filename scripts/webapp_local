@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# 選定 webapp をローカルで起動する 1 行ラッパー。
+#   1. build_selection_webapp --local で docs/selection/index.html を
+#      repo-root 相対パス (push 不要) で再生成
+#   2. repo root を http.server で配信
+#   3. ブラウザ URL を表示
+# 使い方:  ~/draw_piper/scripts/webapp_local [PORT]   (既定 8765)
+set -euo pipefail
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT"
+PORT="${1:-8765}"
+PY="$ROOT/venv/bin/python"
+[ -x "$PY" ] || PY="python3"
+echo "[webapp_local] ローカル相対パスで再ビルド中..."
+"$PY" -m scripts.build_selection_webapp --local
+URL="http://localhost:${PORT}/docs/selection/index.html"
+echo "[webapp_local] 配信開始: $URL"
+echo "[webapp_local] 終了は Ctrl-C"
+exec "$PY" -m http.server "$PORT" --bind 127.0.0.1
