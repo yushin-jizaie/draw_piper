@@ -257,7 +257,7 @@ def main() -> int:
             # 生成画像で subject を大きく + 線を太く描かせて、 vectorize で
             # 細部 (鳥の顔、 cat の目鼻) が残るようにする。
             args.prompt = (
-                f"a detailed Matsumoto-style {companion_subject}{comp_frag}, "
+                f"a simple bold Matsumoto-style {companion_subject}{comp_frag}, "
                 f"large central subject filling 80% of the frame, "
                 f"bold thick contours, simple iconic shape, "
                 f"manga style, expressive ink lines, "
@@ -265,7 +265,9 @@ def main() -> int:
                 f"clean smooth strokes, illustrative, "
                 f"discrete clean contours per element, no shading, "
                 f"no hatching, no cross-hatching, "
-                f"approximately 20 to 40 separate strokes"
+                # Frida 適合: 過剰検出を抑えるため少ストローク + 低 detail を明示
+                f"minimal simple bold lines, low complexity, no fine detail, "
+                f"no intricate texture, approximately 8 to 20 separate strokes"
             )
         print(f"[companion]   prompt: {args.prompt}")
         # 後段の参照用に prompt メタも残す

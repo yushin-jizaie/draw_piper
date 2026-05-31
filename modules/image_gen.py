@@ -57,6 +57,8 @@ DEFAULT_NEGATIVE_PROMPT = (
     "hatching, crosshatch, screentone, halftone, dot pattern, "
     "filled background, paper texture, scribble, sketchy, "
     "shading, gray, sepia, "
+    # 2026-05-31: Frida 過剰検出対策。 細密・多線・テクスチャを抑制。
+    "intricate, fine details, busy, cluttered, many small lines, "
     "watermark, signature, text, frame, border, "
     "blurry, noise, jpeg artifacts"
 )

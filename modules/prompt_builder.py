@@ -44,22 +44,25 @@ _FALLBACK_TEMPLATE = (
 
 
 COMPANION_TEMPLATE = (
-    "a detailed Matsumoto-style {subject_en} {action_en} {location_en}, "
+    "a simple bold Matsumoto-style {subject_en} {action_en} {location_en}, "
     "manga style, expressive ink lines, "
     "single continuous black line on plain white background, "
     "clean smooth strokes, illustrative, "
     # Frida 適合: discrete contours + ハッチング禁止 + 20-40 stroke 目安
     # (docs/frida_stroke_guideline.md)
     "discrete clean contours per element, no shading, "
-    "no hatching, no cross-hatching, approximately 20 to 40 separate strokes"
+    "no hatching, no cross-hatching, minimal simple bold lines, "
+    "low complexity, no fine detail, no intricate texture, "
+    "approximately 8 to 20 separate strokes"
 )
 
 COMPANION_FALLBACK_TEMPLATE = (
-    "a detailed Matsumoto-style illustration, "
+    "a simple bold Matsumoto-style illustration, "
     "manga style, expressive ink lines, "
     "single continuous black line on plain white background, "
     "clean smooth strokes, discrete clean contours per element, "
-    "no shading, no hatching, no cross-hatching"
+    "no shading, no hatching, no cross-hatching, "
+    "minimal simple bold lines, low complexity, no fine detail, no intricate texture"
 )
 
 
@@ -69,19 +72,22 @@ COMPANION_FALLBACK_TEMPLATE = (
 CHARACTER_TEMPLATE = (
     "{subject_en} {action_en} {location_en}, "
     "manga style character, dynamic pose, expressive ink lines, "
-    "detailed lineart, single continuous black line on plain white background, "
+    "minimal clean lineart, single continuous black line on plain white background, "
     "clean smooth strokes, "
     # Frida 適合 (docs/frida_stroke_guideline.md)
     "discrete clean contours per element, no shading, "
-    "no hatching, no cross-hatching, approximately 20 to 40 separate strokes"
+    "no hatching, no cross-hatching, minimal simple bold lines, "
+    "low complexity, no fine detail, no intricate texture, "
+    "approximately 8 to 20 separate strokes"
 )
 
 CHARACTER_FALLBACK_TEMPLATE = (
     "1boy, solo, young boy with full body, messy hair, simple t-shirt, "
     "manga style character, dynamic pose, expressive ink lines, "
-    "detailed lineart, single continuous black line on plain white background, "
+    "minimal clean lineart, single continuous black line on plain white background, "
     "clean smooth strokes, discrete clean contours per element, "
-    "no shading, no hatching, no cross-hatching"
+    "no shading, no hatching, no cross-hatching, "
+    "minimal simple bold lines, low complexity, no fine detail, no intricate texture"
 )
 
 
