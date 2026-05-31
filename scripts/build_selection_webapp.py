@@ -796,6 +796,49 @@ def _apply_local_skeletons(entries: list) -> int:
     return n
 
 
+def _apply_local_frida(entries: list) -> int:
+    """strokes_png と同じ dir に strokes.json があれば、 そこから Frida 適合度を
+    計算して candidate['frida'] を埋める (robot-input-set ブランチ非依存)。
+
+    これで robot-branch に entry が無い候補 (circle, disp gacha 等) でも
+    Frida バッジが表示される。 返り値は埋めた候補数。
+    """
+    try:
+        from scripts.check_frida_friendly import frida_friendly  # type: ignore
+    except ImportError:
+        return 0
+    n = 0
+    for e in entries:
+        for c in e.get("candidates", []):
+            sp = c.get("strokes_png", "")
+            if RAW_BASE and sp.startswith(RAW_BASE + "/"):
+                rel = sp[len(RAW_BASE) + 1:]
+            elif sp.startswith("/"):
+                rel = sp.lstrip("/")
+            else:
+                continue
+            json_p = _ROOT / Path(rel).parent / "strokes.json"
+            if not json_p.exists():
+                continue
+            try:
+                data = json.loads(json_p.read_text())
+                strokes = data.get("strokes", [])
+                shape = data.get("image_shape", [768, 768])
+                canvas_w = shape[1] if len(shape) > 1 else 768
+                warns = frida_friendly(strokes, canvas_w=canvas_w)
+                pts = sum(len(s) for s in strokes)
+                c["frida"] = {
+                    "n_strokes": len(strokes),
+                    "n_points": pts,
+                    "avg_pts": round(pts / max(len(strokes), 1), 1),
+                    "warns": warns,
+                }
+                n += 1
+            except Exception:
+                continue
+    return n
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
@@ -813,6 +856,8 @@ def main() -> int:
     entries = build_entries()
     n_skel = _apply_local_skeletons(entries)
     print(f"local skeleton 差し替え: {n_skel} 候補")
+    n_frida = _apply_local_frida(entries)
+    print(f"local frida 計算: {n_frida} 候補")
     html = HTML_TEMPLATE.replace(
         "__ENTRIES__", json.dumps(entries, ensure_ascii=False))
     out_dir = _ROOT / "docs" / "selection"
