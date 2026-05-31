@@ -431,23 +431,31 @@ def main() -> int:
     print(f"[companion]   input strokes: {input_r.n_strokes} / {input_r.n_points} pts")
 
     # ============================================================
-    # Step 6: combine + render
+    # Step 6: render (companion のみ、 入力線は除外)
+    # 本番フローではユーザーの絵は既にホワイトボード上にあるため、 ロボットは
+    # 空白地帯の companion だけ描けばよい (入力線の再描画 = 二重描きを避ける)。
+    # → 30_companion_strokes.png は transformed companion のみ。
     # ============================================================
-    print(f"[companion] Step 6: combine + render")
-    combined = combine_strokes(input_strokes, transformed)
-    combined_render = render_strokes_to_image(
-        combined, width=res_w, height=res_h, line_width=2)
-    combined_render.save(args.output / "30_companion_strokes.png")
+    print(f"[companion] Step 6: render (companion のみ、 入力線は除外)")
+    final_strokes = transformed
+    render_strokes_to_image(
+        final_strokes, width=res_w, height=res_h, line_width=2
+    ).save(args.output / "30_companion_strokes.png")
     print(f"[companion]   saved: {args.output / '30_companion_strokes.png'}")
-    # 個別保存も
+    # 参照用に input / transformed も個別保存
     render_strokes_to_image(input_strokes, width=res_w, height=res_h, line_width=2
                             ).save(args.output / "20_input_strokes.png")
     render_strokes_to_image(transformed, width=res_w, height=res_h, line_width=2
                             ).save(args.output / "21_transformed_gen_strokes.png")
+    # 入力+companion の合成プレビュー (参考、 ロボットには送らない)
+    render_strokes_to_image(
+        combine_strokes(input_strokes, transformed),
+        width=res_w, height=res_h, line_width=2
+    ).save(args.output / "31_input_plus_companion_preview.png")
 
     print(f"\n[companion] DONE.")
-    print(f"  total strokes: {len(combined)}")
-    print(f"  total points : {sum(len(s) for s in combined)}")
+    print(f"  companion strokes: {len(final_strokes)}")
+    print(f"  companion points : {sum(len(s) for s in final_strokes)}")
     return 0
 
 
