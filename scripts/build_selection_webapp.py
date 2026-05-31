@@ -145,6 +145,8 @@ INPUTS = [
     ("circle",           "sketch_variations/_inputs/circle.png",           "object"),
     # 2026-05-31: 縦長(704x1472)入力での生成テスト (balanced prompt)。
     ("portrait_person",  "sketch_variations/_inputs/portrait_person.png",  "character"),
+    # 2026-06-01: 「キャラを撒く」 デモ (lineartLoRA スプライト→分割→空白散布)。
+    ("scatter",          "sketch_variations/_inputs/scatter_input.png",    "character"),
 ]
 
 
