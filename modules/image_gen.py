@@ -269,6 +269,28 @@ MODEL_PRESETS: dict[str, dict] = {
         "img2img_strength": 0.0,
         "inpaint_mode": False,
     },
+    # 2026-05-31: ダイナミックなキャラを「クリーンな輪郭線」 で生成する勝ちパターン。
+    # text2img(自由構図) + LineAniRedmond 線画 LoRA。 CN0.3 で入力を緩く参照しつつ
+    # 単一キャラに。 正方形(1024)で生成すること (縦長は複数タイル/塗りで不安定)。
+    # 塗りつぶしにならず輪郭線なので vectorize でキャラのまま残る。
+    # trigger word "LineAniAF" を prompt 先頭に付ける運用。
+    "illustrious_v2_lineart_char": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.3,
+        "style_hint": (
+            "LineAniAF, lineart, monochrome, manga, clean outline, no fill, "
+            "no silhouette, white_background, simple_background"
+        ),
+        "lora_path": "training/lora/LineAniRedmond_v2.safetensors",
+        "lora_scale": 1.1,
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.0,
+        "inpaint_mode": False,
+    },
     # 2026-05-29 (style-pool-rebalance branch): object preset + matsumoto LoRA。
     # 上記 _object に matsumoto_taiyo LoRA (scale 0.4) を載せた版。
     # ユーザー所感「Stage 2 (IP-Adapter) はもう不要、 Stage 1 を強化したい」 への対処。
