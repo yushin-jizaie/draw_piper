@@ -33,6 +33,11 @@ SHIFT_BASE = "sketch_variations/shift_v3_compare_20260529_100542"
 GACHA_GLOB = "sketch_variations/gacha_char_auto_all8_*"
 COMPOSITION_GLOB = "sketch_variations/composition_all8_*"
 
+# --local: GitHub raw URL ではなくリポジトリ root 相対パス (/sketch_variations/...) を
+# 出力し、 push せずに `python -m http.server` (repo root) で確認できるようにする。
+# main() で --local 指定時に RAW_BASE="" / LOCAL=True に書き換える。
+LOCAL = False
+
 
 def _sanitize_route(route: str) -> str:
     """build_robot_input_set.py の sanitize_route と同じロジック。"""
@@ -52,7 +57,11 @@ def skeleton_png_url(sid: str, route: str, gacha_seed: str | None = None) -> str
     shift_fix 系 (disp:shift_fix_*) は別 logs dir に出力されている。
     route の "/ " 以降の subroute (例: "shift v3", "composition shift")
     から build_robot_input_set の key を再構築して URL を返す。
+
+    --local 時は別ブランチ (robot-input-set) の skeleton は手元に無いので "" を返す。
     """
+    if LOCAL:
+        return ""
     if "shift_fix" in route:
         if " / " in route:
             sub_route = route.split(" / ", 1)[1].strip()
@@ -131,6 +140,9 @@ INPUTS = [
     ("tree",             "sketch_variations/_inputs/tree.png",             "object"),
     ("cat",              "sketch_variations/_inputs/cat.png",              "object"),
     ("car",              "sketch_variations/_inputs/car.png",              "object"),
+    # 2026-05-31: literal-only / shift 経路の単純図形テスト (円)。
+    # align/shift v1-3/gacha は無いので、 disp_* auto-detect だけが候補になる。
+    ("circle",           "sketch_variations/_inputs/circle.png",           "object"),
 ]
 
 
@@ -287,24 +299,30 @@ def build_entries():
     entries = []
     for sid, ip, stype in INPUTS:
         cands = []
-        # 1) align (S2 OFF)
-        cands.append({
-            "route": "align (S2 OFF)",
-            "label": "align (S2 OFF)",
-            "strokes_png": f"{RAW_BASE}/{ALIGN_BASE}/{sid}/30_vectorized_strokes.png",
-            "skeleton_png": skeleton_png_url(sid, "align (S2 OFF)"),
-            "rel_path": f"{ALIGN_BASE}/{sid}",
-            "frida": frida_info(sid, "align (S2 OFF)"),
-            "date": date_for_rel_path(ALIGN_BASE),
-        })
-        # 2-4) shift v1/v2/v3
+        # 1) align (S2 OFF) — strokes png が無ければ skip (circle 等、 未実行の経路)。
+        # ローカルに無いものは push もされず online でも 404 なので、 常に存在確認。
+        align_rel = f"{ALIGN_BASE}/{sid}/30_vectorized_strokes.png"
+        if (_ROOT / align_rel).exists():
+            cands.append({
+                "route": "align (S2 OFF)",
+                "label": "align (S2 OFF)",
+                "strokes_png": f"{RAW_BASE}/{align_rel}",
+                "skeleton_png": skeleton_png_url(sid, "align (S2 OFF)"),
+                "rel_path": f"{ALIGN_BASE}/{sid}",
+                "frida": frida_info(sid, "align (S2 OFF)"),
+                "date": date_for_rel_path(ALIGN_BASE),
+            })
+        # 2-4) shift v1/v2/v3 — 同上、 ローカルに無ければ skip
         for v in ("v1", "v2", "v3"):
+            shift_rel = f"{SHIFT_BASE}/{v}/{sid}/30_companion_strokes.png"
+            if not (_ROOT / shift_rel).exists():
+                continue
             comp = read_companion(
                 _ROOT / SHIFT_BASE / v / sid / "00_auto_prompt.txt")
             cands.append({
                 "route": f"shift {v}",
                 "label": f"shift {v}: {comp}",
-                "strokes_png": f"{RAW_BASE}/{SHIFT_BASE}/{v}/{sid}/30_companion_strokes.png",
+                "strokes_png": f"{RAW_BASE}/{shift_rel}",
                 "skeleton_png": skeleton_png_url(sid, f"shift {v}"),
                 "rel_path": f"{SHIFT_BASE}/{v}/{sid}",
                 "companion": comp,
@@ -740,6 +758,19 @@ render();
 
 
 def main() -> int:
+    import argparse
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--local", action="store_true",
+        help="GitHub raw URL ではなく repo root 相対パスを出力し、 push せずに "
+             "`python -m http.server` (repo root) でローカル確認できるようにする。")
+    args = ap.parse_args()
+
+    global RAW_BASE, LOCAL
+    if args.local:
+        LOCAL = True
+        RAW_BASE = ""   # f"{RAW_BASE}/{rel}" → "/{rel}" (root 相対)
+
     entries = build_entries()
     html = HTML_TEMPLATE.replace(
         "__ENTRIES__", json.dumps(entries, ensure_ascii=False))
@@ -747,10 +778,14 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "index.html"
     out_path.write_text(html, encoding="utf-8")
-    print(f"saved {out_path}")
+    print(f"saved {out_path}  (local={LOCAL})")
     # 各 sketch の候補数を報告
     for e in entries:
         print(f"  {e['sketch_id']}: {len(e['candidates'])} candidates")
+    if LOCAL:
+        print("\nローカル確認:\n"
+              "  cd ~/draw_piper && python3 -m http.server 8000\n"
+              "  → http://localhost:8000/docs/selection/index.html")
     return 0
 
 
