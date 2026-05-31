@@ -763,6 +763,31 @@ render();
 """
 
 
+def _apply_local_skeletons(entries: list) -> int:
+    """strokes_png と同じ dir に vec_debug/06_strokes.png があれば、 candidate の
+    skeleton_png をそのローカル (同ブランチ) URL に差し替える。
+
+    robot-input-set ブランチに skeleton が無いルート (disp gacha 等) でも、
+    strokes 描画から生成した skeleton をこのブランチに置けば表示できる。
+    返り値は差し替えた候補数。
+    """
+    n = 0
+    for e in entries:
+        for c in e.get("candidates", []):
+            sp = c.get("strokes_png", "")
+            if RAW_BASE and sp.startswith(RAW_BASE + "/"):
+                rel = sp[len(RAW_BASE) + 1:]
+            elif sp.startswith("/"):
+                rel = sp.lstrip("/")
+            else:
+                continue
+            skel_rel = Path(rel).parent / "vec_debug" / "06_strokes.png"
+            if (_ROOT / skel_rel).exists():
+                c["skeleton_png"] = f"{RAW_BASE}/{skel_rel}"
+                n += 1
+    return n
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
@@ -778,6 +803,8 @@ def main() -> int:
         RAW_BASE = ""   # f"{RAW_BASE}/{rel}" → "/{rel}" (root 相対)
 
     entries = build_entries()
+    n_skel = _apply_local_skeletons(entries)
+    print(f"local skeleton 差し替え: {n_skel} 候補")
     html = HTML_TEMPLATE.replace(
         "__ENTRIES__", json.dumps(entries, ensure_ascii=False))
     out_dir = _ROOT / "docs" / "selection"
