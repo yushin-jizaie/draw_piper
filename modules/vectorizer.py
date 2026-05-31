@@ -259,6 +259,26 @@ def _canny_strong_blur(
     return edges
 
 
+def _binarize_gen_centerline(
+    img_gray: np.ndarray,
+    blur_ksize: int = 3,
+    blur_sigma: float = 1.0,
+) -> np.ndarray:
+    """SDXL 生成画像の「線そのもの」を塗りつぶした mask を返す (線=255, 背景=0)。
+
+    Canny (_canny_strong_blur) は線の **輪郭 (内側/外側エッジ)** を返すため、
+    太い線が二重線 (アウトライン) になり、 skeletonize しても中心線にならない。
+    こちらは暗い画素 (= インク) を Otsu 二値化で塗るので、 太い線も後段の
+    skeletonize で **中心線 1 本** に細線化される。 「手前 (抽出の最初)」 で
+    中心線化する方式。
+    """
+    blurred = cv2.GaussianBlur(img_gray, (blur_ksize, blur_ksize), blur_sigma)
+    # 暗い画素 = 線。 白/淡色背景と黒線を Otsu で分離して塗りつぶす。
+    _, mask = cv2.threshold(
+        blurred, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    return mask.astype(np.uint8)
+
+
 def _binarize_user(user_gray: np.ndarray,
                     method: str = "adaptive",
                     adaptive_block_size: int = 51,
@@ -514,8 +534,14 @@ class Vectorizer:
         adaptive_block_size: int = 51,
         adaptive_c: int = 10,
         fixed_threshold: int = 128,
+        gen_line_mode: str = "binarize",
         verbose: bool = False,
     ):
+        # 生成画像の線抽出方式:
+        #   "binarize" (既定) = 線そのものを塗る → skeletonize で中心線 1 本。
+        #                       太い線が二重 (アウトライン) にならない。
+        #   "canny"           = 旧来のエッジ検出 (輪郭 2 本)。 後方互換用。
+        self.gen_line_mode = str(gen_line_mode)
         self.canny_blur_ksize = canny_blur_ksize
         self.canny_blur_sigma = canny_blur_sigma
         self.canny_thresh_low = canny_thresh_low
@@ -581,14 +607,25 @@ class Vectorizer:
             if debug_path is not None:
                 cv2.imwrite(str(debug_path / "00_user_input.png"), user_gray)
 
-        # ステップ 1: 生成画像を Canny strong_blur で線画化
-        gen_mask = _canny_strong_blur(
-            gen_gray,
-            self.canny_blur_ksize,
-            self.canny_blur_sigma,
-            self.canny_thresh_low,
-            self.canny_thresh_high,
-        )
+        # ステップ 1: 生成画像を線画化。
+        #   binarize (既定): 線そのものを塗る → 後段 skeletonize で中心線 1 本。
+        #   canny          : エッジ検出 (輪郭 2 本、 太線は二重線になる)。
+        if self.gen_line_mode == "canny":
+            gen_mask = _canny_strong_blur(
+                gen_gray,
+                self.canny_blur_ksize,
+                self.canny_blur_sigma,
+                self.canny_thresh_low,
+                self.canny_thresh_high,
+            )
+            stage1_label = "Canny"
+        else:
+            gen_mask = _binarize_gen_centerline(
+                gen_gray,
+                self.canny_blur_ksize,
+                self.canny_blur_sigma,
+            )
+            stage1_label = "binarize(centerline)"
         diagnostics["stage1_canny_pixels"] = int(gen_mask.sum() // 255)
         if debug_path is not None:
             cv2.imwrite(
@@ -596,10 +633,10 @@ class Vectorizer:
                 _to_white_bg_black_lines(gen_mask),
             )
         if self.verbose:
+            px = diagnostics["stage1_canny_pixels"]
             log.info(
-                "[vectorizer] stage1 Canny: line_px=%d (%.2f%%)",
-                diagnostics["stage1_canny_pixels"],
-                diagnostics["stage1_canny_pixels"] / (h * w) * 100,
+                "[vectorizer] stage1 %s: line_px=%d (%.2f%%)",
+                stage1_label, px, px / (h * w) * 100,
             )
 
         # ステップ 2: 差分検出 (user_image があるとき)
