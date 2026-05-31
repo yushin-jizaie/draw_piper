@@ -224,7 +224,8 @@ def find_dispatcher_variants(sketch_id: str) -> list:
                 r = f"disp:{base.name[5:]} / {seed_dir.name}"
                 out.append({
                     "route": r,
-                    "label": f"disp {seed_dir.name}{label_extra}",
+                    # disp dir 名 (preset 等) も含めて、 どの生成設定かを明示。
+                    "label": f"{base.name[5:]} / {seed_dir.name}{label_extra}",
                     "strokes_png": f"{RAW_BASE}/{png.relative_to(_ROOT)}",
                     "skeleton_png": skeleton_png_url(sketch_id, r, seed),
                     "rel_path": str(seed_dir.relative_to(_ROOT)),
@@ -436,10 +437,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
   .panel.selected { border-color: var(--selected);
                     box-shadow: 0 0 0 3px rgba(44, 204, 119, 0.25); }
-  .panel .panel-label { font-size: 10px; opacity: 0.8;
+  .panel .panel-label { font-size: 10px; opacity: 0.85;
                         text-align: center; margin-bottom: 4px;
-                        white-space: nowrap; overflow: hidden;
-                        text-overflow: ellipsis; line-height: 1.2; }
+                        white-space: normal; overflow-wrap: anywhere;
+                        word-break: break-word; line-height: 1.25;
+                        min-height: 2.4em; }
   .panel img, .panel canvas { width: 100%; height: auto; display: block;
                 background: #fff; border-radius: 4px; aspect-ratio: 1; }
   .panel.input img { aspect-ratio: 1; }
