@@ -143,6 +143,8 @@ INPUTS = [
     # 2026-05-31: literal-only / shift 経路の単純図形テスト (円)。
     # align/shift v1-3/gacha は無いので、 disp_* auto-detect だけが候補になる。
     ("circle",           "sketch_variations/_inputs/circle.png",           "object"),
+    # 2026-05-31: 縦長(704x1472)入力での生成テスト (balanced prompt)。
+    ("portrait_person",  "sketch_variations/_inputs/portrait_person.png",  "character"),
 ]
 
 
