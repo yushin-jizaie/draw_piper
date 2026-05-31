@@ -529,9 +529,12 @@ const DATE_FILTER_KEY = "draw_piper_date_filter";
       ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}` : d;
     dateFilterEl.appendChild(opt);
   }
-  // 復元
-  const saved = localStorage.getItem(DATE_FILTER_KEY) || "all";
-  dateFilterEl.value = saved;
+  // 既定はアクセス時に「最新日付」 を表示。 過去に特定日付を選んでいて
+  // それがまだ存在すればそれを優先 (= 明示選択は維持)。 saved が無い / "all" /
+  // 既に消えた日付なら最新日付にフォールバック。
+  const latest = sorted[0] || "all";
+  const saved = localStorage.getItem(DATE_FILTER_KEY);
+  dateFilterEl.value = (saved && sorted.includes(saved)) ? saved : latest;
 })();
 
 function totalSelected() {
@@ -653,8 +656,13 @@ function render() {
     inp.innerHTML = `<div class="panel-label">INPUT</div>
                      <img src="${entry.input_png}" loading="lazy">`;
     grid.appendChild(inp);
+    // 表示順: 日付 (YYYYMMDD) 降順 = 最新順。 同日付は元の順序を維持。
+    const ordered = filtered
+      .map((c, i) => [c, i])
+      .sort((a, b) => ((b[0].date || "").localeCompare(a[0].date || "")) || (a[1] - b[1]))
+      .map(([c]) => c);
     // 候補 N つ (Canvas で input overlay 合成)
-    filtered.forEach((cand) => {
+    ordered.forEach((cand) => {
       const p = document.createElement("div");
       p.className = "panel candidate";
       // 2026-05-30 v3.2: 新規 disp_* (新 dispatcher) 候補に NEW バッジ
