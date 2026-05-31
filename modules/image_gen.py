@@ -250,6 +250,25 @@ MODEL_PRESETS: dict[str, dict] = {
         "img2img_strength": 0.0,    # text2img mode (0.65 → 0.0)
         "inpaint_mode": False,
     },
+    # 2026-05-31: object と同じ「輪郭線 lineart + CN0.65 で入力追従」 だが
+    # "no humans" を外し、 人・動物のキャラも輪郭線で生成できるようにした版。
+    # text2img(CN0) は塗りつぶし→中心線化でメッシュ化する問題があったため、
+    # キャラも CN付き輪郭線で出すのが robot 向き (細い輪郭 → きれいな strokes)。
+    "illustrious_v2_lineart": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.65,
+        "style_hint": (
+            "monochrome, lineart, sketch, ink illustration, "
+            "white_background, simple_background, clean outline, no fill"
+        ),
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.0,
+        "inpaint_mode": False,
+    },
     # 2026-05-29 (style-pool-rebalance branch): object preset + matsumoto LoRA。
     # 上記 _object に matsumoto_taiyo LoRA (scale 0.4) を載せた版。
     # ユーザー所感「Stage 2 (IP-Adapter) はもう不要、 Stage 1 を強化したい」 への対処。
