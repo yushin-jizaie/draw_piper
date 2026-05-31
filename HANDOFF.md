@@ -3,6 +3,14 @@
 夜間に 4 機能を実装・push 済み。 詳細設計は
 `docs/20260601_scatter_and_transparent_board.md`。
 
+## 🌙 夜間バッチ結果 (01:58 完了・push 済 ef8aec4)
+全11サンプル × 3パイプライン = **55候補を生成、 失敗ゼロ・空候補ゼロ**。
+- shift 11/11 ・ gacha 33/33 (×3 seed) ・ scatter 11/11
+- webapp に `overnight_{shift,gacha,scatter}_20260601_010657` 列が追加済
+- 確認: https://yushin-jizaie.github.io/draw_piper/selection/ (生成日 20260601 で絞り込み)
+- 再実行したい時: `bash scripts/overnight_batch.sh` (ログ logs/overnight_batch_*.log)
+- 朝やること: 候補を眺めて良い物を選定 → 実機描画へ
+
 ## 🔴 あなた(ユーザー)の判断待ち 4 件
 1. **線の色**: 透明ボードのマーカー色は? (黒/青/赤/他)
    → 今は GUI で `dark/black/blue/red/green` 選択可、 既定 `dark`。 実色を教えてくれれば既定変更。
