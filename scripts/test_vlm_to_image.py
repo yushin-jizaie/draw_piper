@@ -135,6 +135,7 @@ def run_one_cycle(
     prompt_base_template: str = None,
     prompt_fallback_template: str = None,
     prompt_confidence_threshold: float = 0.3,
+    literal_only: bool = False,
 ) -> dict:
     cycle_dir.mkdir(parents=True, exist_ok=True)
     timing: dict = {"cycle_dir": str(cycle_dir), "snapshots": []}
@@ -154,11 +155,27 @@ def run_one_cycle(
     timing["vlm_load_s"] = time.time() - t0
     timing["snapshots"].append(gpu_mem_snapshot("after vlm load", log))
 
-    log.info("---- STAGE 2: VLM predict_intent ----")
-    t0 = time.time()
-    guess = vlm.predict_intent(in_copy)
-    timing["vlm_predict_s"] = time.time() - t0
-    timing["snapshots"].append(gpu_mem_snapshot("after vlm predict", log))
+    if literal_only:
+        # テスト用: カード推論をバイパスし、「何に見えるか」 のリテラル記述を
+        # そのまま生成 prompt の subject に使う (build_prompt が literal_en を
+        # fallback 経路で採用)。 適切なストロークが出るかの検証用。
+        log.info("---- STAGE 2: VLM describe_literal (--literal-only) ----")
+        t0 = time.time()
+        literal = vlm.describe_literal(in_copy)
+        guess = TopicGuess(
+            confidence=0.0,
+            literal_en=literal,
+            raw_text=f"(literal-only) {literal}",
+        )
+        timing["vlm_predict_s"] = time.time() - t0
+        log.info(f"  literal_en    : {literal!r} (card 推論スキップ)")
+        timing["snapshots"].append(gpu_mem_snapshot("after vlm literal", log))
+    else:
+        log.info("---- STAGE 2: VLM predict_intent ----")
+        t0 = time.time()
+        guess = vlm.predict_intent(in_copy)
+        timing["vlm_predict_s"] = time.time() - t0
+        timing["snapshots"].append(gpu_mem_snapshot("after vlm predict", log))
 
     log.info(f"  subject       : {guess.subject.ja} ({guess.subject.en})")
     log.info(f"  location      : {guess.location.ja} ({guess.location.en})")
@@ -232,9 +249,14 @@ def run_one_cycle(
 
     log.info("---- STAGE 9: Vectorizer (CPU, no GPU load) ----")
     t0 = time.time()
+    # --literal-only テストでは生成画像の「全ストローク」を抽出する
+    # (user_image=None)。 通常の diff (生成 − 入力) は、 生成が入力をそのまま
+    # 再現したとき (例: 円→円) に打ち消し合って 0 stroke になるため、
+    # 「適切なストロークが出るか」 の検証では full 抽出が適切。
+    vec_user_image = None if literal_only else in_copy
     vec_result = vectorizer.vectorize(
         generated_image=generated,
-        user_image=in_copy,
+        user_image=vec_user_image,
         debug_dir=cycle_dir / "vec_debug",
     )
     timing["vectorize_s"] = time.time() - t0
@@ -314,6 +336,12 @@ def main() -> int:
     parser.add_argument(
         "--camera-countdown", type=int, default=3,
         help="--use-camera 時、各サイクルのキャプチャ前カウントダウン秒数 (0 で無効)",
+    )
+    parser.add_argument(
+        "--literal-only", action="store_true",
+        help="テスト用: カード推論 (predict_intent) をバイパスし、 VLM の "
+             "「何に見えるか」 リテラル記述 (describe_literal) をそのまま "
+             "生成 prompt の subject に使う。 適切なストロークが出るかの検証用。",
     )
     parser.add_argument(
         "--no-warp", action="store_true",
@@ -495,6 +523,7 @@ def main() -> int:
                 prompt_fallback_template=ig_cfg.get("fallback_template"),
                 prompt_confidence_threshold=float(
                     ig_cfg.get("confidence_threshold", 0.3)),
+                literal_only=args.literal_only,
             )
             if capture_elapsed is not None:
                 timing["camera_capture_s"] = capture_elapsed

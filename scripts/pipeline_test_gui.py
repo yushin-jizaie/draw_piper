@@ -65,6 +65,9 @@ class PipelineTestGUI:
         self.var_camera_device = tk.IntVar(value=0)
         self.var_sdxl_steps = tk.IntVar(value=4)
         self.var_seed = tk.StringVar(value="")  # 空 = 自動
+        # literal-only: カード推論をやめ「何に見えるか」 を生成 prompt に使い、
+        # vectorize も full 抽出 (diff しない) でテストする。
+        self.var_literal_only = tk.BooleanVar(value=False)
 
         self._build_ui()
 
@@ -145,6 +148,10 @@ class PipelineTestGUI:
                   ).pack(side=tk.LEFT, padx=(8, 2))
         tk.Entry(run_frame, textvariable=self.var_seed, width=8
                  ).pack(side=tk.LEFT, padx=2)
+        ttk.Checkbutton(
+            run_frame, text="literal (カード推論なし)",
+            variable=self.var_literal_only,
+        ).pack(side=tk.LEFT, padx=(8, 2))
         self.btn_run = ttk.Button(run_frame,
             text="▶ 実行 (VLM → ImageGen → Vectorizer)",
             command=self.on_run_pipeline, width=40)
@@ -533,6 +540,8 @@ class PipelineTestGUI:
             "--cycles", "1",
             "--log-dir", str(LOGS_DIR),
         ] + seed_arg
+        if self.var_literal_only.get():
+            cmd.append("--literal-only")
         self.log(f"subprocess 起動: {' '.join(cmd)}")
         t0 = time.time()
         try:

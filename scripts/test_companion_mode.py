@@ -116,10 +116,17 @@ def main() -> int:
                     help="[shift] VLM の companion 提案 prompt パターン: "
                          "v1/v2/v3 = 単独使用、 "
                          "best (default) = 3 つ全部呼んで VLM judge で 1 つに絞る")
+    ap.add_argument("--literal-only", action="store_true",
+                    help="[shift] テスト用: companion 推論をやめ、 VLM の "
+                         "describe_literal (何に見えるか、 例: circle) を subject に "
+                         "して shift 配置する (入力と別物ではなく、 入力そのものを "
+                         "空白地帯に描く)。 適切なストロークが出るかの検証用。")
     args = ap.parse_args()
 
-    if not args.auto_prompt and not args.prompt:
-        ap.error("either --prompt or --auto-prompt is required")
+    if not args.auto_prompt and not args.prompt and not args.literal_only:
+        ap.error("either --prompt, --auto-prompt, or --literal-only is required")
+    if args.literal_only and args.placement != "shift":
+        ap.error("--literal-only は placement=shift 専用です")
 
     args.output.mkdir(parents=True, exist_ok=True)
 
@@ -143,8 +150,9 @@ def main() -> int:
     #   shift  → COMPANION_TEMPLATE  (Matsumoto companion = M16 object)
     #   align  → CHARACTER_TEMPLATE  (M15/M16 character = 2-stage Plan E)
     # ============================================================
-    if args.auto_prompt:
-        print(f"[companion] Step 0: --auto-prompt → VLM で prompt 自動生成 "
+    if args.auto_prompt or args.literal_only:
+        mode = "literal-only" if args.literal_only else "auto-prompt"
+        print(f"[companion] Step 0: --{mode} → VLM で prompt 自動生成 "
               f"(placement={args.placement})")
         from modules.vlm import VLM
         from modules.prompt_builder import (
@@ -163,8 +171,22 @@ def main() -> int:
         # Phase 1 (2026-05-30): VLM 構図 refinement (--with-composition フラグ時)
         composition_refinement = ""
         with VLM(verbose=True) as vlm:
-            guess = vlm.predict_intent(sketch_img)
-            if args.with_composition:
+            if args.literal_only:
+                # テスト用: companion 推論をやめ、 「何に見えるか」 を subject に。
+                # 円→"circle" を空白地帯に shift 配置する。
+                companion_subject = vlm.describe_literal(sketch_img)
+                companion_candidates = [("literal", companion_subject)]
+                companion_judge_idx = 0
+                guess = None
+                print(f"[companion]   literal subject: {companion_subject!r} "
+                      f"(companion 推論スキップ)")
+                # 残りの predict_intent / companion 推論 / composition は skip
+                # (literal_only は shift 専用)
+                _skip_rest = True
+            else:
+                _skip_rest = False
+                guess = vlm.predict_intent(sketch_img)
+            if not _skip_rest and args.with_composition:
                 _fn = getattr(vlm, "predict_composition_refinement", None)
                 if callable(_fn):
                     try:
@@ -174,7 +196,7 @@ def main() -> int:
                 else:
                     print("[companion] predict_composition_refinement not found "
                           "(skip --with-composition)")
-            if args.placement == "shift":
+            if not _skip_rest and args.placement == "shift":
                 if args.companion_prompt_version == "best":
                     # 3 候補生成 → VLM judge で 1 つ選定
                     for v in ("v1", "v2", "v3"):
@@ -196,8 +218,9 @@ def main() -> int:
                     companion_judge_idx = 0
         # VLM unload は with の __exit__ で。 SDXL を subprocess で
         # 起動するためここで VRAM を解放しておく必要がある。
-        print(f"[companion]   guess: {guess.to_text()} "
-              f"(conf={guess.confidence:.2f})")
+        if guess is not None:
+            print(f"[companion]   guess: {guess.to_text()} "
+                  f"(conf={guess.confidence:.2f})")
         comp_frag = f", {composition_refinement}" if composition_refinement else ""
         if args.placement == "align":
             base_tpl, fb_tpl = CHARACTER_TEMPLATE, CHARACTER_FALLBACK_TEMPLATE
@@ -213,6 +236,18 @@ def main() -> int:
                 args.prompt = f"{head}{comp_frag},{rest}"
             else:
                 args.prompt = base_prompt
+        elif args.literal_only:   # placement == "shift" + literal-only
+            # literal (例: circle) は単純図形。 companion 用の重いテンプレ
+            # (「20-40 strokes」「filling 80%」「discrete contours per element」 等) は
+            # 単純図形には過剰指定で SDXL が崩壊し 真っ白 を出す (実測)。
+            # → シンプルな線画 prompt を使う。
+            print(f"[companion]   literal subject: {companion_subject}")
+            args.prompt = (
+                f"a simple line drawing of a {companion_subject}, "
+                f"large central subject, bold thick contours, "
+                f"single continuous black line on plain white background, "
+                f"clean smooth strokes, minimalist illustration, no shading"
+            )
         else:   # placement == "shift"
             print(f"[companion]   companion subject (VLM 提案): {companion_subject}")
             # shift モード: 入力主題ではなく companion subject を SDXL に渡す
@@ -239,10 +274,11 @@ def main() -> int:
         ) if companion_candidates else "  (none)"
         (args.output / "00_auto_prompt.txt").write_text(
             f"placement={args.placement}\n"
-            f"subject_ja={guess.subject.ja}\n"
-            f"location_ja={guess.location.ja}\n"
-            f"action_ja={guess.action.ja}\n"
-            f"confidence={guess.confidence:.3f}\n"
+            f"mode={mode}\n"
+            f"subject_ja={guess.subject.ja if guess else '(literal-only)'}\n"
+            f"location_ja={guess.location.ja if guess else ''}\n"
+            f"action_ja={guess.action.ja if guess else ''}\n"
+            f"confidence={guess.confidence if guess else 0.0:.3f}\n"
             f"companion_subject={companion_subject or ''}\n"
             f"companion_prompt_version={args.companion_prompt_version}\n"
             f"companion_candidates:\n{candidates_text}\n"
