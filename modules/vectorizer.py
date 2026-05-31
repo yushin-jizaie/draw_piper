@@ -27,6 +27,7 @@ See:
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -63,6 +64,11 @@ DEFAULT_MIN_PIXELS = 40
 DEFAULT_CLOSE_KSIZE = 3
 DEFAULT_APPROX_EPSILON = 2.0
 DEFAULT_MIN_LENGTH = 15
+# 中心線 skeleton の断片を端点でつなぐ最大ギャップ (px)。 0 で無効。
+# 断片化 (極短 stroke 過多 / stroke 数過多) を緩和し Frida 適合度を上げる。
+# 20: 木(104→75本)など過剰検出を warn0 にしつつ、 顔の近接特徴は誤結合せず保持
+# (実測でバランス確認)。
+DEFAULT_MERGE_GAP = 20
 
 
 log = logging.getLogger(__name__)
@@ -459,8 +465,60 @@ def _trace_skeleton(mask: np.ndarray) -> List[np.ndarray]:
     return polylines
 
 
+def _merge_polylines(
+    polylines: List[np.ndarray], max_gap: float
+) -> List[np.ndarray]:
+    """端点が max_gap px 以内の polyline 同士を貪欲に連結して 1 本にまとめる。
+
+    中心線 skeleton は途切れやすく、 細かい断片が大量に出る。 それを端点で
+    つなぎ直すと、 stroke 数が減り 1 本あたりの点数が増えて Frida 観点
+    (極短 stroke 過多 / 平均点数不足 / stroke 数過多) が改善する。
+    各 polyline は両端どちらでも接続でき、 必要なら反転する。
+    """
+    if max_gap <= 0 or len(polylines) <= 1:
+        return polylines
+
+    def _d(a, b) -> float:
+        return math.hypot(float(a[0]) - float(b[0]), float(a[1]) - float(b[1]))
+
+    polys = [p for p in polylines if len(p) > 0]
+    used = [False] * len(polys)
+    out: List[np.ndarray] = []
+    for i in range(len(polys)):
+        if used[i]:
+            continue
+        used[i] = True
+        chain = [tuple(pt) for pt in polys[i]]
+        extended = True
+        while extended:
+            extended = False
+            head, tail = chain[0], chain[-1]
+            best = None  # (j, position, segment_points, dist)
+            for j in range(len(polys)):
+                if used[j]:
+                    continue
+                seg = [tuple(pt) for pt in polys[j]]
+                s, e = seg[0], seg[-1]
+                # tail に append (s 近い=順, e 近い=逆)
+                for d, where, sg in (
+                    (_d(tail, s), "tail", seg),
+                    (_d(tail, e), "tail", seg[::-1]),
+                    (_d(head, e), "head", seg),
+                    (_d(head, s), "head", seg[::-1]),
+                ):
+                    if d <= max_gap and (best is None or d < best[3]):
+                        best = (j, where, sg, d)
+            if best is not None:
+                j, where, sg, _dd = best
+                chain = chain + sg if where == "tail" else sg + chain
+                used[j] = True
+                extended = True
+        out.append(np.array(chain, dtype=np.int32))
+    return out
+
+
 def _vectorize_polylines(
-    mask: np.ndarray, epsilon: float, min_length: int
+    mask: np.ndarray, epsilon: float, min_length: int, merge_gap: float = 0.0
 ) -> List[np.ndarray]:
     """skeleton trace → approxPolyDP でポリラインに変換し、長さ < min_length を捨てる。
 
@@ -474,6 +532,10 @@ def _vectorize_polylines(
     回帰があった (skeleton trace 化で頂点が正しく減ったため顕在化)。
     """
     raw_polylines = _trace_skeleton(mask)
+    # 断片を端点で連結 (Frida 観点: 極短 stroke 過多 / stroke 数過多を緩和)。
+    # min_length / approxPolyDP の前に行うことで、 連結後の長い弧は点数も増える。
+    if merge_gap and merge_gap > 0:
+        raw_polylines = _merge_polylines(raw_polylines, merge_gap)
     polylines: List[np.ndarray] = []
     for poly in raw_polylines:
         # 生トレース点数 = 1px skeleton をたどった点数 ≒ 弧長(px)。
@@ -530,6 +592,7 @@ class Vectorizer:
         close_ksize: int = DEFAULT_CLOSE_KSIZE,
         approx_epsilon: float = DEFAULT_APPROX_EPSILON,
         min_length: int = DEFAULT_MIN_LENGTH,
+        merge_gap: float = DEFAULT_MERGE_GAP,
         binarize_method: str = "adaptive",
         adaptive_block_size: int = 51,
         adaptive_c: int = 10,
@@ -551,6 +614,7 @@ class Vectorizer:
         self.close_ksize = close_ksize
         self.approx_epsilon = approx_epsilon
         self.min_length = min_length
+        self.merge_gap = merge_gap
         self.binarize_method = binarize_method
         self.adaptive_block_size = adaptive_block_size
         self.adaptive_c = adaptive_c
@@ -711,9 +775,9 @@ class Vectorizer:
                 diagnostics["stage5_skeleton_pixels"],
             )
 
-        # ステップ 6: approxPolyDP ポリライン化 + 長さフィルタ
+        # ステップ 6: 断片連結 + approxPolyDP ポリライン化 + 長さフィルタ
         polylines_np = _vectorize_polylines(
-            skel, self.approx_epsilon, self.min_length
+            skel, self.approx_epsilon, self.min_length, self.merge_gap
         )
         strokes = _polylines_to_strokes(polylines_np)
 
