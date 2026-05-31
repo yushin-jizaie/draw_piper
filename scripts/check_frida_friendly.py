@@ -42,9 +42,9 @@ def frida_friendly(strokes: list, canvas_w: int = 768) -> list:
     avg_pts = n_pts / max(n, 1)
 
     # 1) stroke 数
-    if n < 5:
-        warns.append(f"stroke 数 {n} が少なすぎる (TSP 並び替えの恩恵ゼロ)")
-    elif n > 80:
+    # 「少なすぎ」 は警告しない: 円=1 本、 単純な companion 等は少数 stroke が
+    # 正常で、 TSP の恩恵が無いだけで描画上の問題ではない (n==0 は冒頭で警告済み)。
+    if n > 80:
         warns.append(f"stroke 数 {n} が多すぎる (接続線 overhead 大)")
 
     # 2) stroke あたり点数
@@ -92,7 +92,9 @@ def frida_friendly(strokes: list, canvas_w: int = 768) -> list:
     median_gap = median(nn) if nn else 0.0
     # 768 canvas で 80px ≈ 10% 程度をクラスタ閾値の目安
     cluster_thresh = canvas_w * 80 / 768
-    if median_gap > cluster_thresh:
+    # stroke が少ない単純図形では look-ahead 最適化自体が無意味なので、
+    # 十分な stroke 数 (>= 8) のときだけクラスタ判定する。
+    if n >= 8 and median_gap > cluster_thresh:
         warns.append(
             f"stroke 間中央距離 {median_gap:.0f}px > {cluster_thresh:.0f}px "
             "(クラスタ化されてない = look-ahead 無効)")
