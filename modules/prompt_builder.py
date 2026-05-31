@@ -44,25 +44,27 @@ _FALLBACK_TEMPLATE = (
 
 
 COMPANION_TEMPLATE = (
-    "a simple bold Matsumoto-style {subject_en} {action_en} {location_en}, "
-    "manga style, expressive ink lines, "
+    "a stylish Matsumoto-style {subject_en} {action_en} {location_en}, "
+    # 2026-05-31: 線の細密さより「構図・デザイン性」 を重視。 簡潔な線でも
+    # 魅力的に見えるよう、 dynamic な構図 / 大きな主題 / 大胆なデザインを明示。
+    "dynamic striking composition, appealing bold design, "
+    "large subject filling the frame, interesting angle, "
+    "manga style, bold confident ink lines, "
     "single continuous black line on plain white background, "
     "clean smooth strokes, illustrative, "
     # Frida 適合: discrete contours + ハッチング禁止 + 20-40 stroke 目安
     # (docs/frida_stroke_guideline.md)
     "discrete clean contours per element, no shading, "
-    "no hatching, no cross-hatching, minimal simple bold lines, "
-    "low complexity, no fine detail, no intricate texture, "
-    "approximately 8 to 20 separate strokes"
+    "no hatching, no cross-hatching, approximately 20 to 40 separate strokes"
 )
 
 COMPANION_FALLBACK_TEMPLATE = (
-    "a simple bold Matsumoto-style illustration, "
+    "a stylish Matsumoto-style illustration, "
+    "appealing bold design, dynamic composition, "
     "manga style, expressive ink lines, "
     "single continuous black line on plain white background, "
     "clean smooth strokes, discrete clean contours per element, "
-    "no shading, no hatching, no cross-hatching, "
-    "minimal simple bold lines, low complexity, no fine detail, no intricate texture"
+    "no shading, no hatching, no cross-hatching"
 )
 
 
@@ -71,23 +73,22 @@ COMPANION_FALLBACK_TEMPLATE = (
 # style ref で 松本タッチを後段の Stage 2 で重ねる。
 CHARACTER_TEMPLATE = (
     "{subject_en} {action_en} {location_en}, "
-    "manga style character, dynamic pose, expressive ink lines, "
-    "minimal clean lineart, single continuous black line on plain white background, "
+    # 2026-05-31: 構図・デザイン性重視。 簡潔な線でも魅力的に。
+    "manga style character, dynamic striking pose, appealing bold design, "
+    "interesting angle, bold confident ink lines, clean lineart, "
+    "single continuous black line on plain white background, "
     "clean smooth strokes, "
     # Frida 適合 (docs/frida_stroke_guideline.md)
     "discrete clean contours per element, no shading, "
-    "no hatching, no cross-hatching, minimal simple bold lines, "
-    "low complexity, no fine detail, no intricate texture, "
-    "approximately 8 to 20 separate strokes"
+    "no hatching, no cross-hatching, approximately 20 to 40 separate strokes"
 )
 
 CHARACTER_FALLBACK_TEMPLATE = (
     "1boy, solo, young boy with full body, messy hair, simple t-shirt, "
     "manga style character, dynamic pose, expressive ink lines, "
-    "minimal clean lineart, single continuous black line on plain white background, "
-    "clean smooth strokes, discrete clean contours per element, "
-    "no shading, no hatching, no cross-hatching, "
-    "minimal simple bold lines, low complexity, no fine detail, no intricate texture"
+    "bold confident lineart, single continuous black line on plain white background, "
+    "appealing bold design, clean smooth strokes, discrete clean contours per element, "
+    "no shading, no hatching, no cross-hatching"
 )
 
 
