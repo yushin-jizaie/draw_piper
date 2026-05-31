@@ -1,0 +1,29 @@
+{
+  "prompt": "face, manga style character, dynamic striking pose, appealing bold design, interesting angle, bold confident ink lines, clean lineart, single continuous black line on plain white background, clean smooth strokes, discrete clean contours per element, no shading, no hatching, no cross-hatching, approximately 20 to 40 separate strokes",
+  "negative_prompt": "color, colored, blue background, cyan, sky, gradient, hatching, crosshatch, screentone, halftone, dot pattern, filled background, paper texture, scribble, sketchy, shading, gray, sepia, watermark, signature, text, frame, border, blurry, noise, jpeg artifacts",
+  "seed": 59628,
+  "guide_image": "sketch_variations/_inputs/F_angry_face.png",
+  "presets": [
+    {
+      "name": "illustrious_v2_inpaint",
+      "config": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": true,
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        "inpaint_strength": 1.0
+      },
+      "style_hint": "monochrome, greyscale, lineart, sketch, white_background, simple_background",
+      "elapsed_load_s": 5.77,
+      "elapsed_gen_s": 24.28,
+      "output_png": "illustrious_v2_inpaint.png",
+      "status": "ok"
+    }
+  ]
+}

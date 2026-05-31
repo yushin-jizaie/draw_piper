@@ -1,0 +1,7 @@
+category=character
+subject_ja=人
+location_ja=不明
+action_ja=不明
+confidence=0.900
+composition_refinement=
+stage1_prompt=person, manga style character, dynamic striking pose, appealing bold design, interesting angle, bold confident ink lines, clean lineart, single continuous black line on plain white background, clean smooth strokes, discrete clean contours per element, no shading, no hatching, no cross-hatching, approximately 20 to 40 separate strokes
