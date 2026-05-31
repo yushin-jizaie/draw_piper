@@ -188,11 +188,17 @@ def find_dispatcher_variants(sketch_id: str) -> list:
             label_extra = f": {comp_phrase}" if comp_phrase else (
                 f": {comp}" if comp else "")
             r = f"disp:{base.name[5:]} / {route}"
+            # skeleton: 同 dir に vec_debug/06_strokes.png があればこのブランチの
+            # それを使う (robot-input-set ブランチに無い circle 等でも表示可能)。
+            skel_local = sub / "vec_debug" / "06_strokes.png"
+            skel_png = (f"{RAW_BASE}/{skel_local.relative_to(_ROOT)}"
+                        if skel_local.exists()
+                        else skeleton_png_url(sketch_id, r))
             out.append({
                 "route": r,
                 "label": f"disp {route}{label_extra}",
                 "strokes_png": f"{RAW_BASE}/{png.relative_to(_ROOT)}",
-                "skeleton_png": skeleton_png_url(sketch_id, r),
+                "skeleton_png": skel_png,
                 "rel_path": str(sub.relative_to(_ROOT)),
                 "companion": comp or comp_phrase,
                 "frida": frida_info(sketch_id, r),
