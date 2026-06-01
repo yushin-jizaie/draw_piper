@@ -155,18 +155,20 @@ class StrokePicker(tk.Toplevel):
         - "📁 <folder>"                   -> sketch_variations 配下の各フォルダ
         起動時に渡された logs_dir がどれにも一致しなければ先頭に追加する。
         """
+        # NOTE: ラベルに絵文字を入れない。 Tk(Xft) のカラー絵文字レイアウトで
+        # ttk ウィジェット生成時に segfault するため (実機で確認)。
         srcs: "dict[str, Path]" = {}
-        srcs["🗂 logs/ (生成ログ)"] = DEFAULT_LOGS_DIR
+        srcs["logs/ (生成ログ)"] = DEFAULT_LOGS_DIR
         if SKETCH_VARIATIONS_DIR.is_dir():
-            srcs["📁 sketch_variations/ (全体)"] = SKETCH_VARIATIONS_DIR
+            srcs["sketch_variations/ (全体)"] = SKETCH_VARIATIONS_DIR
             subdirs = [d for d in SKETCH_VARIATIONS_DIR.iterdir()
                        if d.is_dir() and not d.name.startswith("_")]
             for d in sorted(subdirs, key=lambda p: p.stat().st_mtime,
                             reverse=True):
-                srcs[f"📁 {d.name}"] = d
+                srcs[f"sv/ {d.name}"] = d
         # 明示指定された logs_dir がマップに無ければ先頭に積む
         if self.logs_dir not in srcs.values():
-            srcs = {f"📂 {self.logs_dir.name}": self.logs_dir, **srcs}
+            srcs = {f"dir/ {self.logs_dir.name}": self.logs_dir, **srcs}
         return srcs
 
     def _on_source_change(self, *_):
@@ -176,7 +178,7 @@ class StrokePicker(tk.Toplevel):
             return
         self.logs_dir = Path(path)
         if hasattr(self, "lbl_src_path"):
-            self.lbl_src_path.config(text=f"📁 {self.logs_dir}")
+            self.lbl_src_path.config(text=f"{self.logs_dir}")
         self._refresh()
 
     @staticmethod
@@ -192,7 +194,7 @@ class StrokePicker(tk.Toplevel):
         # source 選択行 (プルダウン)
         src_row = ttk.Frame(self, padding=(8, 8, 8, 0))
         src_row.pack(fill=tk.X)
-        ttk.Label(src_row, text="📂 参照元:",
+        ttk.Label(src_row, text="参照元:",
                   font=("Monaco", 10, "bold")).pack(side=tk.LEFT, padx=(0, 4))
         self.cb_source = ttk.Combobox(
             src_row, textvariable=self.var_source,
@@ -203,14 +205,14 @@ class StrokePicker(tk.Toplevel):
         # set は <<ComboboxSelected>> を発火しないので _refresh は走らない。
         if self._init_source_label:
             self.var_source.set(self._init_source_label)
-        self.lbl_src_path = ttk.Label(src_row, text=f"📁 {self.logs_dir}",
+        self.lbl_src_path = ttk.Label(src_row, text=f"{self.logs_dir}",
                                       foreground="#888")
         self.lbl_src_path.pack(side=tk.LEFT, padx=(10, 0))
 
         # toolbar
         tb = ttk.Frame(self, padding=8)
         tb.pack(fill=tk.X)
-        ttk.Label(tb, text="🔍 フィルタ:").pack(side=tk.LEFT)
+        ttk.Label(tb, text="フィルタ:").pack(side=tk.LEFT)
         ttk.Entry(tb, textvariable=self.var_filter, width=24
                   ).pack(side=tk.LEFT, padx=4)
         self.var_filter.trace_add("write", lambda *_: self._render())
@@ -221,7 +223,7 @@ class StrokePicker(tk.Toplevel):
         ttk.Radiobutton(tb, text="古い順", variable=self.var_sort,
                          value="oldest", command=self._render
                          ).pack(side=tk.LEFT)
-        ttk.Button(tb, text="🔄 更新", command=self._refresh, width=8
+        ttk.Button(tb, text="更新", command=self._refresh, width=8
                    ).pack(side=tk.RIGHT)
 
         # scrollable card grid
@@ -383,9 +385,9 @@ class StrokePicker(tk.Toplevel):
         items = self._filtered_entries()
         if not items:
             ttk.Label(self.inner,
-                       text=(f"❎ {self.logs_dir} 配下に "
+                       text=(f"{self.logs_dir} 配下に "
                              f"strokes*.json が見つかりません" if not self._entries
-                             else "❎ フィルタに一致するエントリなし"),
+                             else "フィルタに一致するエントリなし"),
                        foreground="#888", padding=20
                        ).pack(pady=40)
             return
@@ -421,7 +423,7 @@ class StrokePicker(tk.Toplevel):
         n_st = entry.get("n_strokes")
         n_lbl = f"  n={n_st}" if isinstance(n_st, int) else ""
         title = tk.Label(outer,
-                          text=f"📷 {ts}  {disp}{n_lbl}",
+                          text=f"{ts}  {disp}{n_lbl}",
                           bg="#ffffff", anchor="w",
                           font=("Monaco", 10, "bold"))
         title.pack(fill=tk.X, padx=4, pady=(4, 0))
@@ -506,7 +508,7 @@ class StrokePicker(tk.Toplevel):
             if self._key_for(e["cycle_dir"]) == key:
                 self.lbl_status.config(
                     text=f"選択中: {e['cycle_dir'].name}  "
-                         f"({e.get('subject', '?')})  → {e['cycle_dir']}")
+                         f"({e.get('subject', '?')})  -> {e['cycle_dir']}")
                 break
 
     def _double_click(self, key: str) -> None:
