@@ -766,9 +766,9 @@ function openModal(cand, entry){
       <div class="meta"><h3>${esc(cand.label||"")}</h3><dl>${fmtMeta(m, entry, cand)}</dl></div>
     </div>`;
   back.classList.add("open");
-  // portrait 比率 (704:1472) で合成。 framed は入力を contain 表示 (縦伸び防止)。
+  // portrait 比率 (704:1472) で合成。 入力は常に contain 表示 (正方形入力の縦伸び防止)。
   makeOverlay(document.getElementById("mComp"), entry.input_png, cand.strokes_png,
-              460, 962, m.input_fit);
+              460, 962, "contain");
 }
 function closeModal(){
   const back = document.getElementById("modalBack");
@@ -848,9 +848,8 @@ function render() {
                      ${fridaHtml}
                      <button class="zoom-btn" title="クリックで拡大表示">🔍 拡大</button>`;
       const cv = p.querySelector("canvas");
-      // 非同期で overlay 合成 (通常表示用)。 framed は入力を contain 表示。
-      makeOverlay(cv, entry.input_png, cand.strokes_png, 256, 256,
-                  (cand.meta || {}).input_fit);
+      // 非同期で overlay 合成 (通常表示用)。 入力は常に contain 表示 (縦伸び防止)。
+      makeOverlay(cv, entry.input_png, cand.strokes_png, 256, 256, "contain");
       // 選択 = チェックボックス (full render しない = 軽量)
       const chk = p.querySelector(".sel-chk");
       chk.addEventListener("change", () => {
