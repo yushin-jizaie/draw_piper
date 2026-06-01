@@ -77,6 +77,55 @@ FRAMED_PROMPT = {
 }
 
 
+def _place_input_aligned(strokes, inp_w, inp_h, gen_size, CW, CH):
+    """生成ガイド (square_pad した入力, gen_size 正方) 座標の strokes を、
+    入力が webapp に contain 表示される領域に写す。
+
+    生成は square_pad(入力) をガイドにしているので、 生成画像内の被写体は入力の
+    位置に対応する。 よって「ガイドの四角 → 入力の表示領域」 にそのまま写せば、
+    元画像と生成が重なる (bbox/重心の偏りに影響されない)。
+    """
+    G = max(inp_w, inp_h)
+    sp = gen_size / float(G)                 # square_pad の resize 縮尺
+    gx, gy = (G - inp_w) / 2.0 * sp, (G - inp_h) / 2.0 * sp  # ガイド内の入力content原点
+    gw = inp_w * sp                          # ガイド内の入力content幅
+    s = min(CW / float(inp_w), CH / float(inp_h))   # 入力の contain 表示縮尺
+    dw, dh = inp_w * s, inp_h * s
+    ox, oy = (CW - dw) / 2.0, (CH - dh) / 2.0
+    scale = dw / gw                          # ガイド→canvas 縮尺
+    return [[((x - gx) * scale + ox, (y - gy) * scale + oy) for x, y in st]
+            for st in strokes]
+
+
+def _place_at_centroid(strokes, target, cx, cy, CW, CH):
+    """strokes を長辺=target に拡縮し、 点群重心を (cx,cy) に合わせて配置。
+
+    bbox 中心でなく密度重心を入力中心に合わせるので、 生成内で被写体が隅に
+    寄った seed でも被写体 (密な部分) が中央に来やすい。 canvas からはみ出さ
+    ないよう最後に clamp。
+    """
+    from modules.stroke_transform import compute_strokes_bbox
+    gb = compute_strokes_bbox(strokes)
+    scale = target / max(gb[2], gb[3], 1)
+    sc = [[(x * scale, y * scale) for x, y in st] for st in strokes]
+    pts = [p for st in sc for p in st]
+    if not pts:
+        return sc
+    ccx = sum(p[0] for p in pts) / len(pts)
+    ccy = sum(p[1] for p in pts) / len(pts)
+    dx, dy = cx - ccx, cy - ccy
+    nb = compute_strokes_bbox([[(x + dx, y + dy) for x, y in st] for st in sc])
+    if nb[0] < 0:
+        dx -= nb[0]
+    if nb[1] < 0:
+        dy -= nb[1]
+    if nb[0] + nb[2] > CW:
+        dx -= (nb[0] + nb[2] - CW)
+    if nb[1] + nb[3] > CH:
+        dy -= (nb[1] + nb[3] - CH)
+    return [[(x + dx, y + dy) for x, y in st] for st in sc]
+
+
 def _save_candidate(out_dir, strokes, CW, CH, generated=None, meta=None):
     import numpy as np
     import cv2
@@ -180,45 +229,20 @@ def main() -> int:
         sh = MODEL_PRESETS.get(preset, {}).get("style_hint")
         prompt = f"{base_prompt}, {sh}" if sh else base_prompt
         sq = square_pad(inp, FRAMED_SIZE)
-        # 入力の被写体位置を contain-fit (アスペクト維持) で縦長キャンバスへ写して
-        # bbox を取得 → そこを 1.4 倍に拡大した領域に生成結果を合成する。
-        #  - contain: 正方形入力を縦長に引き伸ばさない (webapp も contain 表示)
-        #  - ×1.4: 生成画像が入力より小さく見える問題への対処 (大きめに置く)
-        from modules.input_prep import content_bbox
-        _bb = content_bbox(inp)
-        if _bb:
-            _W, _H = inp.size
-            _s = min(CW / _W, CH / _H)
-            _ox, _oy = (CW - _W * _s) / 2.0, (CH - _H * _s) / 2.0
-            bx, by = _bb[0] * _s + _ox, _bb[1] * _s + _oy
-            bw, bh = (_bb[2] - _bb[0]) * _s, (_bb[3] - _bb[1]) * _s
-            cx, cy = bx + bw / 2.0, by + bh / 2.0
-            # 出力は「入力の中心」 に「大きめの正方領域」 で配置する。
-            # 小さい入力 (顔等) でも canvas 幅の 0.82 以上を占めて大きく見える
-            # ようにしつつ、 入力が大きい時はそれに追従 (×1.4)、 canvas 幅で頭打ち。
-            side = min(max(max(bw, bh) * 1.4, 0.82 * CW), float(CW))
-            nx = max(0.0, min(cx - side / 2.0, CW - side))
-            ny = max(0.0, min(cy - side / 2.0, CH - side))
-            ib = (int(nx), int(ny), int(side), int(side))
-            use_bbox = True
-        else:
-            ib, use_bbox = None, False
+        _W, _H = inp.size
         gen = ImageGenerator.from_preset(
             preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
         gen.load()
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         framed_seeds = FRAMED_SEEDS[:args.n]
         print(f"[routed]   framed (旧lora02再現) preset={preset} "
-              f"input_bbox={ib if use_bbox else 'なし→中央'} prompt: {prompt}")
+              f"input={_W}x{_H} → contain表示領域に写像 prompt: {prompt}")
         for i, seed in enumerate(framed_seeds):
             raster = gen.generate(prompt, sq, seed=seed,
                                   negative_prompt=FRAMED_NEGATIVE)
             r = vec.vectorize(generated_image=raster, user_image=None)
-            if use_bbox:
-                gb = compute_strokes_bbox(r.strokes)
-                placed = transform_strokes(r.strokes, gb, ib, fit="contain")
-            else:
-                placed = place_strokes_centered(r.strokes, (CW, CH), fill=0.9)
+            # ガイドの四角 → 入力の contain 表示領域 に写す (元画像と重なる)
+            placed = _place_input_aligned(r.strokes, _W, _H, FRAMED_SIZE, CW, CH)
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
             meta = {"sid": args.sid, "route": "framed", "subject": subject,
                     "category": category, "preset": preset, "cn": None,
