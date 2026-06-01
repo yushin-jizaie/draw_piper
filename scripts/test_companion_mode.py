@@ -74,6 +74,9 @@ def main() -> int:
                     help="解像度。 'N' / 'WxH' 可。 省略時は panel aspect の "
                          "SDXL bucket (= ボードと同じ縦横比)。 shift モードの合成 "
                          "キャンバスと align モードの 2-stage 経路の両方に適用。")
+    ap.add_argument("--gen-resolution", type=int, default=768,
+                    help="[shift] companion 生成の正方形解像度 (既定 768)。 "
+                         "縦長生成の歪み回避のため canvas と分離。")
     # ============================================================
     # 位置合わせ vs 位置ずらし モード切替 (2026-05-28 統合)
     # shift = M16 object preset で生成 → cv2 blob で 入力の空白地帯に配置
@@ -134,7 +137,12 @@ def main() -> int:
     from modules.panel_geometry import parse_resolution, panel_image_resolution
     res_w, res_h = parse_resolution(args.resolution) or panel_image_resolution()
     res_arg = f"{res_w}x{res_h}"
-    print(f"[companion] resolution: {res_w}x{res_h}")
+    # companion (shift) は生成画像を「空白に置く」 だけなので、 生成は正方形で
+    # 行い contain で配置する。 縦長で生成すると被写体が引き伸ばされて歪む
+    # (2026-06-01 検証: 縦長生成の猫が細長く崩れた) 問題への対処。
+    gen_res_arg = f"{args.gen_resolution}x{args.gen_resolution}"
+    print(f"[companion] resolution: {res_w}x{res_h} (canvas) / "
+          f"{gen_res_arg} (companion 生成)")
 
     from PIL import Image
     from modules.vectorizer import Vectorizer
@@ -369,7 +377,7 @@ def main() -> int:
         "--prompt", args.prompt,
         "--presets", "illustrious_v2_object",
         "--seed", str(args.seed),
-        "--resolution", res_arg,
+        "--resolution", gen_res_arg,
         "--out", str(s1_dir),
     ], cwd=str(_ROOT)).returncode
     if res_code != 0:
