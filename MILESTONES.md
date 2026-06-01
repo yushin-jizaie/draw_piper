@@ -3,7 +3,7 @@
 > **目的**: 詰まった時に「正常な地点」へ素早く戻るための地図。
 > Git は履歴の倉庫、このファイルは *どこが正常か / どこで詰まったか* を一目で見る索引。
 >
-> 最終更新: 2026-05-28 (M17 下書き追記)
+> 最終更新: 2026-06-02 (N6 励磁喪失→キャリブ汚染→描画歪み の回帰と復旧を追記)
 
 ---
 
@@ -234,6 +234,27 @@
                      └ 実機検証 (生成 → vectorize → robot 描画で panel に
                        歪み無し確認) PASS で ● 確定 + ★ 現在地 更新。
                      └ ブランチ: claude/smooth-curve-rendering-e88Vb
+
+─ 壁面描画スレッド (full_dev GUI、 M10→M12 の続き) ──────────────────
+06-01〜02      ● 壁面描画 full_dev GUI 多数改善 (StrokePicker / 進捗プレビュー /
+              │   Frida depth傾き補正(実機改善確認) / 四隅微調整ウィザード /
+              │   3Dプレビュー / 末端負荷ボタン 等)  [piper_test: 9d7e18a]
+              │
+              ├──►  ✗ N6  円/螺旋/生成画像が全モードで歪む (数セッション難航)
+              │           症状: 横伸び+せん断+片当たり。 描画コード・座標変換・
+              │           TCP・リーチを疑うも全部空振り (FK/IK は正しい。
+              │           deg/rad 取り違えで自己誤診もした)
+              │           真因: **示教中のアーム重力保持が効かなくなる回帰** →
+              │           drag-teach/微調整中に arm がサグ → 四隅が下・内側に
+              │           ズレ記録 (伸びた上側ほど顕著) → キャリブ台形化 →
+              │           全描画が歪む。 入力データ(キャリブ)汚染が真因
+              │           対処: ① 壊れた canvas_calibration.yaml を committed
+              │                 版に git checkout で復元 (破損版は /tmp に backup)
+              │                 ② GUI 再起動 (center/contact は startup のみ
+              │                    読むので in-memory 古い値が残る)
+              │                 ③ 末端負荷(0xAE)で保持回復後に再キャリブ
+              │           ┗━ 復旧先 ▶ committed calibration + 再起動 + end-load
+              │              (描画コードは概ね無罪。 depth補正のみ実機改善確認)
 ```
 
 ---
@@ -274,6 +295,7 @@
 | N3 | 再発性 | CAN TX がサイレント失敗、コマンドが届かない | USB-CAN 物理層の不調 | `ip -details -statistics link show can0` でエラーカウンタを確認 → USB-CAN アダプタを抜き差し | `docs/20260522_1700_piper_jointctrl_solved.md`（教訓 5） |
 | N4 | 2026-05-23 17:00 | master mode 中、SDK の `GetArmJointMsgs` / `GetArmJointCtrl` が 0/stale。in-process の `python-can` Bus も同様に starve | 同一プロセス内の socketcan ソケットが master mode 中に受信不能化(原因不明だが再現性あり)。加えて 0x155-0x157 はアームが動いている時だけ broadcast される | `candump -ta can0` を subprocess 起動 → stdout を parse して 0x155-7 を decode。`MasterSlaveConfig(0xFC)` 後は電源リセット必須 | `docs/20260523_1820_master_mode_drag_teach_calibration.md` |
 | N5 | 2026-05-28 00:40 | orphan branch + git clean -fd で untracked file 一括 wipe (training/ raw 36+LoRA+dataset、 venv/ Python パッケージ、 calibration/*.yaml local mods) | orphan branch では .gitignore も untracked となり、 git clean -fd が gitignored 含めて全消去 | ① Trash の training.zip (708M, 16:54 時点) から raw/ + v0 LoRA + dataset を rsync 復元 ② venv は pip install で再構築 (torch 2.5.1+cu121 等) ③ `git fsck --unreachable` で dangling blobs から panel_frame.yaml / canvas_calibration.yaml の uncommitted 最新版を発見、 `recovered_yaml/` に保存後 採用 (M15 への復旧経路) | `docs/20260528_matsumoto_pursuit_plan.md`、 branch `recovered-yaml-20260528` |
+| N6 | 2026-06-01〜02 | 円/螺旋/生成画像が全モードで歪む (横伸び+せん断+片当たり) | **示教中のアーム重力保持(励磁)が効かなくなる回帰** → drag-teach/微調整中に arm がサグ → 四隅が下・内側にズレ記録 (伸びた上側ほど顕著) → キャリブが台形化 → 全描画が歪む。 描画コード/座標変換/TCP/リーチ/FK・IK は無罪 (deg/rad 取り違えで自己誤診あり) | ① 壊れた `calibration/canvas_calibration.yaml` を committed 版に `git checkout` 復元 (破損版は `/tmp/*_broken_*.yaml` に backup) ② GUI 完全再起動 (center/contact/xoff は startup のみ yaml 読込 = in-memory 古い値が残る。 起動ログ `Loaded defaults` で確認) ③ 末端負荷 effective=0xAE で保持回復後に再キャリブ | memory: [[piper_end_load_gravity_comp]] / [[drawing_distortion_diagnostic]]。 fix commit `9d7e18a` (p_travel)、 depth補正 `b4230be` |
 
 ---
 
