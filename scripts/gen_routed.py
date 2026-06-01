@@ -37,6 +37,18 @@ FRAMED_NEGATIVE = (
     "sketchy, shading, gray, sepia, watermark, signature, text, letters, words, "
     "frame, border, blurry, noise, jpeg artifacts")
 
+# framed の「クリーン版」: 高 CN の MistoLine で入力の線を太く忠実に追従し、
+# 白背景のクリーンな線画に (matsumoto inpaint の抽象化・墨背景・淡輪郭消失を
+# 回避、 2026-06-01 ユーザー要望)。 object preset は輪郭が淡く vectorize で消える
+# ため animagine mistoline (CN 0.9) を採用。
+CLEAN_PRESET = "animagine_xl_31_mistoline"
+CLEAN_PROMPT = ("a {subj}, clean bold black ink lineart, white background, simple, "
+                "single subject, no shading, no fill, no hatching")
+CLEAN_NEGATIVE = (
+    "hatching, crosshatch, screentone, halftone, shading, gray background, "
+    "dark background, filled background, scribble, sketchy, noise, text, letters, "
+    "watermark, signature, color, gradient, blurry")
+
 # stylize はカテゴリ別テンプレ (入力はキャラとは限らない: 動物・オブジェクトも有り)。
 #   person → ポーズ重視 / animal → 躍動重視 / object → 構図・デザイン重視
 STYLIZE_TEMPLATES = {
@@ -221,35 +233,49 @@ def main() -> int:
         # 単一ステージ生成: _mt プリセット (matsumoto LoRA 0.2) + Matsumoto-style
         # prompt。 IP-Adapter なし。 strokes を縦長中央配置。 正方形入力なので
         # 旧ランと同条件 → 同等の結果になるはず。
-        from modules.input_prep import square_pad, place_strokes_centered
+        import torch
+        import gc
+        from modules.input_prep import square_pad
         from modules.image_gen import MODEL_PRESETS
-        from modules.stroke_transform import compute_strokes_bbox, transform_strokes
-        preset = FRAMED_PRESET.get(category, "illustrious_v2_object_mt")
-        base_prompt = FRAMED_PROMPT[category].format(subj=subject)
-        sh = MODEL_PRESETS.get(preset, {}).get("style_hint")
-        prompt = f"{base_prompt}, {sh}" if sh else base_prompt
         sq = square_pad(inp, FRAMED_SIZE)
         _W, _H = inp.size
-        gen = ImageGenerator.from_preset(
-            preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
-        gen.load()
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         framed_seeds = FRAMED_SEEDS[:args.n]
-        print(f"[routed]   framed (旧lora02再現) preset={preset} "
-              f"input={_W}x{_H} → contain表示領域に写像 prompt: {prompt}")
-        for i, seed in enumerate(framed_seeds):
-            raster = gen.generate(prompt, sq, seed=seed,
-                                  negative_prompt=FRAMED_NEGATIVE)
-            r = vec.vectorize(generated_image=raster, user_image=None)
-            # ガイドの四角 → 入力の contain 表示領域 に写す (元画像と重なる)
-            placed = _place_input_aligned(r.strokes, _W, _H, FRAMED_SIZE, CW, CH)
-            d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
-            meta = {"sid": args.sid, "route": "framed", "subject": subject,
-                    "category": category, "preset": preset, "cn": None,
-                    "seed": seed, "prompt": prompt, "placed_at": "input_bbox",
-                    "input_fit": "contain"}
-            _save_candidate(d, placed, CW, CH, generated=raster, meta=meta)
-            print(f"[routed]   framed v{i+1} seed{seed}: {len(placed)} strokes -> {d}")
+        # 2 variant を生成: matsumoto (inpaint/object_mt、 画風あり) と
+        # clean (object CN0.65、 入力追従・白背景・非抽象)。 ユーザー要望で両方出す。
+        mt_preset = FRAMED_PRESET.get(category, "illustrious_v2_object_mt")
+        mt_sh = MODEL_PRESETS.get(mt_preset, {}).get("style_hint")
+        mt_prompt = (f"{FRAMED_PROMPT[category].format(subj=subject)}, {mt_sh}"
+                     if mt_sh else FRAMED_PROMPT[category].format(subj=subject))
+        cl_sh = MODEL_PRESETS.get(CLEAN_PRESET, {}).get("style_hint")
+        cl_prompt = (f"{CLEAN_PROMPT.format(subj=subject)}, {cl_sh}"
+                     if cl_sh else CLEAN_PROMPT.format(subj=subject))
+        variants = [
+            ("mt", mt_preset, mt_prompt, FRAMED_NEGATIVE),
+            ("clean", CLEAN_PRESET, cl_prompt, CLEAN_NEGATIVE),
+        ]
+        for suffix, preset, vprompt, vneg in variants:
+            print(f"[routed]   framed [{suffix}] preset={preset} prompt: {vprompt}")
+            gen = ImageGenerator.from_preset(
+                preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
+            gen.load()
+            for i, seed in enumerate(framed_seeds):
+                raster = gen.generate(vprompt, sq, seed=seed, negative_prompt=vneg)
+                r = vec.vectorize(generated_image=raster, user_image=None)
+                # ガイドの四角 → 入力の contain 表示領域 に写す (元画像と重なる)
+                placed = _place_input_aligned(r.strokes, _W, _H, FRAMED_SIZE, CW, CH)
+                d = args.output_base / args.sid / f"v{i+1}_seed{seed}_{suffix}"
+                meta = {"sid": args.sid, "route": "framed", "variant": suffix,
+                        "subject": subject, "category": category, "preset": preset,
+                        "cn": None, "seed": seed, "prompt": vprompt,
+                        "placed_at": "input_bbox", "input_fit": "contain"}
+                _save_candidate(d, placed, CW, CH, generated=raster, meta=meta)
+                print(f"[routed]   framed v{i+1} seed{seed} [{suffix}]: "
+                      f"{len(placed)} strokes -> {d}")
+            del gen
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
     elif route == "stylize":
         prompt = STYLIZE_TEMPLATES[category].format(subj=subject)
         print(f"[routed]   stylize prompt: {prompt}")
