@@ -144,12 +144,16 @@ class StrokePicker(tk.Toplevel):
         self.inner.bind("<Configure>", lambda _e: self.canvas.configure(
             scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", self._on_canvas_resize)
-        # mousewheel
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)       # win/mac
-        self.canvas.bind_all("<Button-4>",
-                              lambda _e: self.canvas.yview_scroll(-3, "units"))
-        self.canvas.bind_all("<Button-5>",
-                              lambda _e: self.canvas.yview_scroll(3, "units"))
+        # mousewheel — bind to THIS Toplevel only (not bind_all). The picker
+        # window is in every child's bindtags, so wheel events over any card
+        # still reach us, while staying scoped to the dialog: when the picker
+        # is destroyed these bindings die with it, instead of leaving a global
+        # handler pointing at a destroyed canvas (→ "invalid command name").
+        self.bind("<MouseWheel>", self._on_mousewheel)                  # win/mac
+        self.bind("<Button-4>",
+                  lambda _e: self.canvas.yview_scroll(-3, "units"))     # x11 up
+        self.bind("<Button-5>",
+                  lambda _e: self.canvas.yview_scroll(3, "units"))      # x11 down
 
         # bottom bar
         bot = ttk.Frame(self, padding=8)

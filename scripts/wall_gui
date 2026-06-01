@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# 壁面描画 GUI ランチャ (1 行ラッパー)
+# 対象: piper_test/wall_drawing_gui_full_dev.py (現行 dev)
+# venv: draw_piper/venv (docstring の Run: に従う)
+cd /home/jizaiedev2026/piper_test && exec /home/jizaiedev2026/draw_piper/venv/bin/python wall_drawing_gui_full_dev.py "$@"
