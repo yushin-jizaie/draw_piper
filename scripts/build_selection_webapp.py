@@ -652,9 +652,10 @@ function loadImage(url) {
   });
 }
 
-async function makeOverlay(canvas, inputUrl, candUrl, W, H) {
+async function makeOverlay(canvas, inputUrl, candUrl, W, H, inputFit) {
   // input + candidate を Canvas に合成 (input=青、 候補=黒、 背景=白)
-  // W,H 指定で任意サイズ (modal は portrait 比率で合成 = 生成時と同じ stretch)。
+  // W,H 指定で任意サイズ。 inputFit="contain" で入力をアスペクト維持で
+  // レターボックス表示 (正方形入力を縦長に引き伸ばさない = framed 用)。
   W = W || 256; H = H || 256;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
@@ -672,12 +673,18 @@ async function makeOverlay(canvas, inputUrl, candUrl, W, H) {
     ctx1.fillStyle = "#fff"; ctx1.fillRect(0, 0, W, H);
     ctx1.drawImage(imgCand, 0, 0, W, H);
     const candData = ctx1.getImageData(0, 0, W, H);
-    // input を tmp canvas に
+    // input を tmp canvas に (contain なら入力をアスペクト維持でレターボックス)
     const c2 = document.createElement("canvas");
     c2.width = W; c2.height = H;
     const ctx2 = c2.getContext("2d");
     ctx2.fillStyle = "#fff"; ctx2.fillRect(0, 0, W, H);
-    ctx2.drawImage(imgInp, 0, 0, W, H);
+    if (inputFit === "contain") {
+      const s = Math.min(W / imgInp.width, H / imgInp.height);
+      const dw = imgInp.width * s, dh = imgInp.height * s;
+      ctx2.drawImage(imgInp, (W - dw) / 2, (H - dh) / 2, dw, dh);
+    } else {
+      ctx2.drawImage(imgInp, 0, 0, W, H);
+    }
     const inpData = ctx2.getImageData(0, 0, W, H);
     const out = ctx.createImageData(W, H);
     for (let i = 0; i < W * H; i++) {
@@ -747,8 +754,9 @@ function openModal(cand, entry){
       <div class="meta"><h3>${esc(cand.label||"")}</h3><dl>${fmtMeta(m, entry, cand)}</dl></div>
     </div>`;
   back.classList.add("open");
-  // portrait 比率 (704:1472) で合成 → 生成時と同じ座標系で重なる
-  makeOverlay(document.getElementById("mComp"), entry.input_png, cand.strokes_png, 460, 962);
+  // portrait 比率 (704:1472) で合成。 framed は入力を contain 表示 (縦伸び防止)。
+  makeOverlay(document.getElementById("mComp"), entry.input_png, cand.strokes_png,
+              460, 962, m.input_fit);
 }
 function closeModal(){
   const back = document.getElementById("modalBack");
@@ -829,8 +837,9 @@ function render() {
                      ${fridaHtml}
                      <button class="zoom-btn" title="クリックで拡大表示">🔍 拡大</button>`;
       const cv = p.querySelector("canvas");
-      // 非同期で overlay 合成 (通常表示用)
-      makeOverlay(cv, entry.input_png, cand.strokes_png);
+      // 非同期で overlay 合成 (通常表示用)。 framed は入力を contain 表示。
+      makeOverlay(cv, entry.input_png, cand.strokes_png, 256, 256,
+                  (cand.meta || {}).input_fit);
       // 選択 = チェックボックス (full render しない = 軽量)
       const chk = p.querySelector(".sel-chk");
       chk.addEventListener("change", () => {

@@ -180,13 +180,27 @@ def main() -> int:
         sh = MODEL_PRESETS.get(preset, {}).get("style_hint")
         prompt = f"{base_prompt}, {sh}" if sh else base_prompt
         sq = square_pad(inp, FRAMED_SIZE)
-        # 入力の被写体位置を OpenCV (blob) で縦長キャンバス座標として取得 →
-        # 生成結果をその位置・大きさに合成 (中央固定でなく「描いた場所」 に置く)。
-        # webapp 合成は入力を縦長に resize 表示するので、 ここも同じ resize 基準で
-        # bbox を取り、 合成が一致するようにする (実カメラ=縦長入力なら歪みなし)。
-        guide_l = np.array(inp.resize((CW, CH)).convert("L"))
-        ib = union_bbox(detect_blobs(Image.fromarray(guide_l)))
-        use_bbox = bool(ib) and ib[2] > 0 and ib[3] > 0
+        # 入力の被写体位置を contain-fit (アスペクト維持) で縦長キャンバスへ写して
+        # bbox を取得 → そこを 1.4 倍に拡大した領域に生成結果を合成する。
+        #  - contain: 正方形入力を縦長に引き伸ばさない (webapp も contain 表示)
+        #  - ×1.4: 生成画像が入力より小さく見える問題への対処 (大きめに置く)
+        from modules.input_prep import content_bbox
+        _bb = content_bbox(inp)
+        if _bb:
+            _W, _H = inp.size
+            _s = min(CW / _W, CH / _H)
+            _ox, _oy = (CW - _W * _s) / 2.0, (CH - _H * _s) / 2.0
+            bx, by = _bb[0] * _s + _ox, _bb[1] * _s + _oy
+            bw, bh = (_bb[2] - _bb[0]) * _s, (_bb[3] - _bb[1]) * _s
+            f = 1.4
+            cx, cy = bx + bw / 2.0, by + bh / 2.0
+            nw, nh = min(bw * f, CW), min(bh * f, CH)
+            nx = max(0.0, min(cx - nw / 2.0, CW - nw))
+            ny = max(0.0, min(cy - nh / 2.0, CH - nh))
+            ib = (int(nx), int(ny), int(nw), int(nh))
+            use_bbox = ib[2] > 0 and ib[3] > 0
+        else:
+            ib, use_bbox = None, False
         gen = ImageGenerator.from_preset(
             preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
         gen.load()
@@ -206,7 +220,8 @@ def main() -> int:
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
             meta = {"sid": args.sid, "route": "framed", "subject": subject,
                     "category": category, "preset": preset, "cn": None,
-                    "seed": seed, "prompt": prompt, "placed_at": "input_bbox"}
+                    "seed": seed, "prompt": prompt, "placed_at": "input_bbox",
+                    "input_fit": "contain"}
             _save_candidate(d, placed, CW, CH, generated=raster, meta=meta)
             print(f"[routed]   framed v{i+1} seed{seed}: {len(placed)} strokes -> {d}")
     elif route == "stylize":

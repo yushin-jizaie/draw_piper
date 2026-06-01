@@ -7,5 +7,6 @@
   "cn": null,
   "seed": 59628,
   "prompt": "a detailed Matsumoto-style cat, mt_taiyo_style, manga style, ink lineart, single continuous black line on plain white background, clean smooth strokes, no shading, mt_taiyo_style, monochrome, lineart, sketch, ink illustration, white_background, simple_background, no humans",
-  "placed_at": "input_bbox"
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
 }
