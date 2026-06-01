@@ -128,8 +128,8 @@ def scatter_companions(sheet_img: Image.Image,
                        input_strokes: List[Stroke],
                        input_bbox: Tuple[int, int, int, int],
                        canvas_wh: Tuple[int, int],
-                       *, cols: int = 3, rows: int = 7,
-                       fill: float = 0.8, seed: int = 7,
+                       *, cols: int = 2, rows: int = 4,
+                       fill: float = 0.85, seed: int = 7,
                        jitter: float = 0.0,
                        vectorizer=None) -> tuple:
     """高レベル API: sheet を分割→輪郭化→散布し、

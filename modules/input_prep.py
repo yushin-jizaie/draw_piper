@@ -53,6 +53,21 @@ def square_crop_with_margin(img: Image.Image, pad: float = 0.22,
     return sq.resize((out_size, out_size), Image.LANCZOS)
 
 
+def square_pad(img: Image.Image, size: int = 768) -> Image.Image:
+    """入力を正方形に白パディング (被写体の相対サイズ・位置を保つ) → size にリサイズ。
+
+    タイトクロップと違い被写体を拡大しない。 旧 align/gacha と同じ
+    「正方形入力に被写体が自然な大きさ (余白付) で収まる」 状態を再現する。
+    正方形入力ならそのまま、 縦長/横長なら長辺基準で白レターボックス。
+    """
+    rgb = img.convert("RGB")
+    w, h = rgb.size
+    s = max(w, h)
+    sq = Image.new("RGB", (s, s), (255, 255, 255))
+    sq.paste(rgb, ((s - w) // 2, (s - h) // 2))
+    return sq.resize((size, size), Image.LANCZOS)
+
+
 def place_strokes_centered(strokes: List[Stroke], dst_wh: Tuple[int, int],
                            fill: float = 0.9) -> List[Stroke]:
     """strokes (任意座標) の bbox を縦長キャンバス中央に contain 配置。

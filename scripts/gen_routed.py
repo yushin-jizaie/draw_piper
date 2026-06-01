@@ -42,20 +42,27 @@ STYLIZE_TEMPLATES = {
 SCATTER_PROMPT = ("{subj}, manga style, clean bold ink lineart, white background, "
                   "appealing design, multiple")
 
-# framed (正方形クロップ→正方形生成→縦長中央配置): 横長/コンパクト被写体用。
-FRAMED_SIZE = 1024
+# framed (正方形パディング→正方形生成→縦長中央配置): 横長/コンパクト被写体用。
+# 旧 align/gacha と同じ 768 正方形 + 被写体を拡大しない (square_pad) で同品質に。
+FRAMED_SIZE = 768
 FRAMED_PRESET = {           # object は gacha-object 系 (車の良い構図)、 人/動物は lineart_char
     "object": "illustrious_v2_object",
     "animal": PRESET,
     "person": PRESET,
 }
+# framed は旧 gacha と同じ「manga style, dynamic pose, detailed lineart」 系
+# プロンプト + two_stage category=character (inpaint構図 + 人物pool画風) で生成する
+# のが最良 (2026-06-01 検証: 旧 gacha-object の車は実は category=character だった)。
 FRAMED_PROMPT = {
-    "object": ("a {subj}, clean bold ink lineart, white background, dynamic angle, "
-               "appealing design, single {subj}"),
-    "animal": ("a {subj}, manga style, dynamic, clean bold ink lineart, "
-               "white background, single {subj}, appealing"),
-    "person": ("{subj}, manga character, dynamic confident pose, clean bold ink "
-               "lineart, white background, appealing character design"),
+    "object": ("{subj}, manga style, dynamic pose, expressive ink lines, "
+               "detailed lineart, single continuous black line on plain white "
+               "background, clean smooth strokes, no shading"),
+    "animal": ("{subj}, manga style, dynamic pose, expressive ink lines, "
+               "detailed lineart, single continuous black line on plain white "
+               "background, clean smooth strokes, no shading"),
+    "person": ("{subj}, manga style character, dynamic pose, expressive ink lines, "
+               "detailed lineart, single continuous black line on plain white "
+               "background, clean smooth strokes, no shading"),
 }
 
 
@@ -156,17 +163,18 @@ def main() -> int:
         import glob as _glob
         import shutil
         import subprocess
-        from modules.input_prep import (square_crop_with_margin,
-                                        place_strokes_centered)
-        # framed category → two_stage category (person=IP-Adapter人物、 物/動物=object)
-        TWO_CAT = {"person": "character", "object": "object", "animal": "object"}
-        cat2 = TWO_CAT.get(category, "object")
+        from modules.input_prep import square_pad, place_strokes_centered
+        # framed は全カテゴリ two_stage category=character で生成する。
+        # inpaint Stage1 (構図描き起こし) + 人物 style pool が最も良い構図・画風を
+        # 出す (旧 gacha-object の良い車も実は category=character だった)。
+        cat2 = "character"
         prompt = FRAMED_PROMPT[category].format(subj=subject)
         sres = f"{FRAMED_SIZE}x{FRAMED_SIZE}"
         sdir = args.output_base / args.sid
         sdir.mkdir(parents=True, exist_ok=True)
         crop_path = sdir / "_framed_crop.png"
-        square_crop_with_margin(inp, pad=0.22, out_size=FRAMED_SIZE).save(crop_path)
+        # 旧 align と同じ: タイトクロップせず正方形パディング (被写体を拡大しない)。
+        square_pad(inp, FRAMED_SIZE).save(crop_path)
         print(f"[routed]   framed 2-stage cat={category}->{cat2} prompt: {prompt}")
         vec = Vectorizer(**cfg)   # binarize 中心線 (単一線)
         for i, seed in enumerate(seeds):
