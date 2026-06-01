@@ -1,0 +1,12 @@
+{
+  "sid": "car",
+  "route": "scatter",
+  "subject": "car",
+  "category": "object",
+  "scatter_mode": "same",
+  "pattern": "grid",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 123,
+  "prompt": "car, manga style, clean bold ink lineart, white background, appealing design, multiple"
+}
