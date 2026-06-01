@@ -162,9 +162,9 @@ def main() -> int:
         gen = ImageGenerator.from_preset(
             preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
         gen.load()
-        # object は細部線が多く canny、 動物/人は滑らかな輪郭なので binarize(中心線)。
-        vec = (Vectorizer(gen_line_mode="canny", **cfg) if category == "object"
-               else Vectorizer(**cfg))
+        # framed は binarize (中心線) で単一線化。 canny は二重アウトラインに
+        # なるため不可 (2026-06-01 ユーザー指摘)。
+        vec = Vectorizer(**cfg)
         for i, seed in enumerate(seeds):
             raster = gen.generate(prompt, sq,
                                   controlnet_conditioning_scale=cn, seed=seed)

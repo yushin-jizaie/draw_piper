@@ -69,16 +69,23 @@ def vectorize_characters(chars: list, vectorizer) -> list:
 
 
 def free_cells(canvas_wh: Tuple[int, int], input_bbox: Tuple[int, int, int, int],
-               *, cols: int = 3, rows: int = 7) -> list:
-    """grid セルのうち入力 bbox (x, y, w, h) と重ならないものを返す。"""
+               *, cols: int = 3, rows: int = 7, pad: float = 0.06) -> list:
+    """grid セルのうち入力 bbox (x, y, w, h) と重ならないものを返す。
+
+    pad: 入力 bbox を canvas の pad 割合だけ各辺に拡張してから判定 (companion が
+    入力線に近づきすぎ/被るのを防ぐ余白)。
+    """
     cw_total, ch_total = canvas_wh
     ix, iy, iw, ih = input_bbox
+    px, py = pad * cw_total, pad * ch_total
+    ix, iy = ix - px, iy - py
+    iw, ih = iw + 2 * px, ih + 2 * py
     cw, ch = cw_total / cols, ch_total / rows
     cells = []
     for rr in range(rows):
         for cc in range(cols):
             x0, y0 = cc * cw, rr * ch
-            # 入力 bbox と少しでも重なるセルは除外 (元絵を侵食しない)
+            # 拡張入力 bbox と少しでも重なるセルは除外 (元絵を侵食しない)
             overlaps = not (x0 + cw <= ix or x0 >= ix + iw
                             or y0 + ch <= iy or y0 >= iy + ih)
             if overlaps:
