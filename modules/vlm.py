@@ -472,6 +472,73 @@ class VLM:
                   f"({infer_time:.2f}s)")
         return phrase
 
+    # 「絵の解説」 ではなく 「何を描き足すべきか」 を VLM に出させる。
+    # crude なスケッチに似合う具体的な追加要素 (髪/服/小物/表情/効果) を提案させ、
+    # 生成 prompt に注入して “魅力的なイラストへの加筆” を方向づける
+    # (2026-06-02 ユーザー: 解説ではなく加筆指示が欲しい / 中程度の加筆)。
+    _ADDITIONS_PROMPT_TEXT = (
+        "This is a crude, simple line drawing of a {subject}. Suggest concrete "
+        "visual details to ADD that would turn it into a more complete and "
+        "appealing illustration, WHILE keeping the same subject and the same pose "
+        "and composition. Name 3 to 5 fitting elements to add, such as hairstyle, "
+        "clothing, accessories, facial expression, small props, or simple "
+        "decorative touches that suit a {subject}. Output ONLY the additions as a "
+        "short comma-free phrase of plain adjectives and nouns. Do NOT restate the "
+        "subject, do NOT mention art style, colors, line, sketch or drawing, no "
+        "explanation. 6 to 14 words."
+    )
+
+    def suggest_additions(self, image: ImageLike, subject: str = "subject") -> str:
+        """スケッチに似合う 「描き足すべき要素」 を短いフレーズで返す (加筆指示)。
+
+        describe_literal/scene が 「何が描かれているか」 なのに対し、 これは
+        「何を足すと良いイラストになるか」 を返す。 生成 prompt に subject と
+        並べて差し込む。 失敗時は空文字。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        import re
+        pil_image = _normalize_image(image)
+        ptext = self._ADDITIONS_PROMPT_TEXT.format(subject=subject or "subject")
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": ptext},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template], images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt").to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=48, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0]
+        s = raw_text.replace("\n", " ").replace('"', "").replace("'", "").strip().lower()
+        s = re.sub(r"[.;:]+", " ", s)
+        # スタイル混入語を除去 (テンプレ側で線質を指定するため)
+        s = re.sub(r"\b(line drawing|drawing|sketch|lineart|line art|style|"
+                   r"black and white|monochrome|ink|pencil|color\w*)\b", " ", s)
+        s = s.replace(",", " ")
+        s = re.sub(r"[^a-z0-9\s]", " ", s)
+        phrase = " ".join(s.split()[:16]).strip()
+        if self.verbose:
+            print(f"[vlm] additions '{phrase}' from '{raw_text.strip()}' "
+                  f"({infer_time:.2f}s)")
+        return phrase
+
     def classify_category(self, image: ImageLike) -> str:
         """主題のカテゴリを person / animal / object のいずれかで返す。
 

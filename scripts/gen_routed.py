@@ -29,25 +29,31 @@ DEFAULT_SEEDS = [123, 7, 555]
 # 出しやすい当たり seed)。
 FRAMED_SEEDS = [59628, 19093, 60231]
 
-# framed (旧 stage1_lora02 再現) の negative。 matsumoto LoRA が誘発する
-# テキスト/署名/枠/網点を抑制 (旧ランと同じ)。
-FRAMED_NEGATIVE = (
-    "color, colored, blue background, cyan, sky, gradient, hatching, crosshatch, "
-    "screentone, halftone, dot pattern, filled background, paper texture, scribble, "
-    "sketchy, shading, gray, sepia, watermark, signature, text, letters, words, "
-    "frame, border, blurry, noise, jpeg artifacts")
+# --- デジタル均一線 + 中程度の加筆 (2026-06-02 ユーザー方針) ---
+# 線質指定はここ 1 本に集約 (preset の style_hint は "no humans" 混入や 77 token
+# 超過の原因になるため framed では追記しない)。 太さ一定のクリーンなデジタル線。
+DIGITAL_LINE = ("monochrome clean digital lineart, bold even-weight black "
+                "outlines, no fill, no shading, no brush texture, white "
+                "background, single subject")
+# 掠れ/筆致/塗りつぶし/網点/背景/文字 を一括抑制 (全ルート共通の negative)。
+KASURE_NEGATIVE = (
+    "brush stroke, dry brush, rough ink, scratchy lines, faded lines, broken "
+    "lines, ink bleed, uneven line width, charcoal, pencil texture, hatching, "
+    "crosshatch, screentone, halftone, shading, fill, solid black fill, "
+    "silhouette, gray background, dark background, filled background, scribble, "
+    "sketchy, noise, color, gradient, blurry, watermark, signature, text, "
+    "letters, words, frame, border, jpeg artifacts")
 
-# framed の「クリーン版」: 高 CN の MistoLine で入力の線を太く忠実に追従し、
-# 白背景のクリーンな線画に (matsumoto inpaint の抽象化・墨背景・淡輪郭消失を
-# 回避、 2026-06-01 ユーザー要望)。 object preset は輪郭が淡く vectorize で消える
-# ため animagine mistoline (CN 0.9) を採用。
-CLEAN_PRESET = "animagine_xl_31_mistoline"
-CLEAN_PROMPT = ("a {subj}, clean bold black ink lineart, white background, simple, "
-                "single subject, no shading, no fill, no hatching")
-CLEAN_NEGATIVE = (
-    "hatching, crosshatch, screentone, halftone, shading, gray background, "
-    "dark background, filled background, scribble, sketchy, noise, text, letters, "
-    "watermark, signature, color, gradient, blurry")
+# framed の 2 variant (ともにデジタル均一線、 webapp でガチャ選別):
+#   enriched = illustrious_v2_object を CN0.35 まで下げ、 VLM 加筆要素を反映
+#              (眼鏡/髭/服/小物 等。 中程度の加筆。 CN を下げないと加筆が出ない)
+#   clean    = animagine mistoline CN0.5、 加筆なしの忠実クリーン・トレース
+#              (加筆が外したとき用の素直な版)
+# 各要素: (suffix, preset, cn, use_additions)
+FRAMED_VARIANTS = [
+    ("enriched", "illustrious_v2_object", 0.35, True),
+    ("clean", "animagine_xl_31_mistoline", 0.5, False),
+]
 
 # stylize はカテゴリ別テンプレ (入力はキャラとは限らない: 動物・オブジェクトも有り)。
 #   person → ポーズ重視 / animal → 躍動重視 / object → 構図・デザイン重視
@@ -66,27 +72,20 @@ SCATTER_PROMPT = ("{subj}, manga style, clean bold ink lineart, white background
                   "appealing design, multiple")
 
 # framed (正方形パディング→正方形生成→縦長中央配置): 横長/コンパクト被写体用。
-# 旧 align/gacha と同じ 768 正方形 + 被写体を拡大しない (square_pad) で同品質に。
+# 768 正方形 + 被写体を拡大しない (square_pad)。
 FRAMED_SIZE = 768
-# framed は旧 stage1_lora02 (2026-05-29) の良かった単一ステージ設定を再現する:
-# _mt プリセット (matsumoto LoRA 0.2) + 「Matsumoto-style」 prompt。 IP-Adapter なし。
-# (ユーザー評価: その時の値・プロンプトが良い。 正方形入力なら同結果になるはず)
-FRAMED_PRESET = {
-    "object": "illustrious_v2_object_mt",   # text2img + CN0.65 + matsumoto LoRA0.2
-    "animal": "illustrious_v2_object_mt",
-    "person": "illustrious_v2_inpaint_mt",  # inpaint + CN0.85 + matsumoto LoRA0.2
-}
-FRAMED_PROMPT = {
-    "object": ("a detailed Matsumoto-style {subj}, mt_taiyo_style, manga style, "
-               "ink lineart, single continuous black line on plain white "
-               "background, clean smooth strokes, no shading"),
-    "animal": ("a detailed Matsumoto-style {subj}, mt_taiyo_style, manga style, "
-               "ink lineart, single continuous black line on plain white "
-               "background, clean smooth strokes, no shading"),
-    "person": ("a detailed Matsumoto-style {subj}, mt_taiyo_style, manga style, "
-               "dynamic pose, ink lineart, single continuous black line on plain "
-               "white background, clean smooth strokes, no shading"),
-}
+
+
+def _framed_prompt(subject, additions):
+    """framed/digital の生成 prompt を組む: 主題 + 加筆要素 + デジタル線質。
+
+    additions は VLM suggest_additions の「描き足すべき要素」 (中程度の加筆)。
+    style_hint は付けない (DIGITAL_LINE に線質を集約。 77 token 超過回避)。
+    """
+    head = f"a {subject}"
+    if additions:
+        head = f"{head}, {additions}"
+    return f"{head}, {DIGITAL_LINE}"
 
 
 def _place_input_aligned(strokes, inp_w, inp_h, gen_size, CW, CH):
@@ -203,24 +202,26 @@ def main() -> int:
     inp = Image.open(args.input).convert("RGB")
     route = args.force_route or decide_route(inp).route
 
-    # --- VLM 推論 (subject / scene / category / 連想 companion) を必要時のみ ---
-    # subject = 短い主題 (ラベル/meta 用)、 scene = 絵を解釈したリッチな名詞句
-    # (生成 prompt の {subj} に差し込む。 数/ポーズ/表情/特徴を反映)。
+    # --- VLM 推論 (subject / additions / category / 連想 companion) を必要時のみ ---
+    # subject   = 短い主題 (ラベル/meta 用)
+    # additions = 「描き足すべき要素」 (中程度の加筆指示。 髪/服/小物/表情/効果)。
+    #             生成 prompt に subject と並べて差し込む。
     subject, category = args.subject, args.category
-    scene = args.subject  # --subject 明示時はそれを scene にも使う
+    additions = ""
     assoc_subject = None
     need_vlm = (subject is None
-                or (route in ("stylize", "framed") and category is None)
+                or route in ("stylize", "framed")
                 or (route == "companion" and args.scatter_mode == "assoc"))
     if need_vlm:
         from modules.vlm import VLM
         vlm = VLM(verbose=True)
         if subject is None:
             subject = vlm.describe_literal(inp) or "subject"
-            # 生成 prompt 用のリッチ記述。 失敗時は短い subject にフォールバック。
-            scene = vlm.describe_scene(inp) or subject
-        if route in ("stylize", "framed") and category is None:
-            category = vlm.classify_category(inp)
+        if route in ("stylize", "framed"):
+            if category is None:
+                category = vlm.classify_category(inp)
+            # 加筆指示は生成系ルートのみ (scatter sprite には不要)。
+            additions = vlm.suggest_additions(inp, subject) or ""
         if route == "companion" and args.scatter_mode == "assoc":
             assoc_subject = vlm.predict_companion_subject(inp) or subject
         del vlm  # VRAM 解放 (SDXL ロード前に)
@@ -229,52 +230,42 @@ def main() -> int:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     category = category or "object"
-    scene = scene or subject
     print(f"[routed] {args.sid}: route={route} subj='{subject}' "
-          f"scene='{scene}' cat={category} scatter_mode={args.scatter_mode} "
+          f"add='{additions}' cat={category} scatter_mode={args.scatter_mode} "
           f"assoc='{assoc_subject}'")
     seeds = DEFAULT_SEEDS[:args.n]
 
     if route == "framed":
-        # 正方形パディング → 旧 stage1_lora02 (2026-05-29、 ユーザー評価良) と同じ
-        # 単一ステージ生成: _mt プリセット (matsumoto LoRA 0.2) + Matsumoto-style
-        # prompt。 IP-Adapter なし。 strokes を縦長中央配置。 正方形入力なので
-        # 旧ランと同条件 → 同等の結果になるはず。
+        # 正方形パディング → 768 正方形生成 → 入力の contain 領域に strokes 配置。
+        # デジタル均一線 + 中程度の加筆 (CN0.5)。 2 variant (char / clean) を画風
+        # 違いのガチャとして出す。 IP-Adapter なし。
         import torch
         import gc
         from modules.input_prep import square_pad
-        from modules.image_gen import MODEL_PRESETS
         sq = square_pad(inp, FRAMED_SIZE)
         _W, _H = inp.size
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         framed_seeds = FRAMED_SEEDS[:args.n]
-        # 2 variant を生成: matsumoto (inpaint/object_mt、 画風あり) と
-        # clean (object CN0.65、 入力追従・白背景・非抽象)。 ユーザー要望で両方出す。
-        mt_preset = FRAMED_PRESET.get(category, "illustrious_v2_object_mt")
-        mt_sh = MODEL_PRESETS.get(mt_preset, {}).get("style_hint")
-        mt_prompt = (f"{FRAMED_PROMPT[category].format(subj=scene)}, {mt_sh}"
-                     if mt_sh else FRAMED_PROMPT[category].format(subj=scene))
-        cl_sh = MODEL_PRESETS.get(CLEAN_PRESET, {}).get("style_hint")
-        cl_prompt = (f"{CLEAN_PROMPT.format(subj=scene)}, {cl_sh}"
-                     if cl_sh else CLEAN_PROMPT.format(subj=scene))
-        variants = [
-            ("mt", mt_preset, mt_prompt, FRAMED_NEGATIVE),
-            ("clean", CLEAN_PRESET, cl_prompt, CLEAN_NEGATIVE),
-        ]
-        for suffix, preset, vprompt, vneg in variants:
-            print(f"[routed]   framed [{suffix}] preset={preset} prompt: {vprompt}")
+        for suffix, preset, vcn, use_add in FRAMED_VARIANTS:
+            vprompt = _framed_prompt(subject, additions if use_add else "")
+            print(f"[routed]   framed [{suffix}] preset={preset} cn={vcn} "
+                  f"prompt: {vprompt}")
             gen = ImageGenerator.from_preset(
                 preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
             gen.load()
             for i, seed in enumerate(framed_seeds):
-                raster = gen.generate(vprompt, sq, seed=seed, negative_prompt=vneg)
+                raster = gen.generate(
+                    vprompt, sq, seed=seed, negative_prompt=KASURE_NEGATIVE,
+                    controlnet_conditioning_scale=vcn)
                 r = vec.vectorize(generated_image=raster, user_image=None)
                 # ガイドの四角 → 入力の contain 表示領域 に写す (元画像と重なる)
                 placed = _place_input_aligned(r.strokes, _W, _H, FRAMED_SIZE, CW, CH)
                 d = args.output_base / args.sid / f"v{i+1}_seed{seed}_{suffix}"
                 meta = {"sid": args.sid, "route": "framed", "variant": suffix,
-                        "subject": subject, "category": category, "preset": preset,
-                        "cn": None, "seed": seed, "prompt": vprompt,
+                        "subject": subject,
+                        "additions": additions if use_add else "",
+                        "category": category, "preset": preset,
+                        "cn": vcn, "seed": seed, "prompt": vprompt,
                         "placed_at": "input_bbox", "input_fit": "contain"}
                 _save_candidate(d, placed, CW, CH, generated=raster, meta=meta)
                 print(f"[routed]   framed v{i+1} seed{seed} [{suffix}]: "
@@ -284,14 +275,20 @@ def main() -> int:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
     elif route == "stylize":
-        prompt = STYLIZE_TEMPLATES[category].format(subj=scene)
+        # 主題テンプレ + 中程度の加筆 (additions) + デジタル均一線。
+        _parts = [STYLIZE_TEMPLATES[category].format(subj=subject)]
+        if additions:
+            _parts.append(additions)
+        _parts.append("clean digital lineart, smooth even-weight lines, "
+                      "no brush texture")
+        prompt = ", ".join(_parts)
         print(f"[routed]   stylize prompt: {prompt}")
         guide = inp.resize((CW, CH))
         gen = ImageGenerator.from_preset(PRESET, resolution=(CW, CH), verbose=False)
         gen.load()
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         for i, seed in enumerate(seeds):
-            raster = gen.generate(prompt, guide,
+            raster = gen.generate(prompt, guide, negative_prompt=KASURE_NEGATIVE,
                                   controlnet_conditioning_scale=CN_SCALE, seed=seed)
             r = vec.vectorize(generated_image=raster, user_image=None)
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
