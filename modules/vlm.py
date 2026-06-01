@@ -539,39 +539,62 @@ class VLM:
                   f"({infer_time:.2f}s)")
         return phrase
 
-    # 箇条書きキーワードではなく 「前提 + 下書きを仕上げる指示」 の自然文を出させる。
-    # ① 前提を伝える (これは〜の下書きと推測される) ② 何を描くかを指示文として
-    # 「〜に仕上げて」 と詳細な散文で伝える。 これで CN を下げなくても装飾が描画
-    # される (2026-06-02 ユーザー: 箇条書きすぎ。 推測して文章で指示せよ)。
-    # ※ SDXL は CLIP 77 token 制限があるので 35 語以内に収める。
-    _DESIGN_PROMPT_TEXT = (
-        "This image is a rough, crude DRAFT line sketch. First infer what it is "
-        "meant to depict. Then write ONE short natural-language instruction telling "
-        "an illustrator to FINISH this draft into a complete, appealing "
-        "illustration, vividly describing the intended finished design (the "
-        "subject's character, distinctive features, clothing or accessories, "
-        "expression) while keeping the SAME subject, pose and composition as the "
-        "draft. Write flowing prose, NOT a list of comma-separated keywords. Begin "
-        "with 'This is a rough draft of'. Keep it under 32 words. Do not mention "
-        "line, color, medium, drawing or art style."
-    )
+    # 箇条書きキーワードではなく 「前提 + 指示」 の自然文を出させる。 指示の動詞は
+    # route/モードで変わる (2026-06-02 ユーザー):
+    #   finish (CN あり/framed)   : 下書きを清書 →「これは〜の下書き。〜に仕上げて」
+    #   add    (CN あり/関連要素) : 主題を保ち関連物を追加 →「これは傘です。雨を書き足して」
+    #   draw   (CN なし/companion): 空白に別主題を新規 →「てるてる坊主を描いて」
+    # ※ SDXL は CLIP 77 token 制限があるので短く (mode 別に語数上限)。
+    _DESIGN_PROMPTS = {
+        "finish": (
+            "This image is a rough DRAFT sketch of a {subject}. Write ONE short "
+            "instruction telling an illustrator to FINISH this draft into a "
+            "polished, appealing illustration of the same {subject}, keeping its "
+            "pose and composition. Use exactly this format: 'This is a rough draft "
+            "of a {subject}. Finish it as <one vivid concrete design with "
+            "distinctive features, accessories and expression>.' Flowing prose, "
+            "under 28 words, no keyword lists, no line/color/medium words."
+        ),
+        "add": (
+            "This image shows a {subject}. Write ONE short instruction to ADD "
+            "{companion} to it naturally while keeping the {subject}. Use exactly "
+            "this format: 'This is a {subject}. Add <{companion} described "
+            "vividly> to the scene.' Flowing prose, under 22 words, no "
+            "line/color/medium words."
+        ),
+        "draw": (
+            "Write ONE short instruction to DRAW a simple, appealing {companion} "
+            "as a standalone subject (it will be placed next to another drawing). "
+            "Use exactly this format: 'Draw a <vivid {companion} with a fitting "
+            "pose or expression>.' Flowing prose, under 16 words, no "
+            "line/color/medium words."
+        ),
+    }
+    _DESIGN_WORDCAP = {"finish": 30, "add": 24, "draw": 18}
 
-    def design_instruction(self, image: ImageLike, subject: str = "subject") -> str:
-        """下書きを「〜に仕上げて」 と指示する自然文 (前提+デザイン詳細) を返す。
+    def design_instruction(self, image: ImageLike, subject: str = "subject",
+                           mode: str = "finish", companion: str = "") -> str:
+        """生成 prompt 本体に使う 「前提+指示」 の自然文を返す。
 
-        suggest_additions が箇条書き要素なのに対し、 これは前提を述べてから
-        「仕上げて」 と指示する散文。 生成 prompt の本体に使う。 失敗時は空文字。
+        mode:
+          finish — 下書きを「〜に仕上げて」 (framed, CN あり)
+          add    — 主題を保ち関連物を「書き足して」 (CN あり, companion 指定)
+          draw   — 別主題を「描いて」 (companion route, CN なし。 空白に配置)
+        失敗時は空文字。
         """
         if not self.is_loaded:
             self.load()
         from qwen_vl_utils import process_vision_info
         import re
         pil_image = _normalize_image(image)
+        tmpl = self._DESIGN_PROMPTS.get(mode, self._DESIGN_PROMPTS["finish"])
+        ptext = tmpl.format(subject=subject or "subject",
+                            companion=companion or "a companion")
         messages = [{
             "role": "user",
             "content": [
                 {"type": "image", "image": pil_image},
-                {"type": "text", "text": self._DESIGN_PROMPT_TEXT},
+                {"type": "text", "text": ptext},
             ],
         }]
         text_template = self._processor.apply_chat_template(
@@ -592,18 +615,19 @@ class VLM:
         generated = output_ids[:, inputs.input_ids.shape[1]:]
         raw_text = self._processor.batch_decode(
             generated, skip_special_tokens=True)[0]
-        # 散文なので句読点は残す。 改行/引用符/medium 語のみ除去し 32 語に制限。
+        # 散文なので句読点は残す。 改行/引用符/medium 語のみ除去し mode 別語数に制限。
         s = raw_text.replace("\n", " ").replace('"', "").replace("*", "").strip()
         s = re.sub(r"\b(line ?art|line drawing|monochrome|black and white|"
                    r"ink|pencil|colou?r\w*|drawing|sketch style)\b", "", s,
                    flags=re.I)
         s = re.sub(r"\s+,", ",", s)
         s = re.sub(r"\s{2,}", " ", s).strip()
+        cap = self._DESIGN_WORDCAP.get(mode, 30)
         words = s.split()
-        if len(words) > 32:
-            s = " ".join(words[:32]).rstrip(",;: ") + "."
+        if len(words) > cap:
+            s = " ".join(words[:cap]).rstrip(",;: ") + "."
         if self.verbose:
-            print(f"[vlm] design '{s}' ({infer_time:.2f}s)")
+            print(f"[vlm] design[{mode}] '{s}' ({infer_time:.2f}s)")
         return s
 
     def classify_category(self, image: ImageLike) -> str:

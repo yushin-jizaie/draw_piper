@@ -214,7 +214,7 @@ def main() -> int:
             if category is None:
                 category = vlm.classify_category(inp)
             # 下書きを仕上げる指示文 (生成系ルートのみ。 scatter sprite には不要)。
-            design = vlm.design_instruction(inp, subject) or ""
+            design = vlm.design_instruction(inp, subject, mode="finish") or ""
         if route == "companion" and args.scatter_mode == "assoc":
             assoc_subject = vlm.predict_companion_subject(inp) or subject
         del vlm  # VRAM 解放 (SDXL ロード前に)
