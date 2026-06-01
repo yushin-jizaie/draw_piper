@@ -689,7 +689,9 @@ class Vectorizer:
             edges = _canny_strong_blur(
                 gen_gray, self.canny_blur_ksize, self.canny_blur_sigma,
                 self.canny_thresh_low, self.canny_thresh_high)
-            gen_mask = cv2.dilate(edges, np.ones((3, 3), np.uint8))
+            # dilate(5) で太線の二重エッジ (5-6px 間隔) も確実に 1 つに結合 →
+            # skeletonize で単一中心線に (dilate3 では太線に二重線が残った)。
+            gen_mask = cv2.dilate(edges, np.ones((5, 5), np.uint8))
             stage1_label = "Canny→centerline"
         else:
             gen_mask = _binarize_gen_centerline(
