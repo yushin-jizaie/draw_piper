@@ -77,12 +77,21 @@ def skeleton_png_url(sid: str, route: str, gacha_seed: str | None = None) -> str
 
 
 _DATE_RE = re.compile(r"(20\d{6})")
+_DATE_DASH_RE = re.compile(r"(20\d{2})-(\d{2})-(\d{2})")
 
 
 def date_for_rel_path(rel_path: str) -> str:
-    """rel_path から YYYYMMDD を抽出 (見つからなければ ""). """
+    """rel_path から YYYYMMDD を抽出 (見つからなければ "").
+
+    disp_2026-06-01-B のようなダッシュ区切り日付 (名前付きバッチ) も対応。
+    """
     m = _DATE_RE.search(rel_path)
-    return m.group(1) if m else ""
+    if m:
+        return m.group(1)
+    md = _DATE_DASH_RE.search(rel_path)
+    if md:
+        return md.group(1) + md.group(2) + md.group(3)
+    return ""
 
 
 def _build_key(sid: str, route: str, gacha_seed: str | None = None) -> str:
@@ -441,10 +450,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* 2026-06-01: hover 拡大を廃止し、 🔍 クリックで modal 大表示に変更 */
-  .zoom-btn { position:absolute; top:4px; left:4px; z-index:11;
-    background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:4px;
-    font-size:12px; padding:2px 6px; cursor:pointer; line-height:1; }
+  .zoom-btn { display:block; width:100%; margin-top:4px;
+    background:#2a2a2a; color:#fff; border:none; border-radius:4px;
+    font-size:11px; padding:3px 6px; cursor:pointer; line-height:1.3; }
   .zoom-btn:hover { background:var(--accent); }
+  .panel .img-stack { cursor:pointer; }
+  .panel .panel-label .sel-chk { margin-top:2px; width:15px; height:15px;
+    flex:0 0 auto; cursor:pointer; }
   .modal-back { display:none; position:fixed; inset:0; z-index:2000;
     background:rgba(0,0,0,0.88); }
   .modal-back.open { display:flex; align-items:center; justify-content:center; }
@@ -477,8 +489,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   }
   .panel.selected { border-color: var(--selected);
                     box-shadow: 0 0 0 3px rgba(44, 204, 119, 0.25); }
-  .panel .panel-label { font-size: 10px; opacity: 0.85;
-                        text-align: center; margin-bottom: 4px;
+  .panel .panel-label { font-size: 10px; opacity: 0.9;
+                        display: flex; align-items: flex-start; gap: 4px;
+                        text-align: left; margin-bottom: 4px; cursor: pointer;
                         white-space: normal; overflow-wrap: anywhere;
                         word-break: break-word; line-height: 1.25;
                         min-height: 2.4em; }
@@ -609,6 +622,24 @@ function toggleSelection(sid, route) {
   }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(selections));
   render();
+}
+
+// チェックボックス選択 (full render せず軽量更新)
+function setSelection(sid, route, on) {
+  if (!selections[sid]) selections[sid] = [];
+  const i = selections[sid].indexOf(route);
+  if (on && i < 0) selections[sid].push(route);
+  else if (!on && i >= 0) {
+    selections[sid].splice(i, 1);
+    if (selections[sid].length === 0) delete selections[sid];
+  }
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(selections));
+  updateStatus();
+  refreshSummary();
+}
+function refreshSummary() {
+  const pre = document.getElementById("selSummary");
+  if (pre) pre.textContent = JSON.stringify(buildOutput(), null, 2);
 }
 
 function loadImage(url) {
@@ -775,8 +806,11 @@ function render() {
         const safeTip = String(tip).replace(/"/g, "&quot;");
         fridaHtml = `<span class="frida-badge ${cls}" title="${safeTip}">Frida ${icon} ${fr.n_strokes}</span>`;
       }
-      p.innerHTML = `<div class="panel-label" title="${safeLabel}">${cand.label}</div>
-                     <div class="img-stack">
+      p.innerHTML = `<label class="panel-label" title="${safeLabel}">
+                       <input type="checkbox" class="sel-chk" ${sel ? "checked" : ""}>
+                       <span>${cand.label}</span>
+                     </label>
+                     <div class="img-stack" title="クリックで拡大表示">
                        <div style="position:relative">
                          <span class="stack-tag tag-orig" style="top:2px;left:2px">元</span>
                          <canvas></canvas>
@@ -788,15 +822,20 @@ function render() {
                        </div>
                      </div>
                      ${fridaHtml}
-                     <button class="zoom-btn" title="クリックで拡大表示">🔍</button>`;
+                     <button class="zoom-btn" title="クリックで拡大表示">🔍 拡大</button>`;
       const cv = p.querySelector("canvas");
       // 非同期で overlay 合成 (通常表示用)
       makeOverlay(cv, entry.input_png, cand.strokes_png);
-      p.addEventListener("click", () => toggleSelection(entry.sketch_id, cand.route));
-      p.querySelector(".zoom-btn").addEventListener("click", (ev) => {
-        ev.stopPropagation();   // 選択トグルと分離
-        openModal(cand, entry);
+      // 選択 = チェックボックス (full render しない = 軽量)
+      const chk = p.querySelector(".sel-chk");
+      chk.addEventListener("change", () => {
+        setSelection(entry.sketch_id, cand.route, chk.checked);
+        p.classList.toggle("selected", chk.checked);
       });
+      // 画像 / 🔍 クリック = modal で拡大表示
+      const openIt = (ev) => { ev.stopPropagation(); openModal(cand, entry); };
+      p.querySelector(".img-stack").addEventListener("click", openIt);
+      p.querySelector(".zoom-btn").addEventListener("click", openIt);
       grid.appendChild(p);
     });
     main.appendChild(row);
@@ -805,7 +844,7 @@ function render() {
   const summary = document.createElement("div");
   summary.className = "summary";
   const out = buildOutput();
-  summary.innerHTML = `<h2 style="color:var(--accent);margin:0;font-size:14px">現在の選択 (localStorage 自動保存、 複数可)</h2><pre>${JSON.stringify(out, null, 2)}</pre>`;
+  summary.innerHTML = `<h2 style="color:var(--accent);margin:0;font-size:14px">現在の選択 (localStorage 自動保存、 複数可)</h2><pre id="selSummary">${JSON.stringify(out, null, 2)}</pre>`;
   main.appendChild(summary);
   updateStatus();
 }
