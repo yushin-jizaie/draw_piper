@@ -150,32 +150,51 @@ def main() -> int:
     seeds = DEFAULT_SEEDS[:args.n]
 
     if route == "framed":
-        # 正方形クロップ→正方形生成 (object は gacha-object preset)→縦長中央配置。
+        # 正方形クロップ → 旧 align と同じ 2-stage (Stage1 構図 + Stage2 IP-Adapter
+        # 画風転写) を正方形で実行 → strokes を縦長中央配置。 単発 ControlNet では
+        # 画風転写が無く地味だったため、 two_stage エンジンに差し替え (2026-06-01)。
+        import glob as _glob
+        import shutil
+        import subprocess
         from modules.input_prep import (square_crop_with_margin,
                                         place_strokes_centered)
-        preset = FRAMED_PRESET.get(category, PRESET)
+        # framed category → two_stage category (person=IP-Adapter人物、 物/動物=object)
+        TWO_CAT = {"person": "character", "object": "object", "animal": "object"}
+        cat2 = TWO_CAT.get(category, "object")
         prompt = FRAMED_PROMPT[category].format(subj=subject)
-        cn = CN_SCALE if preset == PRESET else None  # object preset は既定CN
-        print(f"[routed]   framed cat={category} preset={preset} cn={cn} "
-              f"prompt: {prompt}")
-        sq = square_crop_with_margin(inp, pad=0.22, out_size=FRAMED_SIZE)
-        gen = ImageGenerator.from_preset(
-            preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
-        gen.load()
-        # framed は binarize (中心線) で単一線化。 canny は二重アウトラインに
-        # なるため不可 (2026-06-01 ユーザー指摘)。
-        vec = Vectorizer(**cfg)
+        sres = f"{FRAMED_SIZE}x{FRAMED_SIZE}"
+        sdir = args.output_base / args.sid
+        sdir.mkdir(parents=True, exist_ok=True)
+        crop_path = sdir / "_framed_crop.png"
+        square_crop_with_margin(inp, pad=0.22, out_size=FRAMED_SIZE).save(crop_path)
+        print(f"[routed]   framed 2-stage cat={category}->{cat2} prompt: {prompt}")
+        vec = Vectorizer(**cfg)   # binarize 中心線 (単一線)
         for i, seed in enumerate(seeds):
-            raster = gen.generate(prompt, sq,
-                                  controlnet_conditioning_scale=cn, seed=seed)
+            d = sdir / f"v{i+1}_seed{seed}"
+            stage_dir = d / "_2stage"
+            cmd = ["./venv/bin/python", "-m", "scripts.test_ip_adapter_two_stage",
+                   "--user-sketch", str(crop_path), "--category", cat2,
+                   "--output", str(stage_dir),
+                   "--stage1-resolution", sres, "--resolution", sres,
+                   "--stage2-strength", "0.45", "--ip-scale", "0.6",
+                   "--stage1-prompt", prompt, "--seed", str(seed)]
+            rc = subprocess.run(cmd, cwd=str(_ROOT)).returncode
+            rasters = (sorted(_glob.glob(str(stage_dir / "20_stage2_*.png")))
+                       or sorted(_glob.glob(str(stage_dir / "20_final_*.png"))))
+            if rc != 0 or not rasters:
+                print(f"[routed]   framed v{i+1} 2-stage FAILED rc={rc}")
+                continue
+            raster = Image.open(rasters[0]).convert("RGB")
             r = vec.vectorize(generated_image=raster, user_image=None)
             centered = place_strokes_centered(r.strokes, (CW, CH), fill=0.9)
-            d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
             meta = {"sid": args.sid, "route": "framed", "subject": subject,
-                    "category": category, "preset": preset, "cn": cn,
-                    "seed": seed, "prompt": prompt}
+                    "category": category, "preset": "two_stage(IP-Adapter)",
+                    "two_stage_category": cat2, "stage2_strength": 0.45,
+                    "ip_scale": 0.6, "cn": None, "seed": seed, "prompt": prompt}
             _save_candidate(d, centered, CW, CH, generated=raster, meta=meta)
+            shutil.rmtree(stage_dir, ignore_errors=True)   # 中間物は削除 (容量)
             print(f"[routed]   framed v{i+1} seed{seed}: {len(centered)} strokes -> {d}")
+        crop_path.unlink(missing_ok=True)
     elif route == "stylize":
         prompt = STYLIZE_TEMPLATES[category].format(subj=subject)
         print(f"[routed]   stylize prompt: {prompt}")
