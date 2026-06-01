@@ -1,0 +1,13 @@
+{
+  "sid": "samp_IMG_4359",
+  "route": "framed",
+  "variant": "clean",
+  "subject": "diamonds",
+  "category": "object",
+  "preset": "animagine_xl_31_mistoline",
+  "cn": null,
+  "seed": 60231,
+  "prompt": "a diamonds, clean bold black ink lineart, white background, simple, single subject, no shading, no fill, no hatching, masterpiece, monochrome lineart, thick clean lines, white background, small character, lots of white space",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

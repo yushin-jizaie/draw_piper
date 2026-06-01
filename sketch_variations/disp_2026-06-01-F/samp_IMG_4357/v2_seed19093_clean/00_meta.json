@@ -1,0 +1,13 @@
+{
+  "sid": "samp_IMG_4357",
+  "route": "framed",
+  "variant": "clean",
+  "subject": "face",
+  "category": "person",
+  "preset": "animagine_xl_31_mistoline",
+  "cn": null,
+  "seed": 19093,
+  "prompt": "a face, clean bold black ink lineart, white background, simple, single subject, no shading, no fill, no hatching, masterpiece, monochrome lineart, thick clean lines, white background, small character, lots of white space",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}
