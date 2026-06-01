@@ -3,12 +3,12 @@
   "route": "framed",
   "variant": "enriched",
   "subject": "face",
-  "additions": "eyebrows mustache goatee glasses scarf",
+  "design": "This is a rough draft of a face. Finish it as a joyful, bald individual with large, expressive eyes, a wide, toothy grin, and a pair of round, floppy ears.",
   "category": "person",
   "preset": "illustrious_v2_object",
-  "cn": 0.35,
+  "cn": 0.4,
   "seed": 59628,
-  "prompt": "a face, eyebrows mustache goatee glasses scarf, monochrome clean digital lineart, bold even-weight black outlines, no fill, no shading, no brush texture, white background, single subject",
+  "prompt": "This is a rough draft of a face. Finish it as a joyful, bald individual with large, expressive eyes, a wide, toothy grin, and a pair of round, floppy ears.",
   "placed_at": "input_bbox",
   "input_fit": "contain"
 }

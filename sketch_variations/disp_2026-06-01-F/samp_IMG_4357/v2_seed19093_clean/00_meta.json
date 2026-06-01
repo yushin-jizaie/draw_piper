@@ -3,12 +3,12 @@
   "route": "framed",
   "variant": "clean",
   "subject": "face",
-  "additions": "",
+  "design": "",
   "category": "person",
   "preset": "animagine_xl_31_mistoline",
   "cn": 0.5,
   "seed": 19093,
-  "prompt": "a face, monochrome clean digital lineart, bold even-weight black outlines, no fill, no shading, no brush texture, white background, single subject",
+  "prompt": "a face.",
   "placed_at": "input_bbox",
   "input_fit": "contain"
 }

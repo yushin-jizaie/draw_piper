@@ -101,6 +101,55 @@ def _place_input_aligned(strokes, inp_w, inp_h, gen_size, CW, CH):
             for st in strokes]
 
 
+def _input_canvas_strokes(inp, CW, CH, cfg):
+    """入力画像を webapp の contain 表示位置で vectorize し、 canvas 座標の
+    「ユーザーの正確な線」 strokes を返す (ハイブリッド配置のアンカー用)。
+    """
+    from PIL import Image
+    from modules.vectorizer import Vectorizer
+    W, H = inp.size
+    s = min(CW / W, CH / H)
+    dw, dh = max(1, int(W * s)), max(1, int(H * s))
+    ox, oy = (CW - dw) // 2, (CH - dh) // 2
+    canvas = Image.new("RGB", (CW, CH), (255, 255, 255))
+    canvas.paste(inp.resize((dw, dh)), (ox, oy))
+    return Vectorizer(**cfg).vectorize(generated_image=canvas, user_image=None).strokes
+
+
+def _anchor_hybrid(input_strokes, enriched_strokes, *, margin=0.06,
+                   drop_inside=0.5, min_len=22):
+    """特徴固定ハイブリッド: ユーザーの線 (input_strokes) はそのまま残し、
+    生成 (enriched_strokes) のうち入力 bbox の内側に入る線は捨て、 外側に出た
+    新規装飾 (髪/耳/服 等) だけ採用して合成。
+
+    → 目・口など主要特徴の位置は必ず入力どおりになり、 装飾は周囲に乗る。
+    margin: 入力 bbox を内側に縮める割合 (生え際など輪郭際の装飾を拾うため)。
+    drop_inside: stroke の点が bbox 内に入る割合がこれ以上なら捨てる。
+    min_len: これ未満の短い stray 線はクラッタ低減のため除外 (px)。
+    """
+    pts = [p for st in input_strokes for p in st]
+    if not pts:
+        return list(input_strokes) + list(enriched_strokes)
+    xs = [p[0] for p in pts]
+    ys = [p[1] for p in pts]
+    x0, y0, x1, y1 = min(xs), min(ys), max(xs), max(ys)
+    mx, my = (x1 - x0) * margin, (y1 - y0) * margin
+    bx0, by0, bx1, by1 = x0 + mx, y0 + my, x1 - mx, y1 - my
+    kept = []
+    for st in enriched_strokes:
+        if len(st) < 2:
+            continue
+        inside = sum(1 for x, y in st if bx0 <= x <= bx1 and by0 <= y <= by1)
+        if inside / len(st) >= drop_inside:
+            continue  # 顔内部の再解釈線 → 捨てて入力側を採用
+        length = sum(((st[i + 1][0] - st[i][0]) ** 2
+                      + (st[i + 1][1] - st[i][1]) ** 2) ** 0.5
+                     for i in range(len(st) - 1))
+        if length >= min_len:
+            kept.append(st)
+    return list(input_strokes) + kept
+
+
 def _place_at_centroid(strokes, target, cx, cy, CW, CH):
     """strokes を長辺=target に拡縮し、 点群重心を (cx,cy) に合わせて配置。
 
@@ -240,6 +289,8 @@ def main() -> int:
         _W, _H = inp.size
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         framed_seeds = FRAMED_SEEDS[:args.n]
+        # ハイブリッド配置 (目など主要特徴を入力位置に固定) 用の入力線。
+        input_canvas = _input_canvas_strokes(inp, CW, CH, cfg)
         for suffix, preset, vcn, use_design in FRAMED_VARIANTS:
             vprompt = _framed_prompt(subject, design if use_design else "")
             print(f"[routed]   framed [{suffix}] preset={preset} cn={vcn} "
@@ -266,6 +317,16 @@ def main() -> int:
                 _save_candidate(d, placed, CW, CH, generated=raster, meta=meta)
                 print(f"[routed]   framed v{i+1} seed{seed} [{suffix}]: "
                       f"{len(placed)} strokes -> {d}")
+                # 加筆 variant からハイブリッド版を派生 (生成は再利用):
+                # 入力の主要特徴を固定し、 周囲の新規装飾だけ乗せる。
+                if use_design:
+                    hyb = _anchor_hybrid(input_canvas, placed)
+                    dh_ = args.output_base / args.sid / f"v{i+1}_seed{seed}_hybrid"
+                    hmeta = dict(meta)
+                    hmeta.update(variant="hybrid", placed_at="feature_anchor")
+                    _save_candidate(dh_, hyb, CW, CH, generated=raster, meta=hmeta)
+                    print(f"[routed]   framed v{i+1} seed{seed} [hybrid]: "
+                          f"{len(hyb)} strokes -> {dh_}")
             del gen
             gc.collect()
             if torch.cuda.is_available():
