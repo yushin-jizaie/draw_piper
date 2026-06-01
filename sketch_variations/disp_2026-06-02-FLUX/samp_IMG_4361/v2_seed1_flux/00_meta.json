@@ -1,0 +1,13 @@
+{
+  "sid": "samp_IMG_4361",
+  "route": "flux",
+  "preset": "chutesai/FLUX.1-schnell",
+  "controlnet": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+  "cn": 0.6,
+  "seed": 1,
+  "prompt": "This is a rough draft of a sun. Finish it as a radiant, smiling face with sparkling rays, set against a backdrop of gentle hills and a few fluffy clouds. monochrome clean digital lineart, bold even-weight black outlines, white background",
+  "design": "This is a rough draft of a sun. Finish it as a radiant, smiling face with sparkling rays, set against a backdrop of gentle hills and a few fluffy clouds.",
+  "subject": "sun",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

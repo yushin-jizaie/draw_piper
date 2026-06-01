@@ -1,0 +1,13 @@
+{
+  "sid": "samp_IMG_4362",
+  "route": "flux",
+  "preset": "chutesai/FLUX.1-schnell",
+  "controlnet": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+  "cn": 0.6,
+  "seed": 1,
+  "prompt": "This is a rough draft of a chair. Finish it as a sleek modern design with a curved backrest, a wide seat, and three sturdy legs, adorned with subtle geometric. monochrome clean digital lineart, bold even-weight black outlines, white background",
+  "design": "This is a rough draft of a chair. Finish it as a sleek modern design with a curved backrest, a wide seat, and three sturdy legs, adorned with subtle geometric.",
+  "subject": "chair",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}
