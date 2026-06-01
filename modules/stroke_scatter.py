@@ -88,8 +88,13 @@ def free_cells(canvas_wh: Tuple[int, int], input_bbox: Tuple[int, int, int, int]
 
 
 def scatter_strokes(char_strokes: list, cells: list, *,
-                    fill: float = 0.8, seed: int = 7) -> List[Stroke]:
-    """各キャラ strokes を空きセルへ縮小配置 (アスペクト維持)。"""
+                    fill: float = 0.8, seed: int = 7,
+                    jitter: float = 0.0) -> List[Stroke]:
+    """各キャラ strokes を空きセルへ縮小配置 (アスペクト維持)。
+
+    jitter>0 で、 各キャラをセル内でランダムに位置・スケールを揺らす
+    (グリッド感を崩す random パターン)。 jitter は揺れ幅の割合 (0-1)。
+    """
     rng = random.Random(seed)
     cells = list(cells)
     rng.shuffle(cells)
@@ -98,9 +103,15 @@ def scatter_strokes(char_strokes: list, cells: list, *,
         if k >= len(cells):
             break
         cx0, cy0, ccw, cch = cells[k]
-        s = min(ccw / max(w, 1), cch / max(h, 1)) * fill
-        ox = cx0 + (ccw - w * s) / 2.0
-        oy = cy0 + (cch - h * s) / 2.0
+        scale_jit = 1.0 + rng.uniform(-0.25, 0.15) * (1.0 if jitter else 0.0)
+        s = min(ccw / max(w, 1), cch / max(h, 1)) * fill * scale_jit
+        # セル内の余白ぶんをランダムに振り分け (jitter=0 なら中央)
+        free_x = max(0.0, ccw - w * s)
+        free_y = max(0.0, cch - h * s)
+        fx = rng.uniform(0, 1) if jitter else 0.5
+        fy = rng.uniform(0, 1) if jitter else 0.5
+        ox = cx0 + free_x * (fx if jitter else 0.5)
+        oy = cy0 + free_y * (fy if jitter else 0.5)
         for st in strokes:
             placed.append([(x * s + ox, y * s + oy) for (x, y) in st])
     return placed
@@ -112,10 +123,12 @@ def scatter_companions(sheet_img: Image.Image,
                        canvas_wh: Tuple[int, int],
                        *, cols: int = 3, rows: int = 7,
                        fill: float = 0.8, seed: int = 7,
+                       jitter: float = 0.0,
                        vectorizer=None) -> tuple:
     """高レベル API: sheet を分割→輪郭化→散布し、
     (合成 strokes, n_chars_placed, n_chars_found, n_cells) を返す。
 
+    jitter>0 で位置・スケールをランダムに揺らす (グリッド感を崩す)。
     vectorizer 未指定なら canny mode で生成 (塗りシルエット→輪郭線)。
     """
     if vectorizer is None:
@@ -124,7 +137,8 @@ def scatter_companions(sheet_img: Image.Image,
     chars = split_characters(sheet_img)
     char_strokes = vectorize_characters(chars, vectorizer)
     cells = free_cells(canvas_wh, input_bbox, cols=cols, rows=rows)
-    scattered = scatter_strokes(char_strokes, cells, fill=fill, seed=seed)
+    scattered = scatter_strokes(char_strokes, cells, fill=fill, seed=seed,
+                                jitter=jitter)
     n_placed = min(len(char_strokes), len(cells))
     combined = list(input_strokes) + scattered
     return combined, n_placed, len(char_strokes), len(cells)

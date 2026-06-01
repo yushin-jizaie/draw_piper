@@ -42,6 +42,22 @@ STYLIZE_TEMPLATES = {
 SCATTER_PROMPT = ("{subj}, manga style, clean bold ink lineart, white background, "
                   "appealing design, multiple")
 
+# framed (正方形クロップ→正方形生成→縦長中央配置): 横長/コンパクト被写体用。
+FRAMED_SIZE = 1024
+FRAMED_PRESET = {           # object は gacha-object 系 (車の良い構図)、 人/動物は lineart_char
+    "object": "illustrious_v2_object",
+    "animal": PRESET,
+    "person": PRESET,
+}
+FRAMED_PROMPT = {
+    "object": ("a {subj}, clean bold ink lineart, white background, dynamic angle, "
+               "appealing design, single {subj}"),
+    "animal": ("a {subj}, manga style, dynamic, clean bold ink lineart, "
+               "white background, single {subj}, appealing"),
+    "person": ("{subj}, manga character, dynamic confident pose, clean bold ink "
+               "lineart, white background, appealing character design"),
+}
+
 
 def _save_candidate(out_dir, strokes, CW, CH, generated=None):
     import numpy as np
@@ -88,7 +104,7 @@ def main() -> int:
                     help="disp dir base (この下に <sid>/vN_seedS/)")
     ap.add_argument("--n", type=int, default=3)
     ap.add_argument("--resolution", type=str, default="704x1472")
-    ap.add_argument("--force-route", choices=["stylize", "companion"], default=None)
+    ap.add_argument("--force-route", choices=["stylize", "framed", "companion"], default=None)
     args = ap.parse_args()
 
     import numpy as np
@@ -109,16 +125,16 @@ def main() -> int:
     subject, category = args.subject, args.category
     assoc_subject = None
     need_vlm = (subject is None
-                or (route == "stylize" and category is None)
-                or (route != "stylize" and args.scatter_mode == "assoc"))
+                or (route in ("stylize", "framed") and category is None)
+                or (route == "companion" and args.scatter_mode == "assoc"))
     if need_vlm:
         from modules.vlm import VLM
         vlm = VLM(verbose=True)
         if subject is None:
             subject = vlm.describe_literal(inp) or "subject"
-        if route == "stylize" and category is None:
+        if route in ("stylize", "framed") and category is None:
             category = vlm.classify_category(inp)
-        if route != "stylize" and args.scatter_mode == "assoc":
+        if route == "companion" and args.scatter_mode == "assoc":
             assoc_subject = vlm.predict_companion_subject(inp) or subject
         del vlm  # VRAM 解放 (SDXL ロード前に)
         import torch, gc
@@ -128,15 +144,38 @@ def main() -> int:
     category = category or "object"
     print(f"[routed] {args.sid}: route={route} subj='{subject}' "
           f"cat={category} scatter_mode={args.scatter_mode} assoc='{assoc_subject}'")
-
-    guide = inp.resize((CW, CH))
-    gen = ImageGenerator.from_preset(PRESET, resolution=(CW, CH), verbose=False)
-    gen.load()
     seeds = DEFAULT_SEEDS[:args.n]
 
-    if route == "stylize":
+    if route == "framed":
+        # 正方形クロップ→正方形生成 (object は gacha-object preset)→縦長中央配置。
+        from modules.input_prep import (square_crop_with_margin,
+                                        place_strokes_centered)
+        preset = FRAMED_PRESET.get(category, PRESET)
+        prompt = FRAMED_PROMPT[category].format(subj=subject)
+        cn = CN_SCALE if preset == PRESET else None  # object preset は既定CN
+        print(f"[routed]   framed cat={category} preset={preset} cn={cn} "
+              f"prompt: {prompt}")
+        sq = square_crop_with_margin(inp, pad=0.22, out_size=FRAMED_SIZE)
+        gen = ImageGenerator.from_preset(
+            preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
+        gen.load()
+        # object は細部線が多く canny、 動物/人は滑らかな輪郭なので binarize(中心線)。
+        vec = (Vectorizer(gen_line_mode="canny", **cfg) if category == "object"
+               else Vectorizer(**cfg))
+        for i, seed in enumerate(seeds):
+            raster = gen.generate(prompt, sq,
+                                  controlnet_conditioning_scale=cn, seed=seed)
+            r = vec.vectorize(generated_image=raster, user_image=None)
+            centered = place_strokes_centered(r.strokes, (CW, CH), fill=0.9)
+            d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
+            _save_candidate(d, centered, CW, CH, generated=raster)
+            print(f"[routed]   framed v{i+1} seed{seed}: {len(centered)} strokes -> {d}")
+    elif route == "stylize":
         prompt = STYLIZE_TEMPLATES[category].format(subj=subject)
         print(f"[routed]   stylize prompt: {prompt}")
+        guide = inp.resize((CW, CH))
+        gen = ImageGenerator.from_preset(PRESET, resolution=(CW, CH), verbose=False)
+        gen.load()
         vec = Vectorizer(gen_line_mode="canny", **cfg)
         for i, seed in enumerate(seeds):
             raster = gen.generate(prompt, guide,
@@ -145,24 +184,30 @@ def main() -> int:
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
             _save_candidate(d, r.strokes, CW, CH, generated=raster)
             print(f"[routed]   stylize v{i+1} seed{seed}: {r.n_strokes} strokes -> {d}")
-    else:  # companion → scatter
+    else:  # companion → scatter (v1=グリッド / v2,v3=ランダム)
         scatter_subj = assoc_subject if args.scatter_mode == "assoc" else subject
         prompt = SCATTER_PROMPT.format(subj=scatter_subj)
         print(f"[routed]   scatter ({args.scatter_mode}) subj='{scatter_subj}' "
               f"prompt: {prompt}")
+        guide = inp.resize((CW, CH))
+        gen = ImageGenerator.from_preset(PRESET, resolution=(CW, CH), verbose=False)
+        gen.load()
         vec_bin = Vectorizer(**cfg)
         vec_canny = Vectorizer(gen_line_mode="canny", **cfg)
         input_strokes = vec_bin.vectorize(generated_image=guide, user_image=None).strokes
         bbox = union_bbox(detect_blobs(Image.fromarray(np.array(guide.convert("L")))))
         for i, seed in enumerate(seeds):
+            jitter = 0.0 if i == 0 else 1.0   # v1=グリッド、 以降=ランダム
+            pat = "grid" if jitter == 0.0 else "random"
             sheet = gen.generate(prompt, guide,
                                  controlnet_conditioning_scale=CN_SCALE, seed=seed)
             combined, n_placed, n_found, n_cells = scatter_companions(
-                sheet, input_strokes, bbox, (CW, CH), seed=seed, vectorizer=vec_canny)
-            d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
+                sheet, input_strokes, bbox, (CW, CH), seed=seed,
+                jitter=jitter, vectorizer=vec_canny)
+            d = args.output_base / args.sid / f"v{i+1}_seed{seed}_{pat}"
             _save_candidate(d, combined, CW, CH, generated=sheet)
-            print(f"[routed]   scatter v{i+1} seed{seed}: {n_placed}/{n_found} chars, "
-                  f"{len(combined)} strokes -> {d}")
+            print(f"[routed]   scatter v{i+1} ({pat}) seed{seed}: "
+                  f"{n_placed}/{n_found} chars, {len(combined)} strokes -> {d}")
     print(f"[routed] {args.sid} done.")
     return 0
 

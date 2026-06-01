@@ -36,7 +36,9 @@ AREA_FILL_THRESH = 0.18
 # 縦長被写体のみ stylize (縦長ボードを単一被写体で埋められる)。 横長/コンパクトな
 # 物 (家 h/w≈0.88、 車 ≈0.54) は単一だと分裂/歪むので scatter (複数=シーン化) へ。
 # 2026-06-01 検証: 木(h/w1.57)/人(縦長)=stylize OK、 家/車=分裂。
-TALL_THRESH = 1.05  # bbox 高さ / 幅 がこれ以上で「縦長被写体」
+# 1.5: 本当に細長い被写体 (木 1.57 / 人 2.86) だけ縦長直接 stylize。 ほぼ正方形の
+# コンパクト被写体 (猫の顔 1.32) は縦長で分裂するので framed (正方形生成→中央) へ。
+TALL_THRESH = 1.5  # bbox 高さ / 幅 がこれ以上で「縦長被写体」
 
 
 @dataclass
@@ -82,12 +84,14 @@ def decide_route(img: Image.Image,
         return RouteDecision(
             "stylize", linear, area, bbox,
             f"いっぱい(linear {linear:.2f}/area {area:.2f}) かつ "
-            f"縦長被写体(h/w {tall:.2f}>={tall_thresh}) → stylize (位置保持)")
+            f"縦長被写体(h/w {tall:.2f}>={tall_thresh}) → stylize (縦長直接生成)")
     if full and not is_tall:
+        # 横長/コンパクトな単一被写体 (車・家・猫の顔) は縦長直接だと分裂/歪む。
+        # 正方形クロップ→正方形生成→縦長中央配置で良い構図を出す。
         return RouteDecision(
-            "companion", linear, area, bbox,
-            f"いっぱいだが横長被写体(h/w {tall:.2f}<{tall_thresh}) → "
-            f"単体だと分裂/歪む → scatter (複数=シーン化)")
+            "framed", linear, area, bbox,
+            f"いっぱいだが横長/コンパクト被写体(h/w {tall:.2f}<{tall_thresh}) → "
+            f"framed (正方形生成→中央配置)")
     return RouteDecision(
         "companion", linear, area, bbox,
         f"linear {linear:.2f} / area {area:.2f} → 余白多い → scatter (空白を埋める)")
