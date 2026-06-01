@@ -1,0 +1,10 @@
+{
+  "sid": "car",
+  "route": "stylize",
+  "subject": "car",
+  "category": "object",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 7,
+  "prompt": "stylish car, manga style illustration, appealing bold design, interesting angle, dynamic composition, clean bold ink lineart, white background"
+}

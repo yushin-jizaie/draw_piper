@@ -1,0 +1,12 @@
+{
+  "sid": "F_angry_face",
+  "route": "scatter",
+  "subject": "face",
+  "category": "object",
+  "scatter_mode": "same",
+  "pattern": "random",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 7,
+  "prompt": "face, manga style, clean bold ink lineart, white background, appealing design, multiple"
+}

@@ -1,0 +1,12 @@
+{
+  "sid": "portrait_person",
+  "route": "scatter",
+  "subject": "man",
+  "category": "object",
+  "scatter_mode": "same",
+  "pattern": "random",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 7,
+  "prompt": "man, manga style, clean bold ink lineart, white background, appealing design, multiple"
+}
