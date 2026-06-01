@@ -174,28 +174,41 @@ def main() -> int:
         # 旧ランと同条件 → 同等の結果になるはず。
         from modules.input_prep import square_pad, place_strokes_centered
         from modules.image_gen import MODEL_PRESETS
+        from modules.stroke_transform import compute_strokes_bbox, transform_strokes
         preset = FRAMED_PRESET.get(category, "illustrious_v2_object_mt")
         base_prompt = FRAMED_PROMPT[category].format(subj=subject)
         sh = MODEL_PRESETS.get(preset, {}).get("style_hint")
         prompt = f"{base_prompt}, {sh}" if sh else base_prompt
         sq = square_pad(inp, FRAMED_SIZE)
+        # 入力の被写体位置を OpenCV (blob) で縦長キャンバス座標として取得 →
+        # 生成結果をその位置・大きさに合成 (中央固定でなく「描いた場所」 に置く)。
+        # webapp 合成は入力を縦長に resize 表示するので、 ここも同じ resize 基準で
+        # bbox を取り、 合成が一致するようにする (実カメラ=縦長入力なら歪みなし)。
+        guide_l = np.array(inp.resize((CW, CH)).convert("L"))
+        ib = union_bbox(detect_blobs(Image.fromarray(guide_l)))
+        use_bbox = bool(ib) and ib[2] > 0 and ib[3] > 0
         gen = ImageGenerator.from_preset(
             preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
         gen.load()
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         framed_seeds = FRAMED_SEEDS[:args.n]
-        print(f"[routed]   framed (旧lora02再現) preset={preset} prompt: {prompt}")
+        print(f"[routed]   framed (旧lora02再現) preset={preset} "
+              f"input_bbox={ib if use_bbox else 'なし→中央'} prompt: {prompt}")
         for i, seed in enumerate(framed_seeds):
             raster = gen.generate(prompt, sq, seed=seed,
                                   negative_prompt=FRAMED_NEGATIVE)
             r = vec.vectorize(generated_image=raster, user_image=None)
-            centered = place_strokes_centered(r.strokes, (CW, CH), fill=0.9)
+            if use_bbox:
+                gb = compute_strokes_bbox(r.strokes)
+                placed = transform_strokes(r.strokes, gb, ib, fit="contain")
+            else:
+                placed = place_strokes_centered(r.strokes, (CW, CH), fill=0.9)
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
             meta = {"sid": args.sid, "route": "framed", "subject": subject,
                     "category": category, "preset": preset, "cn": None,
-                    "seed": seed, "prompt": prompt}
-            _save_candidate(d, centered, CW, CH, generated=raster, meta=meta)
-            print(f"[routed]   framed v{i+1} seed{seed}: {len(centered)} strokes -> {d}")
+                    "seed": seed, "prompt": prompt, "placed_at": "input_bbox"}
+            _save_candidate(d, placed, CW, CH, generated=raster, meta=meta)
+            print(f"[routed]   framed v{i+1} seed{seed}: {len(placed)} strokes -> {d}")
     elif route == "stylize":
         prompt = STYLIZE_TEMPLATES[category].format(subj=subject)
         print(f"[routed]   stylize prompt: {prompt}")

@@ -6,5 +6,6 @@
   "preset": "illustrious_v2_inpaint_mt",
   "cn": null,
   "seed": 19093,
-  "prompt": "a detailed Matsumoto-style balloon, mt_taiyo_style, manga style, dynamic pose, ink lineart, single continuous black line on plain white background, clean smooth strokes, no shading, mt_taiyo_style, monochrome, greyscale, lineart, white_background, simple_background"
+  "prompt": "a detailed Matsumoto-style balloon, mt_taiyo_style, manga style, dynamic pose, ink lineart, single continuous black line on plain white background, clean smooth strokes, no shading, mt_taiyo_style, monochrome, greyscale, lineart, white_background, simple_background",
+  "placed_at": "input_bbox"
 }
