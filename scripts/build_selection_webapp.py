@@ -147,6 +147,11 @@ INPUTS = [
     ("portrait_person",  "sketch_variations/_inputs/portrait_person.png",  "character"),
     # 2026-06-01: 「キャラを撒く」 デモ (lineartLoRA スプライト→分割→空白散布)。
     ("scatter",          "sketch_variations/_inputs/scatter_input.png",    "character"),
+    # 2026-06-01: 大きく描かれたオブジェクトのテスト (縦長→stylize / 横長→scatter)。
+    ("tree_big",         "sketch_variations/_inputs/tree_big.png",         "object"),
+    ("cat_big",          "sketch_variations/_inputs/cat_big.png",          "object"),
+    ("house_big",        "sketch_variations/_inputs/house_big.png",        "object"),
+    ("car_big",          "sketch_variations/_inputs/car_big.png",          "object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
@@ -807,10 +812,42 @@ def _apply_local_skeletons(entries: list) -> int:
             else:
                 continue
             skel_rel = Path(rel).parent / "vec_debug" / "06_strokes.png"
-            if (_ROOT / skel_rel).exists():
+            skel_abs = _ROOT / skel_rel
+            # local skeleton が無い候補 (overnight gacha 等) は strokes_png raster
+            # から生成 (robot ブランチ URL の 404 を防ぐ)。
+            if not skel_abs.exists():
+                _gen_skeleton_from_strokes_png(_ROOT / rel, skel_abs)
+            if skel_abs.exists():
                 c["skeleton_png"] = f"{RAW_BASE}/{skel_rel}"
                 n += 1
+            elif "robot-input-set" in c.get("skeleton_png", ""):
+                # 生成も差し替えもできない → 404 URL を空にして 404 を出さない
+                c["skeleton_png"] = ""
     return n
+
+
+def _gen_skeleton_from_strokes_png(strokes_png: Path, skel_png: Path) -> bool:
+    """strokes render (白背景・黒線) を skeletonize して skel_png に保存。"""
+    if not strokes_png.exists():
+        return False
+    try:
+        import cv2
+        import numpy as np
+        from modules.vectorizer import _skeletonize
+        arr = cv2.imread(str(strokes_png), cv2.IMREAD_GRAYSCALE)
+        if arr is None:
+            return False
+        m = (arr < 128).astype(np.uint8)
+        canvas = np.full(arr.shape, 255, np.uint8)
+        if m.sum() > 0:
+            sk = _skeletonize(m).astype(np.uint8)
+            canvas[cv2.dilate(sk, np.ones((2, 2), np.uint8)) > 0] = 0
+        skel_png.parent.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(skel_png), canvas)
+        return True
+    except Exception as ex:  # noqa: BLE001
+        print(f"[webapp] skeleton 生成失敗 ({strokes_png.name}): {ex}")
+        return False
 
 
 def _apply_local_frida(entries: list) -> int:
