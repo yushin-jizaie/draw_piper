@@ -9,5 +9,6 @@
   "design": "This is a rough draft of a diamonds. Finish it as a shimmering, gem-like pair with intricate facets, set in a delicate silver frame, exuding elegance and sparkle.",
   "subject": "diamonds",
   "placed_at": "input_bbox",
-  "input_fit": "contain"
+  "input_fit": "contain",
+  "revec": "contrast_boost"
 }

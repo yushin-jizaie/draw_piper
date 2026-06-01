@@ -9,5 +9,6 @@
   "design": "This is a rough draft of a sun. Finish it as a radiant, smiling face with sparkling rays, set against a backdrop of gentle hills and a few fluffy clouds.",
   "subject": "sun",
   "placed_at": "input_bbox",
-  "input_fit": "contain"
+  "input_fit": "contain",
+  "revec": "contrast_boost"
 }

@@ -9,5 +9,6 @@
   "design": "This is a rough draft of a dog. Finish it as a sleek, elegant Doberman with pointed ears, a confident stance, and a strong, muscular build, capturing its alert and.",
   "subject": "dog",
   "placed_at": "input_bbox",
-  "input_fit": "contain"
+  "input_fit": "contain",
+  "revec": "contrast_boost"
 }

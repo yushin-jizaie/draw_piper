@@ -9,5 +9,6 @@
   "design": "This is a rough draft of a chair. Finish it as a sleek modern design with a curved backrest, a wide seat, and three sturdy legs, adorned with subtle geometric.",
   "subject": "chair",
   "placed_at": "input_bbox",
-  "input_fit": "contain"
+  "input_fit": "contain",
+  "revec": "contrast_boost"
 }

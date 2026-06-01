@@ -9,5 +9,6 @@
   "design": "This is a rough draft of a umbrella. Finish it as a whimsical, umbrella adorned with playful raindrops and a cheerful smiley face, capturing a joyful, vibrant essence.",
   "subject": "umbrella",
   "placed_at": "input_bbox",
-  "input_fit": "contain"
+  "input_fit": "contain",
+  "revec": "contrast_boost"
 }

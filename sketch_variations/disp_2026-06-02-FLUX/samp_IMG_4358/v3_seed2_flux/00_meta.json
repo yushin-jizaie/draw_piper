@@ -9,5 +9,6 @@
   "design": "This is a rough draft of a triangle. Finish it as a vibrant, geometric figure with a playful smile, sharp edges, and a dynamic, flowing base, capturing its lively essence.",
   "subject": "triangle",
   "placed_at": "input_bbox",
-  "input_fit": "contain"
+  "input_fit": "contain",
+  "revec": "contrast_boost"
 }

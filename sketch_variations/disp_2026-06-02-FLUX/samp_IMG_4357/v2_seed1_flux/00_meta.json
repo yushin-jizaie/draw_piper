@@ -9,5 +9,6 @@
   "design": "This is a rough draft of a face. Finish it as a joyful, bald individual with large, expressive eyes, a wide, toothy grin, and a pair of round, floppy ears.",
   "subject": "face",
   "placed_at": "input_bbox",
-  "input_fit": "contain"
+  "input_fit": "contain",
+  "revec": "contrast_boost"
 }
