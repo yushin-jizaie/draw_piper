@@ -176,7 +176,7 @@ def main() -> int:
         # 旧 align と同じ: タイトクロップせず正方形パディング (被写体を拡大しない)。
         square_pad(inp, FRAMED_SIZE).save(crop_path)
         print(f"[routed]   framed 2-stage cat={category}->{cat2} prompt: {prompt}")
-        vec = Vectorizer(**cfg)   # binarize 中心線 (単一線)
+        vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         for i, seed in enumerate(seeds):
             d = sdir / f"v{i+1}_seed{seed}"
             stage_dir = d / "_2stage"
@@ -209,7 +209,7 @@ def main() -> int:
         guide = inp.resize((CW, CH))
         gen = ImageGenerator.from_preset(PRESET, resolution=(CW, CH), verbose=False)
         gen.load()
-        vec = Vectorizer(gen_line_mode="canny", **cfg)
+        vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         for i, seed in enumerate(seeds):
             raster = gen.generate(prompt, guide,
                                   controlnet_conditioning_scale=CN_SCALE, seed=seed)
@@ -229,7 +229,7 @@ def main() -> int:
         gen = ImageGenerator.from_preset(PRESET, resolution=(CW, CH), verbose=False)
         gen.load()
         vec_bin = Vectorizer(**cfg)
-        vec_canny = Vectorizer(gen_line_mode="canny", **cfg)
+        vec_canny = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         input_strokes = vec_bin.vectorize(generated_image=guide, user_image=None).strokes
         bbox = union_bbox(detect_blobs(Image.fromarray(np.array(guide.convert("L")))))
         for i, seed in enumerate(seeds):
