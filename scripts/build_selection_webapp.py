@@ -78,6 +78,8 @@ def skeleton_png_url(sid: str, route: str, gacha_seed: str | None = None) -> str
 
 _DATE_RE = re.compile(r"(20\d{6})")
 _DATE_DASH_RE = re.compile(r"(20\d{2})-(\d{2})-(\d{2})")
+# disp_2026-06-01-B のような「日付+レター」 バッチ名を抽出 (生成日フィルタ用)。
+_BATCH_RE = re.compile(r"disp_(20\d\d-\d\d-\d\d-[A-Za-z0-9]+)")
 
 
 def date_for_rel_path(rel_path: str) -> str:
@@ -571,27 +573,37 @@ const DATE_FILTER_KEY = "draw_piper_date_filter";
 
 // プルダウンに 日付選択肢を populate (entries 内の全 cand.date を unique → 新しい順)
 (function populateDateFilter() {
-  const dates = new Set();
+  const dates = new Set(), batches = new Set();
   for (const e of ENTRIES) {
     for (const c of e.candidates) {
       if (c.date) dates.add(c.date);
+      if (c.batch) batches.add(c.batch);   // 例 2026-06-01-B
     }
   }
-  const sorted = Array.from(dates).sort().reverse();
-  for (const d of sorted) {
+  const sortedDates = Array.from(dates).sort().reverse();
+  for (const d of sortedDates) {
     const opt = document.createElement("option");
     opt.value = d;
-    // YYYYMMDD → YYYY-MM-DD
     opt.textContent = d.length === 8
       ? `${d.slice(0,4)}-${d.slice(4,6)}-${d.slice(6,8)}` : d;
     dateFilterEl.appendChild(opt);
   }
-  // 既定はアクセス時に「最新日付」 を表示。 過去に特定日付を選んでいて
-  // それがまだ存在すればそれを優先 (= 明示選択は維持)。 saved が無い / "all" /
-  // 既に消えた日付なら最新日付にフォールバック。
-  const latest = sorted[0] || "all";
+  // 「日付+レター」 バッチ選択肢 (区切りラベルの後に列挙)
+  const sortedBatches = Array.from(batches).sort();
+  if (sortedBatches.length) {
+    const sep = document.createElement("option");
+    sep.disabled = true; sep.textContent = "── バッチ ──";
+    dateFilterEl.appendChild(sep);
+    for (const b of sortedBatches) {
+      const opt = document.createElement("option");
+      opt.value = b; opt.textContent = b;
+      dateFilterEl.appendChild(opt);
+    }
+  }
+  const all = sortedDates.concat(sortedBatches);
+  const latest = sortedDates[0] || "all";
   const saved = localStorage.getItem(DATE_FILTER_KEY);
-  dateFilterEl.value = (saved && sorted.includes(saved)) ? saved : latest;
+  dateFilterEl.value = (saved && all.includes(saved)) ? saved : latest;
 })();
 
 function totalSelected() {
@@ -768,16 +780,15 @@ function render() {
   const dateFilter = dateFilterEl.value;
   for (const entry of ENTRIES) {
     // 日付 filter 適用 (all なら全部表示)
-    const filtered = dateFilter === "all"
-      ? entry.candidates
-      : entry.candidates.filter(c => c.date === dateFilter);
+    const matchFilter = (c) => dateFilter === "all"
+      || c.date === dateFilter || c.batch === dateFilter;
+    const filtered = entry.candidates.filter(matchFilter);
     if (filtered.length === 0 && dateFilter !== "all") continue;
     const row = document.createElement("div");
     row.className = "row";
     const ncands = filtered.length;
     const nsel = (selections[entry.sketch_id] || []).filter(
-      r => entry.candidates.find(c => c.route === r &&
-                                       (dateFilter === "all" || c.date === dateFilter))
+      r => entry.candidates.find(c => c.route === r && matchFilter(c))
     ).length;
     row.innerHTML = `
       <h2>${entry.sketch_id} <span class="type">${entry.type}</span>${nsel > 0 ? `<span class="count">★ ${nsel} 件選択</span>` : ""}<span class="type" style="margin-left:8px">(${ncands} 候補)</span></h2>
@@ -1042,6 +1053,20 @@ def _apply_local_meta(entries: list) -> int:
     return n
 
 
+def _apply_batch_labels(entries: list) -> int:
+    """disp_2026-06-01-B 等のバッチ名を candidate['batch'] に載せる
+    (生成日プルダウンに「日付+レター」 の選択肢を出すため)。"""
+    n = 0
+    for e in entries:
+        for c in e.get("candidates", []):
+            src = c.get("strokes_png", "") or c.get("rel_path", "")
+            m = _BATCH_RE.search(src)
+            if m:
+                c["batch"] = m.group(1)
+                n += 1
+    return n
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
@@ -1063,6 +1088,8 @@ def main() -> int:
     print(f"local frida 計算: {n_frida} 候補")
     n_meta = _apply_local_meta(entries)
     print(f"local meta 載せ: {n_meta} 候補")
+    n_batch = _apply_batch_labels(entries)
+    print(f"batch ラベル: {n_batch} 候補")
     html = HTML_TEMPLATE.replace(
         "__ENTRIES__", json.dumps(entries, ensure_ascii=False))
     out_dir = _ROOT / "docs" / "selection"
