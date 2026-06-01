@@ -30,28 +30,23 @@ DEFAULT_SEEDS = [123, 7, 555]
 FRAMED_SEEDS = [59628, 19093, 60231]
 
 # --- デジタル均一線 + 中程度の加筆 (2026-06-02 ユーザー方針) ---
-# 線質指定はここ 1 本に集約 (preset の style_hint は "no humans" 混入や 77 token
-# 超過の原因になるため framed では追記しない)。 太さ一定のクリーンなデジタル線。
-DIGITAL_LINE = ("monochrome clean digital lineart, bold even-weight black "
-                "outlines, no fill, no shading, no brush texture, white "
-                "background, single subject")
-# 掠れ/筆致/塗りつぶし/網点/背景/文字 を一括抑制 (全ルート共通の negative)。
-KASURE_NEGATIVE = (
-    "brush stroke, dry brush, rough ink, scratchy lines, faded lines, broken "
-    "lines, ink bleed, uneven line width, charcoal, pencil texture, hatching, "
-    "crosshatch, screentone, halftone, shading, fill, solid black fill, "
-    "silhouette, gray background, dark background, filled background, scribble, "
-    "sketchy, noise, color, gradient, blurry, watermark, signature, text, "
-    "letters, words, frame, border, jpeg artifacts")
+# 線質は「生成 AI 側のデフォルト」 に寄せる (毎回 prompt に積まない):
+#   - positive 線質 = DIGITAL_STYLE_SUFFIX を ImageGenerator.style_suffix に設定し
+#     generate() が prompt 末尾に自動付与 (prompt 本文は VLM のデザイン指示文だけ)。
+#   - no fill / shading / brush / 掠れ 等の抑制は image_gen.DEFAULT_NEGATIVE_PROMPT
+#     (生成側デフォルト negative) に集約済み。 呼び出し側は negative を渡さない。
+# これで 77 token の枠をデザイン指示文に使える。
+DIGITAL_STYLE_SUFFIX = ("monochrome clean digital lineart, bold even-weight "
+                        "black outlines, white background")
 
 # framed の 2 variant (ともにデジタル均一線、 webapp でガチャ選別):
-#   enriched = illustrious_v2_object を CN0.35 まで下げ、 VLM 加筆要素を反映
-#              (眼鏡/髭/服/小物 等。 中程度の加筆。 CN を下げないと加筆が出ない)
-#   clean    = animagine mistoline CN0.5、 加筆なしの忠実クリーン・トレース
+#   enriched = illustrious_v2_object を CN0.4 まで下げ、 VLM の「仕上げ指示文」 を
+#              反映 (前提+〜に仕上げて の散文。 CN を下げないと装飾が出ない)
+#   clean    = animagine mistoline CN0.5、 指示なしの忠実クリーン・トレース
 #              (加筆が外したとき用の素直な版)
-# 各要素: (suffix, preset, cn, use_additions)
+# 各要素: (suffix, preset, cn, use_design)
 FRAMED_VARIANTS = [
-    ("enriched", "illustrious_v2_object", 0.35, True),
+    ("enriched", "illustrious_v2_object", 0.4, True),
     ("clean", "animagine_xl_31_mistoline", 0.5, False),
 ]
 
@@ -76,16 +71,14 @@ SCATTER_PROMPT = ("{subj}, manga style, clean bold ink lineart, white background
 FRAMED_SIZE = 768
 
 
-def _framed_prompt(subject, additions):
-    """framed/digital の生成 prompt を組む: 主題 + 加筆要素 + デジタル線質。
+def _framed_prompt(subject, design):
+    """framed/digital の生成 prompt 本文: 仕上げ指示文(散文) のみ。
 
-    additions は VLM suggest_additions の「描き足すべき要素」 (中程度の加筆)。
-    style_hint は付けない (DIGITAL_LINE に線質を集約。 77 token 超過回避)。
+    design は VLM design_instruction の「前提+〜に仕上げて」 の自然文。
+    線質 (DIGITAL_STYLE_SUFFIX) は generator の style_suffix が自動付与するので
+    ここでは積まない。 design 無しなら主題のみのフォールバック。
     """
-    head = f"a {subject}"
-    if additions:
-        head = f"{head}, {additions}"
-    return f"{head}, {DIGITAL_LINE}"
+    return design if design else f"a {subject}."
 
 
 def _place_input_aligned(strokes, inp_w, inp_h, gen_size, CW, CH):
@@ -202,12 +195,12 @@ def main() -> int:
     inp = Image.open(args.input).convert("RGB")
     route = args.force_route or decide_route(inp).route
 
-    # --- VLM 推論 (subject / additions / category / 連想 companion) を必要時のみ ---
-    # subject   = 短い主題 (ラベル/meta 用)
-    # additions = 「描き足すべき要素」 (中程度の加筆指示。 髪/服/小物/表情/効果)。
-    #             生成 prompt に subject と並べて差し込む。
+    # --- VLM 推論 (subject / design / category / 連想 companion) を必要時のみ ---
+    # subject = 短い主題 (ラベル/meta 用)
+    # design  = 「前提 + 下書きを〜に仕上げて」 の自然文 (箇条書きでなく指示文)。
+    #           生成 prompt の本体に使う (CN を下げなくても装飾が描画される)。
     subject, category = args.subject, args.category
-    additions = ""
+    design = ""
     assoc_subject = None
     need_vlm = (subject is None
                 or route in ("stylize", "framed")
@@ -220,8 +213,8 @@ def main() -> int:
         if route in ("stylize", "framed"):
             if category is None:
                 category = vlm.classify_category(inp)
-            # 加筆指示は生成系ルートのみ (scatter sprite には不要)。
-            additions = vlm.suggest_additions(inp, subject) or ""
+            # 下書きを仕上げる指示文 (生成系ルートのみ。 scatter sprite には不要)。
+            design = vlm.design_instruction(inp, subject) or ""
         if route == "companion" and args.scatter_mode == "assoc":
             assoc_subject = vlm.predict_companion_subject(inp) or subject
         del vlm  # VRAM 解放 (SDXL ロード前に)
@@ -231,8 +224,9 @@ def main() -> int:
             torch.cuda.empty_cache()
     category = category or "object"
     print(f"[routed] {args.sid}: route={route} subj='{subject}' "
-          f"add='{additions}' cat={category} scatter_mode={args.scatter_mode} "
-          f"assoc='{assoc_subject}'")
+          f"cat={category} scatter_mode={args.scatter_mode} assoc='{assoc_subject}'")
+    if design:
+        print(f"[routed]   design: {design}")
     seeds = DEFAULT_SEEDS[:args.n]
 
     if route == "framed":
@@ -246,24 +240,26 @@ def main() -> int:
         _W, _H = inp.size
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         framed_seeds = FRAMED_SEEDS[:args.n]
-        for suffix, preset, vcn, use_add in FRAMED_VARIANTS:
-            vprompt = _framed_prompt(subject, additions if use_add else "")
+        for suffix, preset, vcn, use_design in FRAMED_VARIANTS:
+            vprompt = _framed_prompt(subject, design if use_design else "")
             print(f"[routed]   framed [{suffix}] preset={preset} cn={vcn} "
                   f"prompt: {vprompt}")
+            # 線質は style_suffix (生成側デフォルト) が自動付与、 negative も
+            # DEFAULT_NEGATIVE_PROMPT に集約済 (呼び出し側は本文だけ渡す)。
             gen = ImageGenerator.from_preset(
-                preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
+                preset, resolution=(FRAMED_SIZE, FRAMED_SIZE),
+                style_suffix=DIGITAL_STYLE_SUFFIX, verbose=False)
             gen.load()
             for i, seed in enumerate(framed_seeds):
                 raster = gen.generate(
-                    vprompt, sq, seed=seed, negative_prompt=KASURE_NEGATIVE,
-                    controlnet_conditioning_scale=vcn)
+                    vprompt, sq, seed=seed, controlnet_conditioning_scale=vcn)
                 r = vec.vectorize(generated_image=raster, user_image=None)
                 # ガイドの四角 → 入力の contain 表示領域 に写す (元画像と重なる)
                 placed = _place_input_aligned(r.strokes, _W, _H, FRAMED_SIZE, CW, CH)
                 d = args.output_base / args.sid / f"v{i+1}_seed{seed}_{suffix}"
                 meta = {"sid": args.sid, "route": "framed", "variant": suffix,
                         "subject": subject,
-                        "additions": additions if use_add else "",
+                        "design": design if use_design else "",
                         "category": category, "preset": preset,
                         "cn": vcn, "seed": seed, "prompt": vprompt,
                         "placed_at": "input_bbox", "input_fit": "contain"}
@@ -275,20 +271,18 @@ def main() -> int:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
     elif route == "stylize":
-        # 主題テンプレ + 中程度の加筆 (additions) + デジタル均一線。
-        _parts = [STYLIZE_TEMPLATES[category].format(subj=subject)]
-        if additions:
-            _parts.append(additions)
-        _parts.append("clean digital lineart, smooth even-weight lines, "
-                      "no brush texture")
-        prompt = ", ".join(_parts)
+        # 本文 = VLM の「仕上げ指示文」 (散文)。 無ければ主題テンプレにフォールバック。
+        # 線質は style_suffix が自動付与、 negative は生成側デフォルト。
+        prompt = design if design else STYLIZE_TEMPLATES[category].format(subj=subject)
         print(f"[routed]   stylize prompt: {prompt}")
         guide = inp.resize((CW, CH))
-        gen = ImageGenerator.from_preset(PRESET, resolution=(CW, CH), verbose=False)
+        gen = ImageGenerator.from_preset(
+            PRESET, resolution=(CW, CH),
+            style_suffix=DIGITAL_STYLE_SUFFIX, verbose=False)
         gen.load()
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         for i, seed in enumerate(seeds):
-            raster = gen.generate(prompt, guide, negative_prompt=KASURE_NEGATIVE,
+            raster = gen.generate(prompt, guide,
                                   controlnet_conditioning_scale=CN_SCALE, seed=seed)
             r = vec.vectorize(generated_image=raster, user_image=None)
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}"

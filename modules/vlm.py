@@ -539,6 +539,73 @@ class VLM:
                   f"({infer_time:.2f}s)")
         return phrase
 
+    # 箇条書きキーワードではなく 「前提 + 下書きを仕上げる指示」 の自然文を出させる。
+    # ① 前提を伝える (これは〜の下書きと推測される) ② 何を描くかを指示文として
+    # 「〜に仕上げて」 と詳細な散文で伝える。 これで CN を下げなくても装飾が描画
+    # される (2026-06-02 ユーザー: 箇条書きすぎ。 推測して文章で指示せよ)。
+    # ※ SDXL は CLIP 77 token 制限があるので 35 語以内に収める。
+    _DESIGN_PROMPT_TEXT = (
+        "This image is a rough, crude DRAFT line sketch. First infer what it is "
+        "meant to depict. Then write ONE short natural-language instruction telling "
+        "an illustrator to FINISH this draft into a complete, appealing "
+        "illustration, vividly describing the intended finished design (the "
+        "subject's character, distinctive features, clothing or accessories, "
+        "expression) while keeping the SAME subject, pose and composition as the "
+        "draft. Write flowing prose, NOT a list of comma-separated keywords. Begin "
+        "with 'This is a rough draft of'. Keep it under 32 words. Do not mention "
+        "line, color, medium, drawing or art style."
+    )
+
+    def design_instruction(self, image: ImageLike, subject: str = "subject") -> str:
+        """下書きを「〜に仕上げて」 と指示する自然文 (前提+デザイン詳細) を返す。
+
+        suggest_additions が箇条書き要素なのに対し、 これは前提を述べてから
+        「仕上げて」 と指示する散文。 生成 prompt の本体に使う。 失敗時は空文字。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        import re
+        pil_image = _normalize_image(image)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": self._DESIGN_PROMPT_TEXT},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template], images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt").to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=80, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0]
+        # 散文なので句読点は残す。 改行/引用符/medium 語のみ除去し 32 語に制限。
+        s = raw_text.replace("\n", " ").replace('"', "").replace("*", "").strip()
+        s = re.sub(r"\b(line ?art|line drawing|monochrome|black and white|"
+                   r"ink|pencil|colou?r\w*|drawing|sketch style)\b", "", s,
+                   flags=re.I)
+        s = re.sub(r"\s+,", ",", s)
+        s = re.sub(r"\s{2,}", " ", s).strip()
+        words = s.split()
+        if len(words) > 32:
+            s = " ".join(words[:32]).rstrip(",;: ") + "."
+        if self.verbose:
+            print(f"[vlm] design '{s}' ({infer_time:.2f}s)")
+        return s
+
     def classify_category(self, image: ImageLike) -> str:
         """主題のカテゴリを person / animal / object のいずれかで返す。
 

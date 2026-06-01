@@ -53,10 +53,11 @@ DEFAULT_NEGATIVE_PROMPT = (
     #   - 色 (青背景暴走対策含む)
     #   - ハッチング・スクリーントーン・塗り (Vectorizer ノイズ源)
     #   - 文字・ロゴ (LoRA / Illustrious 副産物)
-    "color, colored, blue background, cyan, sky, gradient, "
-    "hatching, crosshatch, screentone, halftone, dot pattern, "
-    "filled background, paper texture, scribble, sketchy, "
-    "shading, gray, sepia, "
+    "color, blue background, gradient, "
+    "hatching, crosshatch, screentone, halftone, "
+    "filled background, scribble, sketchy, "
+    "shading, gray, fill, silhouette, "
+    "brush stroke, dry brush, faded lines, "
     "watermark, signature, text, frame, border, "
     "blurry, noise, jpeg artifacts"
 )
@@ -712,6 +713,7 @@ class ImageGenerator:
         resolution=DEFAULT_RESOLUTION,
         variant: Optional[str] = "fp16",
         style_hint: str = "",
+        style_suffix: str = "",
         lora_path: Optional[str] = None,
         lora_scale: float = 1.0,
         guide_dilate_ksize: int = 0,
@@ -737,6 +739,9 @@ class ImageGenerator:
         self.variant = variant
         # caller (prompt_builder 等) が prompt に追加するスタイル指示
         self.style_hint = style_hint
+        # generate() が prompt 末尾に毎回自動付与する線質/スタイル指定
+        # (呼び出し側が毎回 prompt に積まなくて済む 「生成 AI 側のデフォルト」)。
+        self.style_suffix = style_suffix
         # LoRA weights を base に焼き込まずに ロード (推論時に lora_scale で混合)。
         # 相対パスは project_root 起点で解決される (load() で resolve)。
         self.lora_path = lora_path
@@ -961,6 +966,10 @@ class ImageGenerator:
             else self.controlnet_conditioning_scale
         )
         neg = negative_prompt if negative_prompt is not None else self.negative_prompt
+        # 線質/スタイルのデフォルトを prompt 末尾に自動付与 (呼び出し側は本文=
+        # デザイン指示だけを渡せばよい)。 既に含む場合は二重付与しない。
+        if self.style_suffix and self.style_suffix not in prompt:
+            prompt = f"{prompt.rstrip(', ')}, {self.style_suffix}"
 
         pil_guide = _normalize_image(guide_image, size=self.resolution)
         gen_w, gen_h = self.resolution
