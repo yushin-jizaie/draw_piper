@@ -246,6 +246,13 @@ def main() -> int:
                     "pattern": pat, "preset": PRESET, "cn": CN_SCALE,
                     "seed": seed, "prompt": prompt}
             _save_candidate(d, combined, CW, CH, generated=sheet, meta=meta)
+            # direct バリアント: scatter せず生成画像 (sheet) を全体ストローク化。
+            # 生成画像が良い構図のときはこちらがそのまま使える (ユーザー案)。
+            rd = vec_canny.vectorize(generated_image=sheet, user_image=None)
+            dd = args.output_base / args.sid / f"v{i+1}_seed{seed}_direct"
+            dmeta = dict(meta); dmeta.update(route="direct", pattern="direct")
+            _save_candidate(dd, rd.strokes, CW, CH, generated=sheet, meta=dmeta)
+            print(f"[routed]   direct v{i+1} seed{seed}: {rd.n_strokes} strokes -> {dd}")
             print(f"[routed]   scatter v{i+1} ({pat}) seed{seed}: "
                   f"{n_placed}/{n_found} chars, {len(combined)} strokes -> {d}")
     print(f"[routed] {args.sid} done.")

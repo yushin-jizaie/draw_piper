@@ -1,0 +1,12 @@
+{
+  "sid": "car",
+  "route": "direct",
+  "subject": "car",
+  "category": "object",
+  "scatter_mode": "same",
+  "seed": 555,
+  "prompt": "car, manga style, clean bold ink lineart, white background, appealing design, multiple",
+  "preset": null,
+  "cn": null,
+  "pattern": "direct"
+}

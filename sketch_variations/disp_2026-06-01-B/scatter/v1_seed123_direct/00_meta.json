@@ -1,0 +1,12 @@
+{
+  "sid": "scatter",
+  "route": "direct",
+  "subject": "smiley",
+  "category": "object",
+  "scatter_mode": "same",
+  "seed": 123,
+  "prompt": "smiley, manga style, clean bold ink lineart, white background, appealing design, multiple",
+  "preset": null,
+  "cn": null,
+  "pattern": "direct"
+}
