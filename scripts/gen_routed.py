@@ -280,8 +280,9 @@ def main() -> int:
         input_strokes = vec_bin.vectorize(generated_image=guide, user_image=None).strokes
         bbox = union_bbox(detect_blobs(Image.fromarray(np.array(guide.convert("L")))))
         for i, seed in enumerate(seeds):
-            jitter = 0.0 if i == 0 else 1.0   # v1=グリッド、 以降=ランダム
-            pat = "grid" if jitter == 0.0 else "random"
+            # 2026-06-01: D 選別で scatter random は 0 採用だったため破棄。 全 grid。
+            jitter = 0.0
+            pat = "grid"
             sheet = gen.generate(prompt, guide,
                                  controlnet_conditioning_scale=CN_SCALE, seed=seed)
             combined, n_placed, n_found, n_cells = scatter_companions(
