@@ -26,11 +26,21 @@ CN_SCALE = 0.5
 PRESET = "illustrious_v2_lineart_char"
 DEFAULT_SEEDS = [123, 7, 555]
 
-# 被写体に応じた生成 prompt (subject を差し込む)。
-STYLIZE_PROMPT = ("{subj}, manga character, dynamic confident pose, expressive, "
-                  "clean bold ink lineart, white background, appealing character design")
-SCATTER_PROMPT = ("{subj}, manga style, dynamic pose, clean bold ink lineart, "
-                  "white background, appealing, expressive")
+# stylize はカテゴリ別テンプレ (入力はキャラとは限らない: 動物・オブジェクトも有り)。
+#   person → ポーズ重視 / animal → 躍動重視 / object → 構図・デザイン重視
+STYLIZE_TEMPLATES = {
+    "person": ("{subj}, manga character, dynamic confident pose, expressive face, "
+               "clean bold ink lineart, white background, appealing character design"),
+    "animal": ("{subj}, manga style, dynamic lively pose, expressive, "
+               "clean bold ink lineart, white background, appealing design"),
+    "object": ("stylish {subj}, manga style illustration, appealing bold design, "
+               "interesting angle, dynamic composition, clean bold ink lineart, "
+               "white background"),
+}
+# scatter で撒く対象の sprite 生成 prompt (撒く subject を差し込む)。
+# 人/動物/物いずれも来るので中立 (pose/expressive 等のキャラ語は入れない)。
+SCATTER_PROMPT = ("{subj}, manga style, clean bold ink lineart, white background, "
+                  "appealing design, multiple")
 
 
 def _save_candidate(out_dir, strokes, CW, CH, generated=None):
@@ -65,8 +75,15 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--input", type=Path, required=True)
     ap.add_argument("--sid", type=str, required=True)
-    ap.add_argument("--subject", type=str, default="character",
-                    help="prompt に差し込む被写体語 (例: cat, 1boy)")
+    ap.add_argument("--subject", type=str, default=None,
+                    help="prompt に差し込む被写体語 (例: cat, 1boy)。 "
+                         "省略時は VLM describe_literal で自動推論。")
+    ap.add_argument("--category", choices=["person", "animal", "object"],
+                    default=None,
+                    help="stylize テンプレ選択。 省略時は VLM classify_category。")
+    ap.add_argument("--scatter-mode", choices=["same", "assoc"], default="same",
+                    help="scatter で撒く対象: same=入力と同じ被写体 / "
+                         "assoc=VLM 連想の別の関連物 (猫→魚 等)")
     ap.add_argument("--output-base", type=Path, required=True,
                     help="disp dir base (この下に <sid>/vN_seedS/)")
     ap.add_argument("--n", type=int, default=3)
@@ -87,7 +104,30 @@ def main() -> int:
     cfg = load_binarize_config()
     inp = Image.open(args.input).convert("RGB")
     route = args.force_route or decide_route(inp).route
-    print(f"[routed] {args.sid}: route={route} subj={args.subject}")
+
+    # --- VLM 推論 (subject / category / 連想 companion) を必要時のみ ---
+    subject, category = args.subject, args.category
+    assoc_subject = None
+    need_vlm = (subject is None
+                or (route == "stylize" and category is None)
+                or (route != "stylize" and args.scatter_mode == "assoc"))
+    if need_vlm:
+        from modules.vlm import VLM
+        vlm = VLM(verbose=True)
+        if subject is None:
+            subject = vlm.describe_literal(inp) or "subject"
+        if route == "stylize" and category is None:
+            category = vlm.classify_category(inp)
+        if route != "stylize" and args.scatter_mode == "assoc":
+            assoc_subject = vlm.predict_companion_subject(inp) or subject
+        del vlm  # VRAM 解放 (SDXL ロード前に)
+        import torch, gc
+        gc.collect()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    category = category or "object"
+    print(f"[routed] {args.sid}: route={route} subj='{subject}' "
+          f"cat={category} scatter_mode={args.scatter_mode} assoc='{assoc_subject}'")
 
     guide = inp.resize((CW, CH))
     gen = ImageGenerator.from_preset(PRESET, resolution=(CW, CH), verbose=False)
@@ -95,7 +135,8 @@ def main() -> int:
     seeds = DEFAULT_SEEDS[:args.n]
 
     if route == "stylize":
-        prompt = STYLIZE_PROMPT.format(subj=args.subject)
+        prompt = STYLIZE_TEMPLATES[category].format(subj=subject)
+        print(f"[routed]   stylize prompt: {prompt}")
         vec = Vectorizer(gen_line_mode="canny", **cfg)
         for i, seed in enumerate(seeds):
             raster = gen.generate(prompt, guide,
@@ -105,7 +146,10 @@ def main() -> int:
             _save_candidate(d, r.strokes, CW, CH, generated=raster)
             print(f"[routed]   stylize v{i+1} seed{seed}: {r.n_strokes} strokes -> {d}")
     else:  # companion → scatter
-        prompt = SCATTER_PROMPT.format(subj=args.subject)
+        scatter_subj = assoc_subject if args.scatter_mode == "assoc" else subject
+        prompt = SCATTER_PROMPT.format(subj=scatter_subj)
+        print(f"[routed]   scatter ({args.scatter_mode}) subj='{scatter_subj}' "
+              f"prompt: {prompt}")
         vec_bin = Vectorizer(**cfg)
         vec_canny = Vectorizer(gen_line_mode="canny", **cfg)
         input_strokes = vec_bin.vectorize(generated_image=guide, user_image=None).strokes

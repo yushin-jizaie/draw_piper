@@ -30,7 +30,13 @@ from PIL import Image
 LINEAR_FILL_THRESH = 0.60
 # 面積比 (bbox 面積 / 画像面積) の補助閾値。 細い被写体 (棒人間) は linear が
 # 高くても面積は小さいので、 両方見て総合判断する。
-AREA_FILL_THRESH = 0.22
+# 0.18: 大きく描かれた平たいオブジェクト (車 area≈0.20) も占有判定は通すが、
+# 下の縦横比判定で横長物は scatter 側に振る。
+AREA_FILL_THRESH = 0.18
+# 縦長被写体のみ stylize (縦長ボードを単一被写体で埋められる)。 横長/コンパクトな
+# 物 (家 h/w≈0.88、 車 ≈0.54) は単一だと分裂/歪むので scatter (複数=シーン化) へ。
+# 2026-06-01 検証: 木(h/w1.57)/人(縦長)=stylize OK、 家/車=分裂。
+TALL_THRESH = 1.05  # bbox 高さ / 幅 がこれ以上で「縦長被写体」
 
 
 @dataclass
@@ -53,8 +59,13 @@ def _content_bbox(img: Image.Image, white_thresh: int = 200):
 def decide_route(img: Image.Image,
                  linear_thresh: float = LINEAR_FILL_THRESH,
                  area_thresh: float = AREA_FILL_THRESH,
+                 tall_thresh: float = TALL_THRESH,
                  white_thresh: int = 200) -> RouteDecision:
-    """入力画像から生成ルートを決定する。"""
+    """入力画像から生成ルートを決定する。
+
+    stylize 条件 = 「いっぱい (占有率高) AND 縦長被写体」。 横長/コンパクトな物は
+    縦長フレームを単体で埋められず分裂/歪むので scatter (複数=シーン化) へ。
+    """
     W, H = img.size
     bbox = _content_bbox(img, white_thresh)
     if bbox is None:
@@ -64,16 +75,22 @@ def decide_route(img: Image.Image,
     bw, bh = x1 - x0 + 1, y1 - y0 + 1
     linear = max(bw / W, bh / H)
     area = (bw * bh) / (W * H)
-    # いっぱいに描かれてる = 長辺が十分大きい AND ある程度の面積を占める
+    tall = bh / max(bw, 1)
     full = (linear >= linear_thresh) and (area >= area_thresh)
-    if full:
+    is_tall = tall >= tall_thresh
+    if full and is_tall:
         return RouteDecision(
             "stylize", linear, area, bbox,
-            f"linear {linear:.2f}>={linear_thresh} かつ area {area:.2f}>="
-            f"{area_thresh} → いっぱい → stylize (位置保持)")
+            f"いっぱい(linear {linear:.2f}/area {area:.2f}) かつ "
+            f"縦長被写体(h/w {tall:.2f}>={tall_thresh}) → stylize (位置保持)")
+    if full and not is_tall:
+        return RouteDecision(
+            "companion", linear, area, bbox,
+            f"いっぱいだが横長被写体(h/w {tall:.2f}<{tall_thresh}) → "
+            f"単体だと分裂/歪む → scatter (複数=シーン化)")
     return RouteDecision(
         "companion", linear, area, bbox,
-        f"linear {linear:.2f} / area {area:.2f} → 余白多い → companion (空白を埋める)")
+        f"linear {linear:.2f} / area {area:.2f} → 余白多い → scatter (空白を埋める)")
 
 
 def decide_route_file(path: str | Path, **kw) -> RouteDecision:

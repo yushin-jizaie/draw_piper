@@ -403,6 +403,44 @@ class VLM:
                   f"({infer_time:.2f}s)")
         return phrase
 
+    def classify_category(self, image: ImageLike) -> str:
+        """主題のカテゴリを person / animal / object のいずれかで返す。
+
+        stylize の prompt をカテゴリ別に切り替えるため (人=ポーズ、 動物=躍動、
+        オブジェクト=構図)。 判定不能時は "object" (最も無難なテンプレ) を返す。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        pil_image = _normalize_image(image)
+        prompt = ("Classify the main subject of this line drawing into exactly one "
+                  "category. Answer with only one word: 'person' (a human or "
+                  "character), 'animal' (any creature), or 'object' (anything else "
+                  "like a house, car, tree, food). One word only.")
+        messages = [{"role": "user", "content": [
+            {"type": "image", "image": pil_image},
+            {"type": "text", "text": prompt}]}]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template], images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt").to(self.device)
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=8, do_sample=False)
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0].lower()
+        cat = "object"
+        if "person" in raw or "human" in raw or "character" in raw:
+            cat = "person"
+        elif "animal" in raw or "creature" in raw:
+            cat = "animal"
+        if self.verbose:
+            print(f"[vlm] category '{cat}' from '{raw.strip()}'")
+        return cat
+
     def predict_companion_subject(self, image: ImageLike,
                                     prompt_version: str = "v1") -> str:
         """スケッチ画像から companion subject (関連する別の subject) を 1 単語で返す。
