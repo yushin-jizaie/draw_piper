@@ -1,0 +1,12 @@
+{
+  "sid": "B_round_smiley",
+  "route": "companion",
+  "subject": "face",
+  "category": "object",
+  "scatter_mode": "same",
+  "seed": 123,
+  "prompt": "face, manga style, clean bold ink lineart, white background, appealing design, multiple",
+  "preset": null,
+  "cn": null,
+  "pattern": "grid"
+}

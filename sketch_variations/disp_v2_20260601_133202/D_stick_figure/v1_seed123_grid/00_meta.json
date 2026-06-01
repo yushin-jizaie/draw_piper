@@ -1,0 +1,12 @@
+{
+  "sid": "D_stick_figure",
+  "route": "companion",
+  "subject": "stick figure",
+  "category": "object",
+  "scatter_mode": "same",
+  "seed": 123,
+  "prompt": "stick figure, manga style, clean bold ink lineart, white background, appealing design, multiple",
+  "preset": null,
+  "cn": null,
+  "pattern": "grid"
+}

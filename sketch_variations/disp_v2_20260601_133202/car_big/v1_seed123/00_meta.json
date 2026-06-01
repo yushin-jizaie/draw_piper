@@ -1,0 +1,12 @@
+{
+  "sid": "car_big",
+  "route": "framed",
+  "subject": "car",
+  "category": "object",
+  "scatter_mode": "same",
+  "seed": 123,
+  "prompt": "a car, clean bold ink lineart, white background, dynamic angle, appealing design, single car",
+  "preset": "illustrious_v2_object",
+  "cn": null,
+  "pattern": null
+}

@@ -1,0 +1,12 @@
+{
+  "sid": "cat_big",
+  "route": "framed",
+  "subject": "cat",
+  "category": "animal",
+  "scatter_mode": "same",
+  "seed": 123,
+  "prompt": "a cat, manga style, dynamic, clean bold ink lineart, white background, single cat, appealing",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": "0.5",
+  "pattern": null
+}

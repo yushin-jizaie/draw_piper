@@ -440,7 +440,29 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     text-align: center; margin-bottom: 8px;
     overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .panel:hover .hires-preview { display: flex; flex-direction: column; }
+  /* 2026-06-01: hover 拡大を廃止し、 🔍 クリックで modal 大表示に変更 */
+  .zoom-btn { position:absolute; top:4px; left:4px; z-index:11;
+    background:rgba(0,0,0,0.6); color:#fff; border:none; border-radius:4px;
+    font-size:12px; padding:2px 6px; cursor:pointer; line-height:1; }
+  .zoom-btn:hover { background:var(--accent); }
+  .modal-back { display:none; position:fixed; inset:0; z-index:2000;
+    background:rgba(0,0,0,0.88); }
+  .modal-back.open { display:flex; align-items:center; justify-content:center; }
+  .modal { background:#181818; border:2px solid var(--accent); border-radius:12px;
+    padding:18px; max-width:96vw; max-height:96vh; overflow:auto;
+    display:flex; gap:18px; }
+  .modal .imgcol { text-align:center; color:#bbb; font-size:12px; }
+  .modal canvas.big, .modal img.big { height:80vh; max-width:38vw; width:auto;
+    background:#fff; border-radius:8px; object-fit:contain; display:block; }
+  .modal .meta { min-width:300px; max-width:360px; color:#ddd; font-size:13px; }
+  .modal .meta h3 { color:var(--accent); margin:0 0 6px; font-size:16px; }
+  .modal .meta dt { color:#8ad7ff; font-size:11px; margin-top:9px;
+    text-transform:uppercase; letter-spacing:.4px; }
+  .modal .meta dd { margin:2px 0 0; word-break:break-word; }
+  .modal .meta .prompt { background:#0e0e0e; padding:9px; border-radius:6px;
+    margin-top:6px; line-height:1.45; white-space:pre-wrap; color:#cfe; }
+  .modal .close { position:fixed; top:14px; right:26px; font-size:30px;
+    color:#fff; cursor:pointer; z-index:2001; }
   /* 2026-05-30 v3.2: 新規 disp_* (新 dispatcher) 候補に NEW バッジ */
   .panel.is-new::before {
     content: "NEW";
@@ -599,9 +621,10 @@ function loadImage(url) {
   });
 }
 
-async function makeOverlay(canvas, inputUrl, candUrl) {
+async function makeOverlay(canvas, inputUrl, candUrl, W, H) {
   // input + candidate を Canvas に合成 (input=青、 候補=黒、 背景=白)
-  const W = 256, H = 256;
+  // W,H 指定で任意サイズ (modal は portrait 比率で合成 = 生成時と同じ stretch)。
+  W = W || 256; H = H || 256;
   canvas.width = W; canvas.height = H;
   const ctx = canvas.getContext("2d");
   // 白で初期化 (どちらかが load 失敗しても見える)
@@ -649,6 +672,51 @@ async function makeOverlay(canvas, inputUrl, candUrl) {
       ctx.drawImage(cand, 0, 0, W, H);
     } catch (e2) {}
   }
+}
+
+// ---- クリック拡大 modal (合成 + strokes + メタ + 生成プロンプト) ----
+function esc(s){ return String(s==null?"":s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function fmtMeta(m, entry, cand){
+  const rows = [
+    ["route", m.route], ["subject", m.subject], ["category", m.category],
+    ["preset", m.preset], ["cn (ControlNet)", m.cn], ["seed", m.seed],
+    ["scatter_mode", m.scatter_mode], ["pattern", m.pattern],
+  ].filter(([k,v]) => v!=null && v!=="");
+  let h = rows.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("");
+  h += `<dt>sketch_id</dt><dd>${esc(entry.sketch_id)}</dd>`;
+  if(cand.frida && cand.frida.n_strokes!=null)
+    h += `<dt>Frida</dt><dd>n=${cand.frida.n_strokes} avg=${cand.frida.avg_pts}pts `
+       + `warns=${(cand.frida.warns||[]).length}</dd>`;
+  h += `<dt>パス</dt><dd style="font-size:11px;opacity:.7">${esc(cand.rel_path||"")}</dd>`;
+  if(m.prompt) h += `<dt>生成プロンプト</dt><dd class="prompt">${esc(m.prompt)}</dd>`;
+  else h += `<dt>生成プロンプト</dt><dd style="opacity:.6">(メタ未保存の旧候補)</dd>`;
+  return h;
+}
+function openModal(cand, entry){
+  let back = document.getElementById("modalBack");
+  if(!back){
+    back = document.createElement("div");
+    back.id = "modalBack"; back.className = "modal-back";
+    document.body.appendChild(back);
+    back.addEventListener("click", (e)=>{ if(e.target===back) closeModal(); });
+    document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") closeModal(); });
+  }
+  const m = cand.meta || {};
+  back.innerHTML = `<span class="close" onclick="closeModal()">×</span>
+    <div class="modal">
+      <div class="imgcol"><div>元画像 + 候補 合成</div><canvas class="big" id="mComp"></canvas></div>
+      <div class="imgcol"><div>候補 (ロボット描画 strokes)</div>
+        <img class="big" src="${cand.strokes_png}" alt="strokes"></div>
+      <div class="meta"><h3>${esc(cand.label||"")}</h3><dl>${fmtMeta(m, entry, cand)}</dl></div>
+    </div>`;
+  back.classList.add("open");
+  // portrait 比率 (704:1472) で合成 → 生成時と同じ座標系で重なる
+  makeOverlay(document.getElementById("mComp"), entry.input_png, cand.strokes_png, 460, 962);
+}
+function closeModal(){
+  const back = document.getElementById("modalBack");
+  if(back) back.classList.remove("open");
 }
 
 function render() {
@@ -720,14 +788,15 @@ function render() {
                        </div>
                      </div>
                      ${fridaHtml}
-                     <div class="hires-preview">
-                       <div class="label">${safeLabel}</div>
-                       <img src="${cand.strokes_png}" alt="hires">
-                     </div>`;
+                     <button class="zoom-btn" title="クリックで拡大表示">🔍</button>`;
       const cv = p.querySelector("canvas");
       // 非同期で overlay 合成 (通常表示用)
       makeOverlay(cv, entry.input_png, cand.strokes_png);
       p.addEventListener("click", () => toggleSelection(entry.sketch_id, cand.route));
+      p.querySelector(".zoom-btn").addEventListener("click", (ev) => {
+        ev.stopPropagation();   // 選択トグルと分離
+        openModal(cand, entry);
+      });
       grid.appendChild(p);
     });
     main.appendChild(row);
@@ -893,6 +962,29 @@ def _apply_local_frida(entries: list) -> int:
     return n
 
 
+def _apply_local_meta(entries: list) -> int:
+    """strokes_png と同じ dir に 00_meta.json があれば candidate['meta'] に載せる
+    (route / subject / category / prompt / seed 等を webapp の拡大窓で表示)。"""
+    n = 0
+    for e in entries:
+        for c in e.get("candidates", []):
+            sp = c.get("strokes_png", "")
+            if RAW_BASE and sp.startswith(RAW_BASE + "/"):
+                rel = sp[len(RAW_BASE) + 1:]
+            elif sp.startswith("/"):
+                rel = sp.lstrip("/")
+            else:
+                continue
+            mp = _ROOT / Path(rel).parent / "00_meta.json"
+            if mp.exists():
+                try:
+                    c["meta"] = json.loads(mp.read_text())
+                    n += 1
+                except Exception:
+                    continue
+    return n
+
+
 def main() -> int:
     import argparse
     ap = argparse.ArgumentParser(description=__doc__)
@@ -912,6 +1004,8 @@ def main() -> int:
     print(f"local skeleton 差し替え: {n_skel} 候補")
     n_frida = _apply_local_frida(entries)
     print(f"local frida 計算: {n_frida} 候補")
+    n_meta = _apply_local_meta(entries)
+    print(f"local meta 載せ: {n_meta} 候補")
     html = HTML_TEMPLATE.replace(
         "__ENTRIES__", json.dumps(entries, ensure_ascii=False))
     out_dir = _ROOT / "docs" / "selection"

@@ -59,13 +59,16 @@ FRAMED_PROMPT = {
 }
 
 
-def _save_candidate(out_dir, strokes, CW, CH, generated=None):
+def _save_candidate(out_dir, strokes, CW, CH, generated=None, meta=None):
     import numpy as np
     import cv2
     from PIL import Image
     from modules.stroke_render import render_strokes_to_image
     from modules.vectorizer import _skeletonize
     out_dir.mkdir(parents=True, exist_ok=True)
+    if meta is not None:
+        (out_dir / "00_meta.json").write_text(
+            json.dumps(meta, ensure_ascii=False, indent=2))
     (out_dir / "vec_debug").mkdir(exist_ok=True)
     poly = [[(float(x), float(y)) for x, y in st] for st in strokes]
     render_strokes_to_image(poly, width=CW, height=CH, line_width=2
@@ -168,7 +171,10 @@ def main() -> int:
             r = vec.vectorize(generated_image=raster, user_image=None)
             centered = place_strokes_centered(r.strokes, (CW, CH), fill=0.9)
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
-            _save_candidate(d, centered, CW, CH, generated=raster)
+            meta = {"sid": args.sid, "route": "framed", "subject": subject,
+                    "category": category, "preset": preset, "cn": cn,
+                    "seed": seed, "prompt": prompt}
+            _save_candidate(d, centered, CW, CH, generated=raster, meta=meta)
             print(f"[routed]   framed v{i+1} seed{seed}: {len(centered)} strokes -> {d}")
     elif route == "stylize":
         prompt = STYLIZE_TEMPLATES[category].format(subj=subject)
@@ -182,7 +188,10 @@ def main() -> int:
                                   controlnet_conditioning_scale=CN_SCALE, seed=seed)
             r = vec.vectorize(generated_image=raster, user_image=None)
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
-            _save_candidate(d, r.strokes, CW, CH, generated=raster)
+            meta = {"sid": args.sid, "route": "stylize", "subject": subject,
+                    "category": category, "preset": PRESET, "cn": CN_SCALE,
+                    "seed": seed, "prompt": prompt}
+            _save_candidate(d, r.strokes, CW, CH, generated=raster, meta=meta)
             print(f"[routed]   stylize v{i+1} seed{seed}: {r.n_strokes} strokes -> {d}")
     else:  # companion → scatter (v1=グリッド / v2,v3=ランダム)
         scatter_subj = assoc_subject if args.scatter_mode == "assoc" else subject
@@ -205,7 +214,11 @@ def main() -> int:
                 sheet, input_strokes, bbox, (CW, CH), seed=seed,
                 jitter=jitter, vectorizer=vec_canny)
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}_{pat}"
-            _save_candidate(d, combined, CW, CH, generated=sheet)
+            meta = {"sid": args.sid, "route": "scatter", "subject": scatter_subj,
+                    "category": category, "scatter_mode": args.scatter_mode,
+                    "pattern": pat, "preset": PRESET, "cn": CN_SCALE,
+                    "seed": seed, "prompt": prompt}
+            _save_candidate(d, combined, CW, CH, generated=sheet, meta=meta)
             print(f"[routed]   scatter v{i+1} ({pat}) seed{seed}: "
                   f"{n_placed}/{n_found} chars, {len(combined)} strokes -> {d}")
     print(f"[routed] {args.sid} done.")

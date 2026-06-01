@@ -1,0 +1,12 @@
+{
+  "sid": "house_big",
+  "route": "framed",
+  "subject": "house",
+  "category": "object",
+  "scatter_mode": "same",
+  "seed": 123,
+  "prompt": "a house, clean bold ink lineart, white background, dynamic angle, appealing design, single house",
+  "preset": "illustrious_v2_object",
+  "cn": null,
+  "pattern": null
+}
