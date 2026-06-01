@@ -252,7 +252,7 @@ def find_dispatcher_variants(sketch_id: str) -> list:
                 out.append({
                     "route": r,
                     # disp dir 名 (preset 等) も含めて、 どの生成設定かを明示。
-                    "label": f"{base.name[5:]} / {seed_dir.name}{label_extra}",
+                    "label": f"{sketch_id}: {base.name[5:]} / {seed_dir.name}{label_extra}",
                     "strokes_png": f"{RAW_BASE}/{png.relative_to(_ROOT)}",
                     "skeleton_png": skeleton_png_url(sketch_id, r, seed),
                     "rel_path": str(seed_dir.relative_to(_ROOT)),

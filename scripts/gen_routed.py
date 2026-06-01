@@ -192,13 +192,15 @@ def main() -> int:
             _ox, _oy = (CW - _W * _s) / 2.0, (CH - _H * _s) / 2.0
             bx, by = _bb[0] * _s + _ox, _bb[1] * _s + _oy
             bw, bh = (_bb[2] - _bb[0]) * _s, (_bb[3] - _bb[1]) * _s
-            f = 1.4
             cx, cy = bx + bw / 2.0, by + bh / 2.0
-            nw, nh = min(bw * f, CW), min(bh * f, CH)
-            nx = max(0.0, min(cx - nw / 2.0, CW - nw))
-            ny = max(0.0, min(cy - nh / 2.0, CH - nh))
-            ib = (int(nx), int(ny), int(nw), int(nh))
-            use_bbox = ib[2] > 0 and ib[3] > 0
+            # 出力は「入力の中心」 に「大きめの正方領域」 で配置する。
+            # 小さい入力 (顔等) でも canvas 幅の 0.82 以上を占めて大きく見える
+            # ようにしつつ、 入力が大きい時はそれに追従 (×1.4)、 canvas 幅で頭打ち。
+            side = min(max(max(bw, bh) * 1.4, 0.82 * CW), float(CW))
+            nx = max(0.0, min(cx - side / 2.0, CW - side))
+            ny = max(0.0, min(cy - side / 2.0, CH - side))
+            ib = (int(nx), int(ny), int(side), int(side))
+            use_bbox = True
         else:
             ib, use_bbox = None, False
         gen = ImageGenerator.from_preset(
