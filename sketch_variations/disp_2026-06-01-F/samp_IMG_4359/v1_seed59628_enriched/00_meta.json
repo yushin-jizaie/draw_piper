@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4359",
+  "route": "framed",
+  "variant": "enriched",
+  "subject": "diamonds",
+  "additions": "diamonds sparkling gemstones glitter stars sparkles shimmer brilliance",
+  "category": "object",
+  "preset": "illustrious_v2_object",
+  "cn": 0.35,
+  "seed": 59628,
+  "prompt": "a diamonds, diamonds sparkling gemstones glitter stars sparkles shimmer brilliance, monochrome clean digital lineart, bold even-weight black outlines, no fill, no shading, no brush texture, white background, single subject",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

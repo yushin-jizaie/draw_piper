@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4360",
+  "route": "framed",
+  "variant": "enriched",
+  "subject": "umbrella",
+  "additions": "raindrops handle grip floral pattern raindrop accents ribbon bow",
+  "category": "object",
+  "preset": "illustrious_v2_object",
+  "cn": 0.35,
+  "seed": 59628,
+  "prompt": "a umbrella, raindrops handle grip floral pattern raindrop accents ribbon bow, monochrome clean digital lineart, bold even-weight black outlines, no fill, no shading, no brush texture, white background, single subject",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

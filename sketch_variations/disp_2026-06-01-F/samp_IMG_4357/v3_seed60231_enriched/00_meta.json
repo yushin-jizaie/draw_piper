@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4357",
+  "route": "framed",
+  "variant": "enriched",
+  "subject": "face",
+  "additions": "eyebrows mustache goatee glasses scarf",
+  "category": "person",
+  "preset": "illustrious_v2_object",
+  "cn": 0.35,
+  "seed": 60231,
+  "prompt": "a face, eyebrows mustache goatee glasses scarf, monochrome clean digital lineart, bold even-weight black outlines, no fill, no shading, no brush texture, white background, single subject",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}
