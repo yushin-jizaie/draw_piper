@@ -25,6 +25,17 @@ if str(_ROOT) not in sys.path:
 CN_SCALE = 0.5
 PRESET = "illustrious_v2_lineart_char"
 DEFAULT_SEEDS = [123, 7, 555]
+# framed は旧 stage1_lora02 で良好だった seed を使う (object_mt が単一被写体を
+# 出しやすい当たり seed)。
+FRAMED_SEEDS = [59628, 19093, 60231]
+
+# framed (旧 stage1_lora02 再現) の negative。 matsumoto LoRA が誘発する
+# テキスト/署名/枠/網点を抑制 (旧ランと同じ)。
+FRAMED_NEGATIVE = (
+    "color, colored, blue background, cyan, sky, gradient, hatching, crosshatch, "
+    "screentone, halftone, dot pattern, filled background, paper texture, scribble, "
+    "sketchy, shading, gray, sepia, watermark, signature, text, letters, words, "
+    "frame, border, blurry, noise, jpeg artifacts")
 
 # stylize はカテゴリ別テンプレ (入力はキャラとは限らない: 動物・オブジェクトも有り)。
 #   person → ポーズ重視 / animal → 躍動重視 / object → 構図・デザイン重視
@@ -45,24 +56,24 @@ SCATTER_PROMPT = ("{subj}, manga style, clean bold ink lineart, white background
 # framed (正方形パディング→正方形生成→縦長中央配置): 横長/コンパクト被写体用。
 # 旧 align/gacha と同じ 768 正方形 + 被写体を拡大しない (square_pad) で同品質に。
 FRAMED_SIZE = 768
-FRAMED_PRESET = {           # object は gacha-object 系 (車の良い構図)、 人/動物は lineart_char
-    "object": "illustrious_v2_object",
-    "animal": PRESET,
-    "person": PRESET,
+# framed は旧 stage1_lora02 (2026-05-29) の良かった単一ステージ設定を再現する:
+# _mt プリセット (matsumoto LoRA 0.2) + 「Matsumoto-style」 prompt。 IP-Adapter なし。
+# (ユーザー評価: その時の値・プロンプトが良い。 正方形入力なら同結果になるはず)
+FRAMED_PRESET = {
+    "object": "illustrious_v2_object_mt",   # text2img + CN0.65 + matsumoto LoRA0.2
+    "animal": "illustrious_v2_object_mt",
+    "person": "illustrious_v2_inpaint_mt",  # inpaint + CN0.85 + matsumoto LoRA0.2
 }
-# framed は旧 gacha と同じ「manga style, dynamic pose, detailed lineart」 系
-# プロンプト + two_stage category=character (inpaint構図 + 人物pool画風) で生成する
-# のが最良 (2026-06-01 検証: 旧 gacha-object の車は実は category=character だった)。
 FRAMED_PROMPT = {
-    "object": ("{subj}, manga style, dynamic pose, expressive ink lines, "
-               "detailed lineart, single continuous black line on plain white "
+    "object": ("a detailed Matsumoto-style {subj}, mt_taiyo_style, manga style, "
+               "ink lineart, single continuous black line on plain white "
                "background, clean smooth strokes, no shading"),
-    "animal": ("{subj}, manga style, dynamic pose, expressive ink lines, "
-               "detailed lineart, single continuous black line on plain white "
+    "animal": ("a detailed Matsumoto-style {subj}, mt_taiyo_style, manga style, "
+               "ink lineart, single continuous black line on plain white "
                "background, clean smooth strokes, no shading"),
-    "person": ("{subj}, manga style character, dynamic pose, expressive ink lines, "
-               "detailed lineart, single continuous black line on plain white "
-               "background, clean smooth strokes, no shading"),
+    "person": ("a detailed Matsumoto-style {subj}, mt_taiyo_style, manga style, "
+               "dynamic pose, ink lineart, single continuous black line on plain "
+               "white background, clean smooth strokes, no shading"),
 }
 
 
@@ -157,52 +168,34 @@ def main() -> int:
     seeds = DEFAULT_SEEDS[:args.n]
 
     if route == "framed":
-        # 正方形クロップ → 旧 align と同じ 2-stage (Stage1 構図 + Stage2 IP-Adapter
-        # 画風転写) を正方形で実行 → strokes を縦長中央配置。 単発 ControlNet では
-        # 画風転写が無く地味だったため、 two_stage エンジンに差し替え (2026-06-01)。
-        import glob as _glob
-        import shutil
-        import subprocess
+        # 正方形パディング → 旧 stage1_lora02 (2026-05-29、 ユーザー評価良) と同じ
+        # 単一ステージ生成: _mt プリセット (matsumoto LoRA 0.2) + Matsumoto-style
+        # prompt。 IP-Adapter なし。 strokes を縦長中央配置。 正方形入力なので
+        # 旧ランと同条件 → 同等の結果になるはず。
         from modules.input_prep import square_pad, place_strokes_centered
-        # framed は全カテゴリ two_stage category=character で生成する。
-        # inpaint Stage1 (構図描き起こし) + 人物 style pool が最も良い構図・画風を
-        # 出す (旧 gacha-object の良い車も実は category=character だった)。
-        cat2 = "character"
-        prompt = FRAMED_PROMPT[category].format(subj=subject)
-        sres = f"{FRAMED_SIZE}x{FRAMED_SIZE}"
-        sdir = args.output_base / args.sid
-        sdir.mkdir(parents=True, exist_ok=True)
-        crop_path = sdir / "_framed_crop.png"
-        # 旧 align と同じ: タイトクロップせず正方形パディング (被写体を拡大しない)。
-        square_pad(inp, FRAMED_SIZE).save(crop_path)
-        print(f"[routed]   framed 2-stage cat={category}->{cat2} prompt: {prompt}")
+        from modules.image_gen import MODEL_PRESETS
+        preset = FRAMED_PRESET.get(category, "illustrious_v2_object_mt")
+        base_prompt = FRAMED_PROMPT[category].format(subj=subject)
+        sh = MODEL_PRESETS.get(preset, {}).get("style_hint")
+        prompt = f"{base_prompt}, {sh}" if sh else base_prompt
+        sq = square_pad(inp, FRAMED_SIZE)
+        gen = ImageGenerator.from_preset(
+            preset, resolution=(FRAMED_SIZE, FRAMED_SIZE), verbose=False)
+        gen.load()
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
-        for i, seed in enumerate(seeds):
-            d = sdir / f"v{i+1}_seed{seed}"
-            stage_dir = d / "_2stage"
-            cmd = ["./venv/bin/python", "-m", "scripts.test_ip_adapter_two_stage",
-                   "--user-sketch", str(crop_path), "--category", cat2,
-                   "--output", str(stage_dir),
-                   "--stage1-resolution", sres, "--resolution", sres,
-                   "--stage2-strength", "0.45", "--ip-scale", "0.6",
-                   "--stage1-prompt", prompt, "--seed", str(seed)]
-            rc = subprocess.run(cmd, cwd=str(_ROOT)).returncode
-            rasters = (sorted(_glob.glob(str(stage_dir / "20_stage2_*.png")))
-                       or sorted(_glob.glob(str(stage_dir / "20_final_*.png"))))
-            if rc != 0 or not rasters:
-                print(f"[routed]   framed v{i+1} 2-stage FAILED rc={rc}")
-                continue
-            raster = Image.open(rasters[0]).convert("RGB")
+        framed_seeds = FRAMED_SEEDS[:args.n]
+        print(f"[routed]   framed (旧lora02再現) preset={preset} prompt: {prompt}")
+        for i, seed in enumerate(framed_seeds):
+            raster = gen.generate(prompt, sq, seed=seed,
+                                  negative_prompt=FRAMED_NEGATIVE)
             r = vec.vectorize(generated_image=raster, user_image=None)
             centered = place_strokes_centered(r.strokes, (CW, CH), fill=0.9)
+            d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
             meta = {"sid": args.sid, "route": "framed", "subject": subject,
-                    "category": category, "preset": "two_stage(IP-Adapter)",
-                    "two_stage_category": cat2, "stage2_strength": 0.45,
-                    "ip_scale": 0.6, "cn": None, "seed": seed, "prompt": prompt}
+                    "category": category, "preset": preset, "cn": None,
+                    "seed": seed, "prompt": prompt}
             _save_candidate(d, centered, CW, CH, generated=raster, meta=meta)
-            shutil.rmtree(stage_dir, ignore_errors=True)   # 中間物は削除 (容量)
             print(f"[routed]   framed v{i+1} seed{seed}: {len(centered)} strokes -> {d}")
-        crop_path.unlink(missing_ok=True)
     elif route == "stylize":
         prompt = STYLIZE_TEMPLATES[category].format(subj=subject)
         print(f"[routed]   stylize prompt: {prompt}")
