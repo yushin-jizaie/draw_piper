@@ -52,6 +52,31 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_LOGS_DIR = PROJECT_ROOT / "logs"
+SKETCH_VARIATIONS_DIR = PROJECT_ROOT / "sketch_variations"
+
+# 各 cycle dir 内で 「生成画像」 / 「ストローク画像」 として使えるファイル名の
+# 優先候補。 logs/ と sketch_variations/ で命名が違うので両対応にする。
+_GENERATED_IMAGE_NAMES = (
+    "generated.png",
+    "20_final_no_ip_adapter.png",
+    "20_stage2_str0.45_ip0.60.png",
+    "illustrious_v2_inpaint.png",
+    "illustrious_v2_object.png",
+    "30_vectorized_strokes.png",
+)
+_STROKES_IMAGE_RELPATHS = (
+    "vec_debug/06_strokes.png",
+    "30_vectorized_strokes.png",
+    "06_strokes.png",
+)
+
+
+def _first_existing(cycle: Path, names) -> Optional[Path]:
+    for name in names:
+        cand = cycle / name
+        if cand.exists():
+            return cand
+    return None
 
 THUMB_W = 220       # 1 card 内のサムネ 1 枚あたり幅
 THUMB_H = 220
@@ -79,13 +104,27 @@ class StrokePicker(tk.Toplevel):
 
         # state
         self._entries: list[dict] = []
-        self._cards: dict[str, ttk.Frame] = {}      # key = cycle_dir name
+        self._cards: dict[str, ttk.Frame] = {}      # key = str(cycle_dir) (一意)
         self._photo_cache: dict[Path, "ImageTk.PhotoImage"] = {}
         self._selected_key: Optional[str] = None
+
+        # 参照元 (logs/ と sketch_variations/<folder>) の label -> Path マップ
+        self._sources = self._build_source_map()
 
         # tk vars
         self.var_filter = tk.StringVar()
         self.var_sort = tk.StringVar(value="newest")
+        # 起動時 logs_dir に一致する source label を初期選択。
+        # 注意: ttk.Combobox を 「値入りの textvariable」 で生成すると、
+        # 絵文字を含むラベルの文字幅計測で Tk が segfault する。 そのため
+        # var_source は空で作り、 Combobox 生成 *後* に値を set する
+        # (_build_ui 末尾参照)。
+        init_label = next((lbl for lbl, p in self._sources.items()
+                           if p == self.logs_dir), None)
+        if init_label is None and self._sources:
+            init_label = next(iter(self._sources))
+        self._init_source_label = init_label or ""
+        self.var_source = tk.StringVar()
 
         self._build_ui()
         self._refresh()
@@ -106,14 +145,71 @@ class StrokePicker(tk.Toplevel):
         return picker.result
 
     # ------------------------------------------------------------------
+    # source roots (プルダウン)
+    # ------------------------------------------------------------------
+    def _build_source_map(self) -> "dict[str, Path]":
+        """参照元の label -> Path マップを構築。
+
+        - "🗂 logs/ (生成ログ)"           -> <root>/logs
+        - "📁 sketch_variations/ (全体)"  -> <root>/sketch_variations 全走査
+        - "📁 <folder>"                   -> sketch_variations 配下の各フォルダ
+        起動時に渡された logs_dir がどれにも一致しなければ先頭に追加する。
+        """
+        srcs: "dict[str, Path]" = {}
+        srcs["🗂 logs/ (生成ログ)"] = DEFAULT_LOGS_DIR
+        if SKETCH_VARIATIONS_DIR.is_dir():
+            srcs["📁 sketch_variations/ (全体)"] = SKETCH_VARIATIONS_DIR
+            subdirs = [d for d in SKETCH_VARIATIONS_DIR.iterdir()
+                       if d.is_dir() and not d.name.startswith("_")]
+            for d in sorted(subdirs, key=lambda p: p.stat().st_mtime,
+                            reverse=True):
+                srcs[f"📁 {d.name}"] = d
+        # 明示指定された logs_dir がマップに無ければ先頭に積む
+        if self.logs_dir not in srcs.values():
+            srcs = {f"📂 {self.logs_dir.name}": self.logs_dir, **srcs}
+        return srcs
+
+    def _on_source_change(self, *_):
+        label = self.var_source.get()
+        path = self._sources.get(label)
+        if path is None:
+            return
+        self.logs_dir = Path(path)
+        if hasattr(self, "lbl_src_path"):
+            self.lbl_src_path.config(text=f"📁 {self.logs_dir}")
+        self._refresh()
+
+    @staticmethod
+    def _key_for(cycle: Path) -> str:
+        """カード一意キー。 sketch_variations では同名 dir (car/tree…) が
+        複数 set に跨るため、 dir 名ではなく絶対パスをキーにする。"""
+        return str(cycle)
+
+    # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
+        # source 選択行 (プルダウン)
+        src_row = ttk.Frame(self, padding=(8, 8, 8, 0))
+        src_row.pack(fill=tk.X)
+        ttk.Label(src_row, text="📂 参照元:",
+                  font=("Monaco", 10, "bold")).pack(side=tk.LEFT, padx=(0, 4))
+        self.cb_source = ttk.Combobox(
+            src_row, textvariable=self.var_source,
+            values=list(self._sources.keys()), state="readonly", width=42)
+        self.cb_source.pack(side=tk.LEFT)
+        self.cb_source.bind("<<ComboboxSelected>>", self._on_source_change)
+        # 値の設定は生成 *後* に行う (上記 segfault 回避)。 プログラム的な
+        # set は <<ComboboxSelected>> を発火しないので _refresh は走らない。
+        if self._init_source_label:
+            self.var_source.set(self._init_source_label)
+        self.lbl_src_path = ttk.Label(src_row, text=f"📁 {self.logs_dir}",
+                                      foreground="#888")
+        self.lbl_src_path.pack(side=tk.LEFT, padx=(10, 0))
+
         # toolbar
         tb = ttk.Frame(self, padding=8)
         tb.pack(fill=tk.X)
-        ttk.Label(tb, text=f"📁 {self.logs_dir}",
-                  foreground="#555").pack(side=tk.LEFT, padx=(0, 12))
         ttk.Label(tb, text="🔍 フィルタ:").pack(side=tk.LEFT)
         ttk.Entry(tb, textvariable=self.var_filter, width=24
                   ).pack(side=tk.LEFT, padx=4)
@@ -211,13 +307,13 @@ class StrokePicker(tk.Toplevel):
                 cand_list = sorted(cycle.glob("strokes*.json"))
                 if cand_list:
                     strokes_json = cand_list[0]
-            gen = cycle / "generated.png"
-            strokes_png = cycle / "vec_debug" / "06_strokes.png"
+            gen = _first_existing(cycle, _GENERATED_IMAGE_NAMES)
+            strokes_png = _first_existing(cycle, _STROKES_IMAGE_RELPATHS)
             input_sketch = cycle / "input_sketch.jpg"
             meta: dict = {
                 "cycle_dir": cycle,
-                "generated_image": gen if gen.exists() else None,
-                "strokes_png": strokes_png if strokes_png.exists() else None,
+                "generated_image": gen,
+                "strokes_png": strokes_png,
                 "strokes_json": strokes_json,
                 "input_sketch": input_sketch if input_sketch.exists() else None,
                 "subject": "",
@@ -288,7 +384,7 @@ class StrokePicker(tk.Toplevel):
         if not items:
             ttk.Label(self.inner,
                        text=(f"❎ {self.logs_dir} 配下に "
-                             f"vlm_to_image_*/cycle_*/ が見つかりません" if not self._entries
+                             f"strokes*.json が見つかりません" if not self._entries
                              else "❎ フィルタに一致するエントリなし"),
                        foreground="#888", padding=20
                        ).pack(pady=40)
@@ -300,14 +396,20 @@ class StrokePicker(tk.Toplevel):
             card = self._build_card(self.inner, entry)
             card.grid(row=row, column=col, padx=CARD_PAD, pady=CARD_PAD,
                        sticky="nsew")
-            self._cards[entry["cycle_dir"].name] = card
+            self._cards[self._key_for(entry["cycle_dir"])] = card
         # configure column weights
         for c in range(GRID_COLS):
             self.inner.grid_columnconfigure(c, weight=1)
 
     def _build_card(self, parent, entry: dict) -> ttk.Frame:
         # outer frame -> click selects
-        key = entry["cycle_dir"].name
+        cycle = entry["cycle_dir"]
+        key = self._key_for(cycle)
+        # 表示名: source root からの相対パス (set 内の dir 構造が分かるように)
+        try:
+            disp = str(cycle.relative_to(self.logs_dir))
+        except ValueError:
+            disp = cycle.name
         outer = tk.Frame(parent, bg="#ffffff",
                           highlightbackground="#cccccc",
                           highlightthickness=1, relief=tk.FLAT)
@@ -319,7 +421,7 @@ class StrokePicker(tk.Toplevel):
         n_st = entry.get("n_strokes")
         n_lbl = f"  n={n_st}" if isinstance(n_st, int) else ""
         title = tk.Label(outer,
-                          text=f"📷 {ts}  {key}{n_lbl}",
+                          text=f"📷 {ts}  {disp}{n_lbl}",
                           bg="#ffffff", anchor="w",
                           font=("Monaco", 10, "bold"))
         title.pack(fill=tk.X, padx=4, pady=(4, 0))
@@ -401,10 +503,10 @@ class StrokePicker(tk.Toplevel):
         self.btn_ok.config(state=tk.NORMAL)
         # status text
         for e in self._entries:
-            if e["cycle_dir"].name == key:
+            if self._key_for(e["cycle_dir"]) == key:
                 self.lbl_status.config(
-                    text=f"選択中: {key}  ({e.get('subject', '?')})  "
-                         f"→ {e['cycle_dir']}")
+                    text=f"選択中: {e['cycle_dir'].name}  "
+                         f"({e.get('subject', '?')})  → {e['cycle_dir']}")
                 break
 
     def _double_click(self, key: str) -> None:
@@ -415,7 +517,7 @@ class StrokePicker(tk.Toplevel):
         if not self._selected_key:
             return
         for e in self._entries:
-            if e["cycle_dir"].name == self._selected_key:
+            if self._key_for(e["cycle_dir"]) == self._selected_key:
                 self.result = e
                 break
         self.destroy()
