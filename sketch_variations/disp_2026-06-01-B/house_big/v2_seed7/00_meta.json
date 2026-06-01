@@ -4,10 +4,10 @@
   "subject": "house",
   "category": "object",
   "preset": "two_stage(IP-Adapter)",
-  "two_stage_category": "object",
+  "two_stage_category": "character",
   "stage2_strength": 0.45,
   "ip_scale": 0.6,
   "cn": null,
   "seed": 7,
-  "prompt": "a house, clean bold ink lineart, white background, dynamic angle, appealing design, single house"
+  "prompt": "house, manga style, dynamic pose, expressive ink lines, detailed lineart, single continuous black line on plain white background, clean smooth strokes, no shading"
 }
