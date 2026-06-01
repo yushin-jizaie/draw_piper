@@ -163,6 +163,14 @@ INPUTS = [
     ("cat_big",          "sketch_variations/_inputs/cat_big.png",          "object"),
     ("house_big",        "sketch_variations/_inputs/house_big.png",        "object"),
     ("car_big",          "sketch_variations/_inputs/car_big.png",          "object"),
+    # 2026-06-01: 実写サンプル (image_sample/ の HEIC → photo_to_sketch で線画化)。
+    ("samp_IMG_4357",    "sketch_variations/_inputs/samp_IMG_4357.png",    "character"),
+    ("samp_IMG_4358",    "sketch_variations/_inputs/samp_IMG_4358.png",    "character"),
+    ("samp_IMG_4359",    "sketch_variations/_inputs/samp_IMG_4359.png",    "object"),
+    ("samp_IMG_4360",    "sketch_variations/_inputs/samp_IMG_4360.png",    "character"),
+    ("samp_IMG_4361",    "sketch_variations/_inputs/samp_IMG_4361.png",    "object"),
+    ("samp_IMG_4362",    "sketch_variations/_inputs/samp_IMG_4362.png",    "object"),
+    ("samp_IMG_4363",    "sketch_variations/_inputs/samp_IMG_4363.png",    "character"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
