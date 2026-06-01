@@ -734,8 +734,13 @@ function openModal(cand, entry){
     document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") closeModal(); });
   }
   const m = cand.meta || {};
+  const genCol = cand.generated_png
+    ? `<div class="imgcol"><div>生成画像 (絵)</div>
+         <img class="big" src="${cand.generated_png}" alt="generated"></div>`
+    : "";
   back.innerHTML = `<span class="close" onclick="closeModal()">×</span>
     <div class="modal">
+      ${genCol}
       <div class="imgcol"><div>元画像 + 候補 合成</div><canvas class="big" id="mComp"></canvas></div>
       <div class="imgcol"><div>候補 (ロボット描画 strokes)</div>
         <img class="big" src="${cand.strokes_png}" alt="strokes"></div>
@@ -1020,7 +1025,11 @@ def _apply_local_meta(entries: list) -> int:
                     c["meta"] = json.loads(mp.read_text())
                     n += 1
                 except Exception:
-                    continue
+                    pass
+            # 生成画像 (raster) も拡大窓に出せるよう URL を載せる (絵そのものの確認用)。
+            gp = _ROOT / Path(rel).parent / "generated.png"
+            if gp.exists():
+                c["generated_png"] = f"{RAW_BASE}/{Path(rel).parent}/generated.png"
     return n
 
 
