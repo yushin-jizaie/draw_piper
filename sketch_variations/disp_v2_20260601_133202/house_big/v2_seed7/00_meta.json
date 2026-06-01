@@ -3,10 +3,11 @@
   "route": "framed",
   "subject": "house",
   "category": "object",
-  "scatter_mode": "same",
-  "seed": 7,
-  "prompt": "a house, clean bold ink lineart, white background, dynamic angle, appealing design, single house",
-  "preset": "illustrious_v2_object",
+  "preset": "two_stage(IP-Adapter)",
+  "two_stage_category": "object",
+  "stage2_strength": 0.45,
+  "ip_scale": 0.6,
   "cn": null,
-  "pattern": null
+  "seed": 7,
+  "prompt": "a house, clean bold ink lineart, white background, dynamic angle, appealing design, single house"
 }

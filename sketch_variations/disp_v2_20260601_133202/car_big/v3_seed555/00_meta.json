@@ -3,10 +3,11 @@
   "route": "framed",
   "subject": "car",
   "category": "object",
-  "scatter_mode": "same",
-  "seed": 555,
-  "prompt": "a car, clean bold ink lineart, white background, dynamic angle, appealing design, single car",
-  "preset": "illustrious_v2_object",
+  "preset": "two_stage(IP-Adapter)",
+  "two_stage_category": "object",
+  "stage2_strength": 0.45,
+  "ip_scale": 0.6,
   "cn": null,
-  "pattern": null
+  "seed": 555,
+  "prompt": "a car, clean bold ink lineart, white background, dynamic angle, appealing design, single car"
 }

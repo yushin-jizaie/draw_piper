@@ -3,10 +3,11 @@
   "route": "framed",
   "subject": "cat",
   "category": "animal",
-  "scatter_mode": "same",
+  "preset": "two_stage(IP-Adapter)",
+  "two_stage_category": "object",
+  "stage2_strength": 0.45,
+  "ip_scale": 0.6,
+  "cn": null,
   "seed": 7,
-  "prompt": "a cat, manga style, dynamic, clean bold ink lineart, white background, single cat, appealing",
-  "preset": "illustrious_v2_lineart_char",
-  "cn": "0.5",
-  "pattern": null
+  "prompt": "a cat, manga style, dynamic, clean bold ink lineart, white background, single cat, appealing"
 }
