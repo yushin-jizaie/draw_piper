@@ -403,6 +403,75 @@ class VLM:
                   f"({infer_time:.2f}s)")
         return phrase
 
+    # 主題 1-2 語だけでなく、 「絵の具体的な解釈」 を短い名詞句で返す。
+    # 数・ポーズ・表情・向き・特徴的なパーツを 1 つ拾わせ、 生成 prompt の
+    # subject をリッチにする (デフォルトの汎用 subject だと入力ごとの個性が
+    # 消えるため、 2026-06-02 ユーザー要望)。 スタイル語は付けない (テンプレ側で
+    # 付与)。 冠詞なし・小文字・カンマ無しの 1 フレーズ。
+    _SCENE_PROMPT_TEXT = (
+        "Look at this simple line drawing and describe WHAT IS DRAWN as a single "
+        "short noun phrase for an illustration prompt. Capture the concrete, "
+        "drawing-specific details you actually see: the main subject plus its "
+        "count, pose or orientation, facial expression, and one or two distinctive "
+        "visible features. Do NOT mention art style, colors, line, sketch, or the "
+        "fact that it is a drawing. No leading article, lowercase, no commas, "
+        "8 to 16 words. Example outputs: 'round smiling face with big ears and a "
+        "wide grin' / 'three diamonds arranged in a row' / 'dog sitting upright "
+        "with tongue out and floppy ears'. Output ONLY the phrase."
+    )
+
+    def describe_scene(self, image: ImageLike) -> str:
+        """線画を解釈し、 生成 prompt 用のリッチな名詞句 (数/ポーズ/表情/特徴) を返す。
+
+        describe_literal が 1-2 語の主題だけなのに対し、 これは「絵が具体的に
+        何を描いているか」 を 1 フレーズで返す。 失敗時は空文字 (呼び出し側で
+        describe_literal にフォールバック)。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        import re
+        pil_image = _normalize_image(image)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": self._SCENE_PROMPT_TEXT},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template], images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt").to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=48, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0]
+        s = raw_text.replace("\n", " ").replace('"', "").replace("'", "").strip()
+        s = s.lower()
+        # スタイル混入語・冠詞・句読点を除去し 1 フレーズ化
+        s = re.sub(r"[.;:]+", " ", s)
+        s = re.sub(r"\b(a|an|the)\b", " ", s)
+        s = re.sub(r"\b(line drawing|drawing|sketch|lineart|image|picture|"
+                   r"black and white|monochrome|simple)\b", " ", s)
+        s = s.replace(",", " ")
+        s = re.sub(r"[^a-z0-9\s]", " ", s)
+        phrase = " ".join(s.split()[:16]).strip()
+        if self.verbose:
+            print(f"[vlm] scene '{phrase}' from '{raw_text.strip()}' "
+                  f"({infer_time:.2f}s)")
+        return phrase
+
     def classify_category(self, image: ImageLike) -> str:
         """主題のカテゴリを person / animal / object のいずれかで返す。
 

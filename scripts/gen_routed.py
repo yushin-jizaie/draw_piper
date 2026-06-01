@@ -203,8 +203,11 @@ def main() -> int:
     inp = Image.open(args.input).convert("RGB")
     route = args.force_route or decide_route(inp).route
 
-    # --- VLM 推論 (subject / category / 連想 companion) を必要時のみ ---
+    # --- VLM 推論 (subject / scene / category / 連想 companion) を必要時のみ ---
+    # subject = 短い主題 (ラベル/meta 用)、 scene = 絵を解釈したリッチな名詞句
+    # (生成 prompt の {subj} に差し込む。 数/ポーズ/表情/特徴を反映)。
     subject, category = args.subject, args.category
+    scene = args.subject  # --subject 明示時はそれを scene にも使う
     assoc_subject = None
     need_vlm = (subject is None
                 or (route in ("stylize", "framed") and category is None)
@@ -214,6 +217,8 @@ def main() -> int:
         vlm = VLM(verbose=True)
         if subject is None:
             subject = vlm.describe_literal(inp) or "subject"
+            # 生成 prompt 用のリッチ記述。 失敗時は短い subject にフォールバック。
+            scene = vlm.describe_scene(inp) or subject
         if route in ("stylize", "framed") and category is None:
             category = vlm.classify_category(inp)
         if route == "companion" and args.scatter_mode == "assoc":
@@ -224,8 +229,10 @@ def main() -> int:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     category = category or "object"
+    scene = scene or subject
     print(f"[routed] {args.sid}: route={route} subj='{subject}' "
-          f"cat={category} scatter_mode={args.scatter_mode} assoc='{assoc_subject}'")
+          f"scene='{scene}' cat={category} scatter_mode={args.scatter_mode} "
+          f"assoc='{assoc_subject}'")
     seeds = DEFAULT_SEEDS[:args.n]
 
     if route == "framed":
@@ -245,11 +252,11 @@ def main() -> int:
         # clean (object CN0.65、 入力追従・白背景・非抽象)。 ユーザー要望で両方出す。
         mt_preset = FRAMED_PRESET.get(category, "illustrious_v2_object_mt")
         mt_sh = MODEL_PRESETS.get(mt_preset, {}).get("style_hint")
-        mt_prompt = (f"{FRAMED_PROMPT[category].format(subj=subject)}, {mt_sh}"
-                     if mt_sh else FRAMED_PROMPT[category].format(subj=subject))
+        mt_prompt = (f"{FRAMED_PROMPT[category].format(subj=scene)}, {mt_sh}"
+                     if mt_sh else FRAMED_PROMPT[category].format(subj=scene))
         cl_sh = MODEL_PRESETS.get(CLEAN_PRESET, {}).get("style_hint")
-        cl_prompt = (f"{CLEAN_PROMPT.format(subj=subject)}, {cl_sh}"
-                     if cl_sh else CLEAN_PROMPT.format(subj=subject))
+        cl_prompt = (f"{CLEAN_PROMPT.format(subj=scene)}, {cl_sh}"
+                     if cl_sh else CLEAN_PROMPT.format(subj=scene))
         variants = [
             ("mt", mt_preset, mt_prompt, FRAMED_NEGATIVE),
             ("clean", CLEAN_PRESET, cl_prompt, CLEAN_NEGATIVE),
@@ -277,7 +284,7 @@ def main() -> int:
             if torch.cuda.is_available():
                 torch.cuda.empty_cache()
     elif route == "stylize":
-        prompt = STYLIZE_TEMPLATES[category].format(subj=subject)
+        prompt = STYLIZE_TEMPLATES[category].format(subj=scene)
         print(f"[routed]   stylize prompt: {prompt}")
         guide = inp.resize((CW, CH))
         gen = ImageGenerator.from_preset(PRESET, resolution=(CW, CH), verbose=False)
