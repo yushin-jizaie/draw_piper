@@ -1,0 +1,18 @@
+{
+  "sid": "samp_IMG_4362",
+  "route": "flux_lora_compare",
+  "variant": "base",
+  "lora": null,
+  "lora_strength": null,
+  "preset": "chutesai/FLUX.1-schnell",
+  "controlnet": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+  "cn": 0.5,
+  "seed": 1,
+  "prompt": "a chair, bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "subject": "chair",
+  "placed_at": "fill_board",
+  "input_fit": "contain",
+  "vectorize": "binarize+hardboost250",
+  "min_feature_px": 15,
+  "note": "LoRA有無比較 (勝ちパターン168枚 style LoRA)"
+}
