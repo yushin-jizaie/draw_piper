@@ -1,0 +1,18 @@
+{
+  "sid": "tree",
+  "route": "flux_warp_compose",
+  "variant": "design",
+  "cn": 0.2,
+  "cn_align": 0.7,
+  "cn_design": 0.2,
+  "flow_mean_px": 6.03,
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.8,
+  "seed": 0,
+  "prompt": "tklineart, A whimsical, animated circle with a lively vertical line inside stands proudly, its face adorned with rosy cheeks and a cheerful smile. A playful, curved tail extends from below, adding a touch of whimsy. The circle's eyes sparkle with joy, and a small, delicate flower blooms near the base, enhancing. bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "vision": "A whimsical, animated circle with a lively vertical line inside stands proudly, its face adorned with rosy cheeks and a cheerful smile. A playful, curved tail extends from below, adding a touch of whimsy. The circle's eyes sparkle with joy, and a small, delicate flower blooms near the base, enhancing.",
+  "placed_at": "input_aligned",
+  "input_fit": "contain",
+  "vectorize": "binarize+hardboost250",
+  "note": "2生成→特徴ワープ合成(③) align=芯/warp=デザインを入力へワープ"
+}
