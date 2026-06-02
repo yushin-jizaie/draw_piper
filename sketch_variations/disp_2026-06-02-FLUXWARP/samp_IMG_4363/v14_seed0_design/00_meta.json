@@ -1,0 +1,18 @@
+{
+  "sid": "samp_IMG_4363",
+  "route": "flux_warp_compose",
+  "variant": "design",
+  "cn": 0.2,
+  "cn_align": 0.7,
+  "cn_design": 0.2,
+  "flow_mean_px": 16.38,
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.8,
+  "seed": 0,
+  "prompt": "tklineart, The dog stands proudly, its head turned to the right, tail curled high in a joyful arc. Its expressive eyes sparkle with curiosity, and its ears stand alert. The fur is thick and glossy, with a distinct patch of white on its chest. A playful collar adorns its neck, and. bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "vision": "The dog stands proudly, its head turned to the right, tail curled high in a joyful arc. Its expressive eyes sparkle with curiosity, and its ears stand alert. The fur is thick and glossy, with a distinct patch of white on its chest. A playful collar adorns its neck, and.",
+  "placed_at": "input_aligned",
+  "input_fit": "contain",
+  "vectorize": "binarize+hardboost250",
+  "note": "2生成→特徴ワープ合成(③) align=芯/warp=デザインを入力へワープ"
+}
