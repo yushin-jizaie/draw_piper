@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4362",
+  "route": "flux",
+  "variant": "A_polish",
+  "preset": "chutesai/FLUX.1-schnell",
+  "controlnet": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+  "cn": 0.6,
+  "seed": 0,
+  "prompt": "a chair, a sleek modern design with a curved backrest, a wide seat, and three sturdy legs, adorned with subtle geometric, clean black line art, bold even outlines, white background, no fill, no shading",
+  "subject": "chair",
+  "placed_at": "input_bbox",
+  "input_fit": "contain",
+  "vectorize": "binarize+boost"
+}

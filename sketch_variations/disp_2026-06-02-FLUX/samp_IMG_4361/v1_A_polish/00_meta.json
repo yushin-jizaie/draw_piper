@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4361",
+  "route": "flux",
+  "variant": "A_polish",
+  "preset": "chutesai/FLUX.1-schnell",
+  "controlnet": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+  "cn": 0.6,
+  "seed": 0,
+  "prompt": "a sun, a radiant, smiling face with sparkling rays, set against a backdrop of gentle hills and a few fluffy clouds, clean black line art, bold even outlines, white background, no fill, no shading",
+  "subject": "sun",
+  "placed_at": "input_bbox",
+  "input_fit": "contain",
+  "vectorize": "binarize+boost"
+}
