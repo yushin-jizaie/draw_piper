@@ -5,7 +5,7 @@
   "cn": 0.2,
   "cn_align": 0.7,
   "cn_design": 0.2,
-  "flow_mean_px": 16.08,
+  "flow_mean_px": 5.65,
   "lora": "models/flux_lora_winners",
   "lora_strength": 0.8,
   "seed": 0,
@@ -14,5 +14,6 @@
   "placed_at": "input_aligned",
   "input_fit": "contain",
   "vectorize": "binarize+hardboost250",
-  "note": "2生成→特徴ワープ合成(③) align=芯/warp=デザインを入力へワープ"
+  "align_source": "input_lines",
+  "note": "方式③ warp合成: align=入力生線/design=低CN完成形/warp=designをDIS flowで入力へ"
 }
