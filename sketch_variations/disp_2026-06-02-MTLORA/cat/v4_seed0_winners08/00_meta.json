@@ -1,0 +1,15 @@
+{
+  "sid": "cat",
+  "route": "flux_lora_style_compare",
+  "variant": "winners08",
+  "adapter": "winners",
+  "lora_strength": 0.8,
+  "trigger": "tklineart",
+  "cn": 0.4,
+  "seed": 0,
+  "prompt": "tklineart, The cat's face is now fully round, with expressive black eyes and a small, triangular nose giving it a curious look. Its triangular ears stand alert, and delicate whiskers extend from either side of its mouth. A fluffy tail curls gently behind, adding a touch of whimsy. The cat's cheeks. bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "vision": "The cat's face is now fully round, with expressive black eyes and a small, triangular nose giving it a curious look. Its triangular ears stand alert, and delicate whiskers extend from either side of its mouth. A fluffy tail curls gently behind, adding a touch of whimsy. The cat's cheeks.",
+  "placed_at": "fill_board",
+  "vectorize": "binarize+hardboost250",
+  "note": "winners vs 松本 LoRA 画風比較"
+}

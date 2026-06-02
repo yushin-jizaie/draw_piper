@@ -1,0 +1,15 @@
+{
+  "sid": "house",
+  "route": "flux_lora_style_compare",
+  "variant": "winners08",
+  "adapter": "winners",
+  "lora_strength": 0.8,
+  "trigger": "tklineart",
+  "cn": 0.4,
+  "seed": 0,
+  "prompt": "tklineart, A charming two-story house stands proudly with a triangular roof, adorned with a small chimney on the left side. The front features three rectangular windows, each framed by delicate trims, and a central door with a small window above it. A quaint porch with a wooden railing extends from the. bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "vision": "A charming two-story house stands proudly with a triangular roof, adorned with a small chimney on the left side. The front features three rectangular windows, each framed by delicate trims, and a central door with a small window above it. A quaint porch with a wooden railing extends from the.",
+  "placed_at": "fill_board",
+  "vectorize": "binarize+hardboost250",
+  "note": "winners vs 松本 LoRA 画風比較"
+}
