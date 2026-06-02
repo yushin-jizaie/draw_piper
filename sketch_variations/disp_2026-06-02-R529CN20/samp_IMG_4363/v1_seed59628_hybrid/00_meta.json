@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4363",
+  "route": "framed",
+  "variant": "hybrid",
+  "subject": "dog",
+  "design": "The dog stands proudly, its head turned to the right, tail curled high in a joyful arc. Its expressive eyes sparkle with curiosity, and its ears stand alert. The fur is thick and glossy, with a distinct patch of white on its chest. A playful collar adorns its neck, and.",
+  "category": "animal",
+  "preset": "illustrious_v2_object",
+  "cn": 0.2,
+  "seed": 59628,
+  "prompt": "The dog stands proudly, its head turned to the right, tail curled high in a joyful arc. Its expressive eyes sparkle with curiosity, and its ears stand alert. The fur is thick and glossy, with a distinct patch of white on its chest. A playful collar adorns its neck, and.",
+  "placed_at": "feature_anchor",
+  "input_fit": "contain"
+}
