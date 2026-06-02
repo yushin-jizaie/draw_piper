@@ -82,6 +82,8 @@ THUMB_W = 220       # 1 card 内のサムネ 1 枚あたり幅
 THUMB_H = 220
 CARD_PAD = 8
 GRID_COLS = 3
+MAX_CARDS = 60      # 一度に描画する最大カード数 (超過はフィルタで絞る)。
+                    # 全件 (数百) 一括描画は サムネ読込で UI フリーズの原因
 
 
 class StrokePicker(tk.Toplevel):
@@ -392,12 +394,23 @@ class StrokePicker(tk.Toplevel):
                        ).pack(pady=40)
             return
 
+        # カード描画上限。 全件 (数百) を一括描画すると サムネ読込で UI が
+        # フリーズするため、 新しい順で MAX_CARDS 件に制限。 続きはフィルタで。
+        total = len(items)
+        shown = items[:MAX_CARDS]
+        if total > MAX_CARDS:
+            ttk.Label(self.inner,
+                       text=(f"{total} 件中 新しい {MAX_CARDS} 件を表示中。 "
+                             f"🔍 フィルタ (題材/日時/dir名) で絞り込んでください。"),
+                       foreground="#a60", padding=(4, 6)
+                       ).grid(row=0, column=0, columnspan=GRID_COLS, sticky="w")
+        row_off = 1 if total > MAX_CARDS else 0
         # 3 columns by default, 1 column if width < ~700px (responsive optional)
-        for i, entry in enumerate(items):
+        for i, entry in enumerate(shown):
             row, col = divmod(i, GRID_COLS)
             card = self._build_card(self.inner, entry)
-            card.grid(row=row, column=col, padx=CARD_PAD, pady=CARD_PAD,
-                       sticky="nsew")
+            card.grid(row=row + row_off, column=col, padx=CARD_PAD,
+                       pady=CARD_PAD, sticky="nsew")
             self._cards[self._key_for(entry["cycle_dir"])] = card
         # configure column weights
         for c in range(GRID_COLS):
