@@ -1,0 +1,21 @@
+{
+  "sid": "samp_IMG_4357",
+  "route": "flux_design_compare",
+  "variant": "design",
+  "prompt_mode": "design",
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.8,
+  "cn": 0.4,
+  "preset": "chutesai/FLUX.1-schnell",
+  "controlnet": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+  "seed": 1,
+  "prompt": "tklineart, The finished illustration showcases a cheerful, bald-headed figure with large, expressive eyes and a wide, toothy grin. The character's cheeks are rosy, and a pair of small, round glasses rest on their nose, adding a touch of whimsy. Their ears are slightly rounded, and a gentle blush adorns their cheeks. bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "literal": "face",
+  "scene": "bald head with big eyes and wide smile",
+  "vision": "The finished illustration showcases a cheerful, bald-headed figure with large, expressive eyes and a wide, toothy grin. The character's cheeks are rosy, and a pair of small, round glasses rest on their nose, adding a touch of whimsy. Their ears are slightly rounded, and a gentle blush adorns their cheeks.",
+  "placed_at": "fill_board",
+  "input_fit": "contain",
+  "vectorize": "binarize+hardboost250",
+  "min_feature_px": 15,
+  "note": "prompt方式比較 oldlit(主題1-2語) vs design(VLM完成形補完) @CN0.4 LoRA0.8"
+}
