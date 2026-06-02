@@ -10,6 +10,7 @@
   "prompt": "tklineart, The completed illustration showcases a charming, vintage-style car with a sleek, elongated rectangular body. The car boasts a prominent, rounded front grille and a smooth, streamlined hood. Two large, circular wheels sit firmly beneath the vehicle, and a small, rectangular rear window adds a touch of classic elegance. A subtle. bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
   "vision": "The completed illustration showcases a charming, vintage-style car with a sleek, elongated rectangular body. The car boasts a prominent, rounded front grille and a smooth, streamlined hood. Two large, circular wheels sit firmly beneath the vehicle, and a small, rectangular rear window adds a touch of classic elegance. A subtle.",
   "placed_at": "fill_board",
-  "vectorize": "binarize+hardboost250",
-  "note": "winners vs 松本 LoRA 画風比較"
+  "vectorize": "binarize+opencv_line_extract",
+  "note": "winners vs 松本 LoRA 画風比較",
+  "line_extract": "opencv_bgremove_adaptive"
 }
