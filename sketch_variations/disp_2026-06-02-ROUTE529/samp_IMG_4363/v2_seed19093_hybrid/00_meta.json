@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4363",
+  "route": "framed",
+  "variant": "hybrid",
+  "subject": "dog",
+  "design": "This is a rough draft of a dog. Finish it as a sleek, elegant Doberman with pointed ears, a confident stance, and a strong, muscular build, capturing its alert and.",
+  "category": "animal",
+  "preset": "illustrious_v2_object",
+  "cn": 0.4,
+  "seed": 19093,
+  "prompt": "This is a rough draft of a dog. Finish it as a sleek, elegant Doberman with pointed ears, a confident stance, and a strong, muscular build, capturing its alert and.",
+  "placed_at": "feature_anchor",
+  "input_fit": "contain"
+}

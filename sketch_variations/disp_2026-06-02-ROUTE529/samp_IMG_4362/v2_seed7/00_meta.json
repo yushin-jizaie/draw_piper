@@ -1,0 +1,10 @@
+{
+  "sid": "samp_IMG_4362",
+  "route": "stylize",
+  "subject": "chair",
+  "category": "object",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 7,
+  "prompt": "This is a rough draft of a chair. Finish it as a sleek modern design with a curved backrest, a wide seat, and three sturdy legs, adorned with subtle geometric."
+}
