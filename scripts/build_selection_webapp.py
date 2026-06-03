@@ -185,6 +185,10 @@ INPUTS = [
     ("new_combo_align",  "sketch_variations/_inputs/new_combo_align.png",  "object"),
     # 2026-06-04: direct ルート(scatter/companion→direct manga)で分割せず1枚生成。
     ("new_combo_direct", "sketch_variations/_inputs/new_combo_direct.png", "object"),
+    # 2026-06-04: 2026-06-01-D framed(matsumoto _mt)ルートで分割せず1枚生成。
+    ("new_combo_dframed","sketch_variations/_inputs/new_combo_dframed.png", "object"),
+    # 2026-06-04: 最新ルート(M19 FLUX)の分割なし1枚絵バージョン。
+    ("new_combo_latest1","sketch_variations/_inputs/new_combo_latest1.png", "object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。

@@ -1,0 +1,12 @@
+{
+  "sid": "new_combo_dframed",
+  "route": "framed",
+  "subject": "tractor",
+  "category": "object",
+  "preset": "illustrious_v2_object_mt",
+  "cn": null,
+  "seed": 60231,
+  "prompt": "a detailed Matsumoto-style tractor, mt_taiyo_style, manga style, ink lineart, single continuous black line on plain white background, clean smooth strokes, no shading, mt_taiyo_style, monochrome, lineart, sketch, ink illustration, white_background, simple_background, no humans",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}
