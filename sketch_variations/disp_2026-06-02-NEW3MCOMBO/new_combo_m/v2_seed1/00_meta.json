@@ -1,0 +1,9 @@
+{
+  "sid": "new_combo_m",
+  "route": "new3_recombine",
+  "variant": "combo_seed1",
+  "seed": 1,
+  "source": "disp_2026-06-02-NEW3M",
+  "placed_at": "original_bbox_contain",
+  "note": "NEW3Mの3生成を元IMG_4368レイアウト(各bbox)へ戻して1枚に再構成"
+}

@@ -179,6 +179,8 @@ INPUTS = [
     ("new_combo",        "sketch_variations/_inputs/new_combo.png",        "object"),
     # 2026-06-03: B ルート(scatter/direct manga)で個別生成→元レイアウトへ合成。
     ("new_combo_b",      "sketch_variations/_inputs/new_combo.png",        "object"),
+    # 2026-06-03: 6/3最新ルート+mangaデフォルトスタイルで個別生成→合成。
+    ("new_combo_m",      "sketch_variations/_inputs/new_combo.png",        "object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
