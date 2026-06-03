@@ -189,6 +189,8 @@ INPUTS = [
     ("new_combo_dframed","sketch_variations/_inputs/new_combo_dframed.png", "object"),
     # 2026-06-04: 最新ルート(M19 FLUX)の分割なし1枚絵バージョン。
     ("new_combo_latest1","sketch_variations/_inputs/new_combo_latest1.png", "object"),
+    # 2026-06-04: warp_deco×1枚×フィードバック3周 (装飾蓄積)。
+    ("new_combo_decoiter","sketch_variations/_inputs/new_combo_decoiter.png","object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。

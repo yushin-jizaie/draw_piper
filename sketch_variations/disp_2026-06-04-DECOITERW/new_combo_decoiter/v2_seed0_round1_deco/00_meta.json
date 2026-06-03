@@ -1,0 +1,13 @@
+{
+  "sid": "new_combo_decoiter",
+  "route": "flux_decowarp_iter",
+  "variant": "round1_deco",
+  "round": 1,
+  "layer": "deco",
+  "cn": 0.3,
+  "seed": 0,
+  "flow_mean_px": 37.27,
+  "prompt": "tklineart, Delicate tendrils of swirling vines and intricate beadwork dance along the contours of the palm trees, intertwining with the car's sleek form. Tiny leaves and dots sprinkle the scene, adding texture and life to the minimalist framework. Curlicues and floral motifs weave through the lines, creating a harmonious blend of nature and structure. manga style, clean bold black ink lineart on white background",
+  "vision": "Delicate tendrils of swirling vines and intricate beadwork dance along the contours of the palm trees, intertwining with the car's sleek form. Tiny leaves and dots sprinkle the scene, adding texture and life to the minimalist framework. Curlicues and floral motifs weave through the lines, creating a harmonious blend of nature and structure.",
+  "note": "warp_deco方式×1枚×フィードバック 1/3周目。 full=絵全体/deco=元入力線を引いた装飾"
+}
