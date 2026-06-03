@@ -191,6 +191,8 @@ INPUTS = [
     ("new_combo_latest1","sketch_variations/_inputs/new_combo_latest1.png", "object"),
     # 2026-06-04: warp_deco×1枚×フィードバック3周 (装飾蓄積)。
     ("new_combo_decoiter","sketch_variations/_inputs/new_combo_decoiter.png","object"),
+    # 2026-06-04: 元線verbatim固定+装飾だけ派手に累積 (再生成しない)。
+    ("new_combo_decoaccum","sketch_variations/_inputs/new_combo_decoaccum.png","object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。

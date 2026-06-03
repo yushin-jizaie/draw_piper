@@ -1,0 +1,14 @@
+{
+  "sid": "new_combo_decoaccum",
+  "route": "flux_decorate_accum",
+  "variant": "round3_deco",
+  "round": 3,
+  "layer": "deco",
+  "cn": 0.55,
+  "seed": 0,
+  "new_deco": 10,
+  "accum_deco": 91,
+  "prompt": "tklineart, Delicate tendrils of swirling vines and intricate beadwork dance along the contours of the palm trees, intertwining with the car's sleek form. Tiny leaves and dots sprinkle the scene, adding texture and life to the minimalist framework. Curlicues and floral motifs weave through the lines, creating a harmonious blend of nature and structure. lavish flamboyant abundant ornate decoration everywhere, manga style, clean bold black ink lineart on white background",
+  "vision": "Delicate tendrils of swirling vines and intricate beadwork dance along the contours of the palm trees, intertwining with the car's sleek form. Tiny leaves and dots sprinkle the scene, adding texture and life to the minimalist framework. Curlicues and floral motifs weave through the lines, creating a harmonious blend of nature and structure.",
+  "note": "元線verbatim固定+装飾累積 3/4周。 full=元線+累積装飾/deco=装飾のみ"
+}
