@@ -175,6 +175,8 @@ INPUTS = [
     ("new_tree_a",       "sketch_variations/_inputs/new_tree_a.png",       "object"),
     ("new_tree_b",       "sketch_variations/_inputs/new_tree_b.png",       "object"),
     ("new_car",          "sketch_variations/_inputs/new_car.png",          "object"),
+    # 2026-06-03: 3生成を元レイアウト(IMG_4368)へ戻した合成 (象+花+トラック)。
+    ("new_combo",        "sketch_variations/_inputs/new_combo.png",        "object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
