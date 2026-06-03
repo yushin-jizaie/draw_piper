@@ -183,6 +183,8 @@ INPUTS = [
     ("new_combo_m",      "sketch_variations/_inputs/new_combo.png",        "object"),
     # 2026-06-04: align(S2 OFF)×現在プロンプトで分割せず1枚生成。
     ("new_combo_align",  "sketch_variations/_inputs/new_combo_align.png",  "object"),
+    # 2026-06-04: direct ルート(scatter/companion→direct manga)で分割せず1枚生成。
+    ("new_combo_direct", "sketch_variations/_inputs/new_combo_direct.png", "object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
