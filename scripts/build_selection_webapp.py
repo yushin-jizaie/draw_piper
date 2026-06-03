@@ -171,6 +171,10 @@ INPUTS = [
     ("samp_IMG_4361",    "sketch_variations/_inputs/samp_IMG_4361.png",    "object"),
     ("samp_IMG_4362",    "sketch_variations/_inputs/samp_IMG_4362.png",    "object"),
     ("samp_IMG_4363",    "sketch_variations/_inputs/samp_IMG_4363.png",    "character"),
+    # 2026-06-03: 新規手描き3枚 (assets/IMG_4368 を分割: 木2 + 車)。
+    ("new_tree_a",       "sketch_variations/_inputs/new_tree_a.png",       "object"),
+    ("new_tree_b",       "sketch_variations/_inputs/new_tree_b.png",       "object"),
+    ("new_car",          "sketch_variations/_inputs/new_car.png",          "object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
