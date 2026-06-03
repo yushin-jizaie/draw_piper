@@ -44,7 +44,10 @@ except Exception as e:
     ImageTk = None
 
 
-PIPELINE_SCRIPT = ROOT / "scripts" / "test_vlm_to_image.py"
+# 2026-06-03: 最新ルート(M19: FLUX+winners LoRA+VLM完成形+CN0.2+manga+OpenCV線抽出
+# +複数被写体 分割/合成+中心→外側描画順) のバックエンドに差し替え。
+# 旧 SDXL パイプラインに戻すなら scripts/test_vlm_to_image.py を指す。
+PIPELINE_SCRIPT = ROOT / "scripts" / "gen_latest_route.py"
 LOGS_DIR = ROOT / "logs"
 
 
@@ -666,9 +669,9 @@ class PipelineTestGUI:
                 elif "vlm predict" in low or "predict_intent" in low:
                     self.root.after(0, lambda:
                         self._set_status("VLM 推論中...", "blue"))
-                elif "imagegen" in low or "sdxl" in low:
+                elif "imagegen" in low or "sdxl" in low or "flux" in low:
                     self.root.after(0, lambda:
-                        self._set_status("画像生成中 (SDXL)...", "blue"))
+                        self._set_status("画像生成中 (FLUX 最新ルート)...", "blue"))
                 elif "vector" in low:
                     self.root.after(0, lambda:
                         self._set_status("ベクトル化中...", "blue"))
