@@ -78,7 +78,11 @@ def main():
     ap.add_argument("--log-dir", type=Path, default=ROOT / "logs")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--literal-only", action="store_true")  # 互換: literal subject を使う
+    # 縦伸ばし比率: ロボット側の縦潰れ/横伸びの応急補正。 生成画像を縦に V 倍に
+    # 引き伸ばしてからストローク化する (1.0=補正なし)。
+    ap.add_argument("--vstretch", type=float, default=1.0)
     args = ap.parse_args()
+    V = max(0.1, args.vstretch)
 
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     cyc = args.log_dir / f"vlm_to_image_{ts}" / "cycle_01"
@@ -140,8 +144,11 @@ def main():
         except Exception as e:
             log("FAIL gen", i, repr(e)); traceback.print_exc(); continue
         gen_imgs.append((bbox, img))
-        log("vectorize / OpenCV line extract obj%d" % i)
-        st = vc.vectorize(generated_image=extract_lines(img), user_image=None).strokes
+        # 縦伸ばし補正: 生成画像の高さを V 倍にしてからストローク化 (配置はアスペクト
+        # 保持なので伸びが維持され、 place_fill/contain が枠内に収め直す→はみ出し無し)。
+        vimg = img if V == 1.0 else img.resize((img.width, max(1, round(img.height * V))), Image.LANCZOS)
+        log("vectorize / OpenCV line extract obj%d (vstretch=%.2f)" % (i, V))
+        st = vc.vectorize(generated_image=extract_lines(vimg), user_image=None).strokes
         if multi:
             bx, by, bw, bh = bbox
             obj_lists.append(remap(st, bx * SCALE + XOFF, by * SCALE + YOFF, bw * SCALE, bh * SCALE))
@@ -176,7 +183,8 @@ def main():
     sc0 = visions[0]["scene"] if visions else "?"
     json.dump({"subject": {"ja": sc0, "en": sc0}, "location": {"ja": ""},
                "action": {"ja": ""}, "confidence": 1.0,
-               "n_objects": len(objs), "route": "M19_latest (FLUX+winnersLoRA+complete+manga+opencv+center-out)",
+               "n_objects": len(objs), "vstretch": V,
+               "route": "M19_latest (FLUX+winnersLoRA+complete+manga+opencv+center-out)",
                "visions": visions}, open(cyc / "topic_guess.json", "w"), ensure_ascii=False, indent=2)
     log("DONE")
     return 0

@@ -68,6 +68,9 @@ class PipelineTestGUI:
         self.var_camera_device = tk.IntVar(value=0)
         self.var_sdxl_steps = tk.IntVar(value=4)
         self.var_seed = tk.StringVar(value="")  # 空 = 自動
+        # 縦伸ばし比率: ロボット側の縦潰れ/横伸びの応急補正。 生成画像を縦に
+        # この倍率で引き伸ばしてからストローク化する (1.0 = 補正なし)。
+        self.var_vstretch = tk.StringVar(value="1.0")
         # literal-only: カード推論をやめ「何に見えるか」 を生成 prompt に使い、
         # vectorize も full 抽出 (diff しない) でテストする。
         self.var_literal_only = tk.BooleanVar(value=False)
@@ -189,6 +192,11 @@ class PipelineTestGUI:
             run_frame, text="literal (カード推論なし)",
             variable=self.var_literal_only,
         ).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Label(run_frame, text="縦伸ばし比率:"
+                  ).pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(run_frame, from_=0.5, to=2.5, increment=0.05, width=5,
+            format="%.2f", textvariable=self.var_vstretch
+        ).pack(side=tk.LEFT, padx=2)
         self.btn_run = ttk.Button(run_frame,
             text="▶ 実行 (VLM → ImageGen → Vectorizer)",
             command=self.on_run_pipeline, width=40)
@@ -636,12 +644,17 @@ class PipelineTestGUI:
     def _do_run_pipeline(self, sketch_path: Path, steps: int,
                          seed_arg: list[str]):
         python = sys.executable
+        try:
+            vstretch = float(self.var_vstretch.get())
+        except Exception:
+            vstretch = 1.0
         cmd = [
             python, str(PIPELINE_SCRIPT),
             "--sketch", str(sketch_path),
             "--steps", str(steps),
             "--cycles", "1",
             "--log-dir", str(LOGS_DIR),
+            "--vstretch", f"{vstretch:.3f}",
         ] + seed_arg
         if self.var_literal_only.get():
             cmd.append("--literal-only")
