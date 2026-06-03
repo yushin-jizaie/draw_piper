@@ -1,0 +1,12 @@
+{
+  "sid": "new_car",
+  "route": "scatter",
+  "subject": "truck",
+  "category": "object",
+  "scatter_mode": "same",
+  "pattern": "grid",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 7,
+  "prompt": "truck, manga style, clean bold ink lineart, white background, appealing design, multiple"
+}

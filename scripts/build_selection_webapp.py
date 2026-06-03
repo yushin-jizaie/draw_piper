@@ -177,6 +177,8 @@ INPUTS = [
     ("new_car",          "sketch_variations/_inputs/new_car.png",          "object"),
     # 2026-06-03: 3生成を元レイアウト(IMG_4368)へ戻した合成 (象+花+トラック)。
     ("new_combo",        "sketch_variations/_inputs/new_combo.png",        "object"),
+    # 2026-06-03: B ルート(scatter/direct manga)で個別生成→元レイアウトへ合成。
+    ("new_combo_b",      "sketch_variations/_inputs/new_combo.png",        "object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。

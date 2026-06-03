@@ -1,0 +1,9 @@
+{
+  "sid": "new_combo_b",
+  "route": "broute_recombine",
+  "variant": "combo_seed555",
+  "seed": 555,
+  "source": "disp_2026-06-02-BROUTE (scatter/direct manga)",
+  "placed_at": "original_bbox_contain",
+  "note": "Bルート(manga multiple→direct)で個別生成→元IMG_4368レイアウトへ合成"
+}

@@ -1,0 +1,12 @@
+{
+  "sid": "new_tree_b",
+  "route": "scatter",
+  "subject": "flower",
+  "category": "object",
+  "scatter_mode": "same",
+  "pattern": "grid",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 7,
+  "prompt": "flower, manga style, clean bold ink lineart, white background, appealing design, multiple"
+}
