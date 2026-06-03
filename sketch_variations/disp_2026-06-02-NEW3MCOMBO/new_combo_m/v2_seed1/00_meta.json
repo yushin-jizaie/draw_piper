@@ -5,5 +5,11 @@
   "seed": 1,
   "source": "disp_2026-06-02-NEW3M",
   "placed_at": "original_bbox_contain",
-  "note": "NEW3Mの3生成を元IMG_4368レイアウト(各bbox)へ戻して1枚に再構成"
+  "stroke_order": "center_out_per_object",
+  "center": [
+    352,
+    736
+  ],
+  "start_dist_from_center_px": 89.6,
+  "note": "NEW3Mの3生成を元レイアウトへ合成。 描画順=中心最寄りから外側へ(オブジェクト単位)"
 }
