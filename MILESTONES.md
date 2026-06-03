@@ -3,7 +3,7 @@
 > **目的**: 詰まった時に「正常な地点」へ素早く戻るための地図。
 > Git は履歴の倉庫、このファイルは *どこが正常か / どこで詰まったか* を一目で見る索引。
 >
-> 最終更新: 2026-06-03 (M19 multi-object 分割→個別生成→元レイアウト合成 完成を追記)
+> 最終更新: 2026-06-03 (M20 壁面描画: 向き固定IKで経路非依存の再現性達成 を追記)
 
 ---
 
@@ -11,12 +11,13 @@
 
 | 項目 | 値 |
 |------|-----|
-| マイルストーン | **M12 — canvas_calibration yaml schema v3 (5-phase 設計) IO + GUI 配線完了・dry-run 検証 PASS・実機未検証** |
-| コミット | `c24438c` |
-| 戻り方 | `git checkout c24438c`(または最新 `main`) |
-| 正常の確認 | `~/draw_piper/venv/bin/python ~/piper_test/test_canvas_calibration_io.py` で 50 checks PASS、`~/draw_piper/venv/bin/python ~/piper_test/test_step2_v3_save.py` で 33 checks PASS。GUI 起動 → `_load_calib_defaults` が disk 上 v1 yaml (M10) を読んで center_y/z + contact_x を反映。M11 同等の操作フロー(B1 4 corners + B2 plane extras + Save)で **v3 形式 yaml を書き出す**(traces.surface に legacy extras を入れる Step 2 transitional 仕様)。実機 drag-teach は M11 同様未検証(Step 4 で B2 自動サンプリングが入った後にまとめて検証予定) |
+| マイルストーン (壁面描画) | **M20 — 向き固定IKで経路非依存の再現性を達成・オフライン検証 PASS・実機 小円のみ確認** |
+| コミット | `piper_test: cd66642` |
+| 戻り方 | `cd ~/piper_test && git checkout cd66642`(または最新 `main`) |
+| 正常の確認 | GUI 起動 (`~/draw_piper/scripts/wall_gui`) → ③位置調整「向き固定」ON → 各隅へ goto が**経路に依らず同じ位置**に来る。オフライン: 同一目標へ3経路から関節差0.0°(再現性)。実機: 小円 dYZ<2mm で正確描画確認済。横大円/楕円の実機再描画 + 四隅深さ(X)再記録は次ステップ。 |
+| マイルストーン (画像生成) | **M19 — multi-object 分割→個別生成→元レイアウト合成** (`522d010`) ★★ 現在地 ★★ |
 
-> 注: M9 は並走中の **VLM/画像生成スレッド**の正常地点。壁面描画スレッドは M10 → M11 と進行。両スレッドは独立で戻り先はどちらも `main` で OK。
+> 注: 2 スレッド並走。**画像生成スレッド** = M19 (`draw_piper`)、**壁面描画スレッド** = M20 (`piper_test`)。両者独立で戻り先は各 repo の `main`。
 
 ---
 
@@ -284,6 +285,23 @@
               │                 ③ 末端負荷(0xAE)で保持回復後に再キャリブ
               │           ┗━ 復旧先 ▶ committed calibration + 再起動 + end-load
               │              (描画コードは概ね無罪。 depth補正のみ実機改善確認)
+              │
+06-03         ● M20 向き固定IKで経路非依存の再現性を達成 (壁面描画スレッド)  [piper_test: cd66642]
+                     └ ユーザー観察「位置決めしても通る経路で行き先が変わる。螺旋は中心
+                       から連続だから上手くいく」が真因の手がかり。コード調査で確定:
+                       solve_ik は link6位置+ペン軸方向しか拘束せず roll 自由、かつ
+                       desired_z=R_cur[:,2](=直前の向き)で目標向きが経路依存。tip=link6
+                       +90mmなので向きの僅差が先端で cm 級にズレ、IK が毎回別姿勢へ収束。
+                     └ 対処: ① desired_z を固定の壁正対向き(板法線)に + 常に正対seedを候補に
+                       (fixed_orientation, _fixed_pen_z, _canonical_seed)。オフライン検証で
+                       同一目標へ3経路から関節差0.0°=完全再現。② 四隅は tip 実位置を位置制御
+                       で記録(現在位置を隅として記録/四隅リセット/X調整/Enter即反映)。
+                       ③ 中央保存 raw直書き化。④ 大円 _canvas_fit_radii の座標系不一致
+                       (3D vs YZ)を全YZ一貫に修正、描画は端リーチ誤差で中断しない best-effort。
+                     └ 検証状況: オフライン再現性 PASS / 実機は小円が dYZ<2mm で正確に描画
+                       確認済。横大円・楕円の実機再描画と四隅深さ(X)再記録は次ステップ。
+                     └ ★注意: 現 canvas_calibration の四隅は X(深さ)が上320 vs 下245 と
+                       74mm バラつく記録エラーあり (再記録要)。横円テスト(YZのみ)には無影響。
 ```
 
 ---
@@ -313,6 +331,7 @@
 | M16 | 2026-05-28 10:33 | multi-mode (character/object/other) + gacha UX + object 詳細化 (text2img + CN soft hint で sketch を hint だけにし prompt 駆動で detailed lineart 生成) | `27de6b4` | `venv/bin/python -m scripts.generate_gacha --user-sketch <sketch> --category {character\|object} --output logs/gacha_<ts> --n 3` で各 sketch から 3 variants の detailed 線画。 cat 34 / house 37 / tree 89 / car 111 strokes。 demo: branch phase-e-results-20260528/multi_mode_v5_object_detailed/ |
 | **M17 (下書き)** | 2026-05-28 | Panel geometry alignment ― canvas_calibration を真値に SDXL bucket 自動選択 + image_gen non-square 対応 + 整合 diff CLI + GUI readout/トグル | `021979c` | `python3 scripts/check_panel_geometry.py` で `推奨 PanelGeometry` が canvas 由来 (panel 92.93×193.52 mm → bucket 704×1472 px, aspect err 0.4%, mm/px=(0.132, 0.132) で等方) を表示。 `imagegen_config.yaml` の `auto_from_panel: true` で build_image_generator_from_config が bucket 自動解決。 実機検証 (生成 → vectorize → robot 描画で panel に歪み無し) PASS で ● 確定 + ★ 現在地 更新。 ブランチ: `claude/smooth-curve-rendering-e88Vb` |
 | **M18** | 2026-06-02 | デザイン性×アライン性の「2生成→特徴ワープ後合成」(方式③) が構造的に成立。FLUX.1-schnell + ControlNet(Union canny) + style LoRA(勝ち168枚, 16GB 学習) へ移行し、生成 prompt は VLM 完成形ビジョン (`design_instruction(mode="complete")`)。design(低CN0.2) を生成 → アライン芯=**入力生線** (高CN生成を芯にする初版は簡素入力で芯 0-6本=スカスカと判明し変更) → **DIS optical flow** で design→入力 の変位場を作り design ストロークをワープし、デザイン性を保ったまま入力位置へ寄せる。 | `88bc21f` | `venv/bin/python scripts/gen_flux_warp_compose.py` → `sketch_variations/disp_2026-06-02-WARP529/<sid>/v*_{align_input,design,warp}` が生成され、各 meta に `flow_mean_px` 記録 (5/29入力8枚で 5-27px)。webapp で warp が design を入力位置へ寄せているか目視。※warp の**絵的品質判定はユーザー目視が次ステップ**(構造・座標整合は成立)。 関連: [[flux_schnell_controlnet_setup]] [[flux_lora_training_16gb]] |
+| **M20** | 2026-06-03 | **壁面描画: 向き固定IKで経路非依存の再現性を達成**。`solve_ik` が roll 自由 + `desired_z=R_cur[:,2]`(直前の向き)で目標姿勢が経路依存 → tip=link6+90mm で向きの僅差が先端で cm 級ズレ、毎回別姿勢へ収束していた真因を特定。固定の壁正対向き(板法線)+正対seed常設で同一目標→同一姿勢(オフライン3経路で関節差0.0°)。四隅は tip 実位置の位置制御記録に置換、大円サイズの座標系不一致(3D vs YZ)修正、描画 best-effort 化。 | `piper_test: cd66642` | GUI 起動 → ③位置調整「向き固定」ON → 各隅へ goto が経路に依らず同じ位置。実機は小円 dYZ<2mm で正確描画確認済。横大円/楕円の実機再描画 + 四隅深さ(X=上320/下245で74mmズレ)の再記録が次ステップ。 関連: [[calibration_center_size_redesign]] [[drawing_distortion_diagnostic]] |
 | **M19** | 2026-06-03 | **multi-object 入力 → 分割 → 個別生成 → 元レイアウト合成** が完成 (ユーザー評価「かなりいい」)。生成ルート確定: FLUX.1-schnell + ControlNet(Union canny, **CN0.2**) + winners style LoRA@0.6 + VLM完成形ビジョン(`design_instruction(mode="complete")`) + **OpenCV線抽出**(背景色/トーン除去+適応二値化, `modules/gen_line_extract.py`) + デフォルト style 文「manga style, clean bold ink lineart, white background, appealing design, multiple」。 合成は **704×1472 パネルフレームに contain** 配置 (webapp が candidate を stretch / input を contain で描くため縦伸び回避にこの写像が必須)。 ※CN追従型ゆえ "multiple" は効かない (複数クラスタは B の scatter/direct ルート)。 | `522d010` | `split_new3.py`(分割) → `gen_new3.py`(個別生成) → `recombine_new3.py NEW3M new_combo_m 1`(合成+push)。webapp 2026-06-02 → `new_combo_m` に象/花/トラックが元配置で 1 枚に合成 (3 seed)、縦伸び無し。 関連: [[design_align_warp_compose]] [[robot_draws_only_additions]] |
 
 ---
