@@ -8,8 +8,12 @@ import cv2
 from PIL import Image
 ROOT=Path("/home/jizaiedev2026/draw_piper"); sys.path.insert(0,str(ROOT))
 import os; os.chdir(ROOT)
-SRC=ROOT/"sketch_variations/disp_2026-06-02-NEW3"
-OUT=ROOT/"sketch_variations/disp_2026-06-02-NEW3COMBO"
+# argv: [1]=disp接尾(既定NEW3) [2]=combo sid(既定new_combo) [3]=push(1で commit/push)
+SUF=sys.argv[1] if len(sys.argv)>1 else "NEW3"
+COMBO_SID=sys.argv[2] if len(sys.argv)>2 else "new_combo"
+DO_PUSH=len(sys.argv)>3 and sys.argv[3]=="1"
+SRC=ROOT/f"sketch_variations/disp_2026-06-02-{SUF}"
+OUT=ROOT/f"sketch_variations/disp_2026-06-02-{SUF}COMBO"
 BR="claude/style-pool-rebalance-20260529"
 # 元画像 IMG_4368 (1179x1347) 内の各下書き bbox (split_new3 の検出値)
 OW,OH=1179,1347
@@ -47,10 +51,18 @@ for seed in SEEDS:
         # bbox を 704x1472 パネルフレームへ contain 写像
         tb=(bx*SCALE+XOFF, by*SCALE+YOFF, bw*SCALE, bh*SCALE)
         combined+=remap(st,*tb)
-    outd=OUT/"new_combo"/f"v{seed+1}_seed{seed}"
-    _save_candidate(outd,combined,PW,PH,generated=None,meta={"sid":"new_combo",
+    outd=OUT/COMBO_SID/f"v{seed+1}_seed{seed}"
+    _save_candidate(outd,combined,PW,PH,generated=None,meta={"sid":COMBO_SID,
         "route":"new3_recombine","variant":f"combo_seed{seed}","seed":seed,
-        "source":"disp_2026-06-02-NEW3","placed_at":"original_bbox",
-        "note":"NEW3の3生成を元IMG_4368レイアウト(各bbox)へ戻して1枚に再構成"})
+        "source":str(SRC.name),"placed_at":"original_bbox_contain",
+        "note":f"{SUF}の3生成を元IMG_4368レイアウト(各bbox)へ戻して1枚に再構成"})
     print(f"combo seed{seed}: {len(combined)} strokes -> {outd}",flush=True)
+if DO_PUSH:
+    subprocess.run(["./venv/bin/python","-m","scripts.build_selection_webapp"])
+    subprocess.run(["git","add",str(OUT),str(SRC),"sketch_variations/_inputs/new_combo.png",
+                    "scripts/build_selection_webapp.py","docs/selection/index.html"])
+    subprocess.run(["git","commit","-q","-m",f"{SUF}: 3生成を元レイアウトへ合成 ({COMBO_SID})"])
+    for _ in range(6):
+        if subprocess.run(["git","push","origin",BR]).returncode==0: break
+        time.sleep(12)
 print("RECOMBINE_DONE",flush=True)

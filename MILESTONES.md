@@ -3,7 +3,7 @@
 > **目的**: 詰まった時に「正常な地点」へ素早く戻るための地図。
 > Git は履歴の倉庫、このファイルは *どこが正常か / どこで詰まったか* を一目で見る索引。
 >
-> 最終更新: 2026-06-03 (M18 デザイン×アライン 2生成→特徴ワープ後合成 方式③ 成立を追記)
+> 最終更新: 2026-06-03 (M19 multi-object 分割→個別生成→元レイアウト合成 完成を追記)
 
 ---
 
@@ -235,7 +235,7 @@
                        歪み無し確認) PASS で ● 確定 + ★ 現在地 更新。
                      └ ブランチ: claude/smooth-curve-rendering-e88Vb
               │
-06-02         ● M18 デザイン×アライン 2生成→特徴ワープ後合成(方式③) 成立 ★★ 現在地 ★★  [88bc21f]
+06-02         ● M18 デザイン×アライン 2生成→特徴ワープ後合成(方式③) 成立  [88bc21f]
                      └ M17 後 SDXL系 → FLUX.1-schnell + ControlNet(Union canny)
                        + style LoRA(勝ち168枚, 16GB学習) に移行。 生成 prompt は
                        VLM の「未来の完成形」 ビジョン (design_instruction mode=complete)。
@@ -246,6 +246,23 @@
                      └ scripts/gen_flux_warp_compose.py。 出力 disp_2026-06-02-WARP529
                        に各入力 align_input/design/warp の 3 層。 ※warp の絵的品質は
                        ユーザー目視判定が次ステップ (構造は成立、 寄せ量 flow 5-27px)。
+              │
+06-03         ● M19 multi-object 入力 → 分割 → 個別生成 → 元レイアウト合成 が完成 ★★ 現在地 ★★  [522d010]
+                     └ ユーザー評価「かなりいい」。 1 枚に複数被写体を描いた手描き入力を、
+                       connected components で分割 → 各被写体を個別生成 → 元 IMG の各
+                       下書き位置(bbox)へ contain 配置して 1 枚に再合成。
+                     └ 生成ルート(6/3 確定): FLUX.1-schnell + ControlNet(Union canny, CN0.2)
+                       + winners style LoRA@0.6 + VLM完成形ビジョン(design_instruction
+                       complete) + OpenCV線抽出(背景色/トーン除去) + デフォルト style 文
+                       = 「manga style, clean bold ink lineart, white background,
+                       appealing design, multiple」。
+                     └ 合成は 704x1472 パネルフレームに contain (webapp が candidate を
+                       stretch / input を contain で描くため、 縦伸び/位置ズレ回避にこの
+                       写像が必須)。 ※CN追従型なので prompt の "multiple" は効かない
+                       (複数クラスタが欲しい時は B の scatter/direct ルート)。
+                     └ scripts: split_new3.py → gen_new3.py → recombine_new3.py
+                       (`<SUF> <combo_sid> 1` 引数で合成+push)、 modules/gen_line_extract.py。
+                       出力 disp_2026-06-02-NEW3M / new_combo_m (webapp で確認)。
 
 ─ 壁面描画スレッド (full_dev GUI、 M10→M12 の続き) ──────────────────
 06-01〜02      ● 壁面描画 full_dev GUI 多数改善 (StrokePicker / 進捗プレビュー /
@@ -296,6 +313,7 @@
 | M16 | 2026-05-28 10:33 | multi-mode (character/object/other) + gacha UX + object 詳細化 (text2img + CN soft hint で sketch を hint だけにし prompt 駆動で detailed lineart 生成) | `27de6b4` | `venv/bin/python -m scripts.generate_gacha --user-sketch <sketch> --category {character\|object} --output logs/gacha_<ts> --n 3` で各 sketch から 3 variants の detailed 線画。 cat 34 / house 37 / tree 89 / car 111 strokes。 demo: branch phase-e-results-20260528/multi_mode_v5_object_detailed/ |
 | **M17 (下書き)** | 2026-05-28 | Panel geometry alignment ― canvas_calibration を真値に SDXL bucket 自動選択 + image_gen non-square 対応 + 整合 diff CLI + GUI readout/トグル | `021979c` | `python3 scripts/check_panel_geometry.py` で `推奨 PanelGeometry` が canvas 由来 (panel 92.93×193.52 mm → bucket 704×1472 px, aspect err 0.4%, mm/px=(0.132, 0.132) で等方) を表示。 `imagegen_config.yaml` の `auto_from_panel: true` で build_image_generator_from_config が bucket 自動解決。 実機検証 (生成 → vectorize → robot 描画で panel に歪み無し) PASS で ● 確定 + ★ 現在地 更新。 ブランチ: `claude/smooth-curve-rendering-e88Vb` |
 | **M18** | 2026-06-02 | デザイン性×アライン性の「2生成→特徴ワープ後合成」(方式③) が構造的に成立。FLUX.1-schnell + ControlNet(Union canny) + style LoRA(勝ち168枚, 16GB 学習) へ移行し、生成 prompt は VLM 完成形ビジョン (`design_instruction(mode="complete")`)。design(低CN0.2) を生成 → アライン芯=**入力生線** (高CN生成を芯にする初版は簡素入力で芯 0-6本=スカスカと判明し変更) → **DIS optical flow** で design→入力 の変位場を作り design ストロークをワープし、デザイン性を保ったまま入力位置へ寄せる。 | `88bc21f` | `venv/bin/python scripts/gen_flux_warp_compose.py` → `sketch_variations/disp_2026-06-02-WARP529/<sid>/v*_{align_input,design,warp}` が生成され、各 meta に `flow_mean_px` 記録 (5/29入力8枚で 5-27px)。webapp で warp が design を入力位置へ寄せているか目視。※warp の**絵的品質判定はユーザー目視が次ステップ**(構造・座標整合は成立)。 関連: [[flux_schnell_controlnet_setup]] [[flux_lora_training_16gb]] |
+| **M19** | 2026-06-03 | **multi-object 入力 → 分割 → 個別生成 → 元レイアウト合成** が完成 (ユーザー評価「かなりいい」)。生成ルート確定: FLUX.1-schnell + ControlNet(Union canny, **CN0.2**) + winners style LoRA@0.6 + VLM完成形ビジョン(`design_instruction(mode="complete")`) + **OpenCV線抽出**(背景色/トーン除去+適応二値化, `modules/gen_line_extract.py`) + デフォルト style 文「manga style, clean bold ink lineart, white background, appealing design, multiple」。 合成は **704×1472 パネルフレームに contain** 配置 (webapp が candidate を stretch / input を contain で描くため縦伸び回避にこの写像が必須)。 ※CN追従型ゆえ "multiple" は効かない (複数クラスタは B の scatter/direct ルート)。 | `522d010` | `split_new3.py`(分割) → `gen_new3.py`(個別生成) → `recombine_new3.py NEW3M new_combo_m 1`(合成+push)。webapp 2026-06-02 → `new_combo_m` に象/花/トラックが元配置で 1 枚に合成 (3 seed)、縦伸び無し。 関連: [[design_align_warp_compose]] [[robot_draws_only_additions]] |
 
 ---
 
