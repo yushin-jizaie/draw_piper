@@ -168,7 +168,9 @@ def main():
             sc = min(CW * 0.92 / SIZE, CH * 0.92 / SIZE); rw = int(SIZE * sc); rh = int(SIZE * sc)
             canvas.paste(img.resize((rw, rh)), ((CW - rw) // 2, (CH - rh) // 2))
     canvas.save(cyc / "generated.png")
-    json.dump({"strokes": combined, "n_strokes": len(combined)},
+    # 壁面描画 GUI のローダ互換: image_shape=[H,W]=[CH,CW] が必須
+    json.dump({"image_shape": [CH, CW], "n_strokes": len(combined),
+               "n_points": sum(len(s) for s in combined), "strokes": combined},
               open(cyc / "strokes.json", "w"))
     (cyc / "prompt.txt").write_text("\n\n".join(prompts), encoding="utf-8")
     sc0 = visions[0]["scene"] if visions else "?"
