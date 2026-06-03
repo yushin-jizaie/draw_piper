@@ -1,0 +1,16 @@
+{
+  "sid": "cat",
+  "route": "flux_richness",
+  "variant": "strong_cn20",
+  "style": "strong",
+  "cn": 0.2,
+  "min_feature_px": 8,
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.6,
+  "seed": 0,
+  "prompt": "tklineart, The cat's face is now fully round, with expressive black eyes and a small, triangular nose giving it a curious look. Its triangular ears stand alert, and delicate whiskers extend from either side of its mouth. A fluffy tail curls gently behind, adding a touch of whimsy. The cat's cheeks. highly detailed clean black line art, bold confident outlines with many fine interior detail lines, mechanical and structural detail, panel lines, intricate accurate linework, rich detailing throughout, one main subject filling the frame, white background, no fill, no shading, no color, no text",
+  "vision": "The cat's face is now fully round, with expressive black eyes and a small, triangular nose giving it a curious look. Its triangular ears stand alert, and delicate whiskers extend from either side of its mouth. A fluffy tail curls gently behind, adding a touch of whimsy. The cat's cheeks.",
+  "placed_at": "fill_board",
+  "line_extract": "opencv_bgremove_adaptive",
+  "note": "デザイン性(細部)比較 simple vs detailed"
+}
