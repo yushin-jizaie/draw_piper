@@ -1,0 +1,16 @@
+{
+  "sid": "house",
+  "route": "flux_richness",
+  "variant": "rich_cn55",
+  "style": "detail",
+  "cn": 0.55,
+  "min_feature_px": 8,
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.6,
+  "seed": 0,
+  "prompt": "tklineart, A charming two-story house stands proudly with a triangular roof, adorned with a small chimney on the left side. The front features three rectangular windows, each framed by delicate trims, and a central door with a small window above it. A quaint porch with a wooden railing extends from the. detailed clean black line art, bold confident outlines plus fine interior detail lines, accurate structure and proportions, intricate linework, one main subject filling the frame, white background, no fill, no shading, no color, no text",
+  "vision": "A charming two-story house stands proudly with a triangular roof, adorned with a small chimney on the left side. The front features three rectangular windows, each framed by delicate trims, and a central door with a small window above it. A quaint porch with a wooden railing extends from the.",
+  "placed_at": "fill_board",
+  "line_extract": "opencv_bgremove_adaptive",
+  "note": "デザイン性(細部)比較 simple vs detailed"
+}
