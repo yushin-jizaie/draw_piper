@@ -1,0 +1,14 @@
+{
+  "sid": "B_round_smiley",
+  "route": "flux_decorate",
+  "variant": "cn55_full",
+  "cn": 0.55,
+  "seed": 0,
+  "layer": "full",
+  "prompt": "tklineart, Delicate tendrils of swirling vines and curling leaves gently embrace the smiling circle, their intricate patterns intertwining with the existing lines. Tiny beads and repeating floral motifs adorn the surface, adding a touch of whimsical elegance. The flourishes and dots weave seamlessly around the central figure, enhancing its cheerful expression without obscuring its simplicity. manga style, clean bold black ink lineart on white background",
+  "vision": "Delicate tendrils of swirling vines and curling leaves gently embrace the smiling circle, their intricate patterns intertwining with the existing lines. Tiny beads and repeating floral motifs adorn the surface, adding a touch of whimsical elegance. The flourishes and dots weave seamlessly around the central figure, enhancing its cheerful expression without obscuring its simplicity.",
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.6,
+  "line_extract": "opencv_bgremove_adaptive",
+  "note": "元線を活かし線に絡む装飾。full=元線+装飾 / deco=元線を引いた装飾のみ(ロボット描画分)"
+}

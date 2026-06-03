@@ -546,6 +546,19 @@ class VLM:
     #   draw   (CN なし/companion): 空白に別主題を新規 →「てるてる坊主を描いて」
     # ※ SDXL は CLIP 77 token 制限があるので短く (mode 別に語数上限)。
     _DESIGN_PROMPTS = {
+        # decorate — 元の線を骨格として KEEP し、 その線に絡む装飾を増やす方向
+        # (2026-06-04 ユーザー: 元線を活かし、 線に絡むように装飾を増やす)。
+        "decorate": (
+            "This is a simple line drawing of a {subject}. Do NOT redraw or restyle the "
+            "existing lines — treat them as a fixed skeleton that stays. Describe ONLY the "
+            "ORNAMENTAL DECORATION to add that weaves around, clings to and follows those "
+            "existing lines: flourishes, swirls, curling vines, small leaves, dots, beads, "
+            "delicate repeating patterns and fine accent strokes that hug and intertwine "
+            "with the outlines and grow outward from them, embellishing the {subject} "
+            "densely while keeping its original shape readable. Write flowing concrete "
+            "visual prose describing the decoration, 40 to 70 words. Do NOT mention art "
+            "style, colors, line, ink, pencil or medium, and do NOT use lists."
+        ),
         "finish": (
             "This image is a rough DRAFT sketch of a {subject}. Write ONE short "
             "instruction telling an illustrator to FINISH this draft into a "
@@ -590,7 +603,7 @@ class VLM:
             "pencil or medium, and do NOT use lists."
         ),
     }
-    _DESIGN_WORDCAP = {"finish": 30, "add": 24, "draw": 18, "complete": 75}
+    _DESIGN_WORDCAP = {"finish": 30, "add": 24, "draw": 18, "complete": 75, "decorate": 70}
 
     def design_instruction(self, image: ImageLike, subject: str = "subject",
                            mode: str = "finish", companion: str = "") -> str:

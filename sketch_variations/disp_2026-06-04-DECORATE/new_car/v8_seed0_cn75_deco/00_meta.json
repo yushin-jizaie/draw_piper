@@ -1,0 +1,14 @@
+{
+  "sid": "new_car",
+  "route": "flux_decorate",
+  "variant": "cn75_deco",
+  "cn": 0.75,
+  "seed": 0,
+  "layer": "deco",
+  "prompt": "tklineart, Delicate tendrils of swirling vines and intricate beadwork dance along the edges of the truck's cab, intertwining with the bold lines of the wheels. Tiny leaves and dots sprinkle across the surface, adding texture and depth. Curlicues and floral motifs weave through the cab's contours, while fine accent strokes trace the curves of the wheels, creating a harmonious blend of ornamentation that enhances the truck's form without obscuring its structure. manga style, clean bold black ink lineart on white background",
+  "vision": "Delicate tendrils of swirling vines and intricate beadwork dance along the edges of the truck's cab, intertwining with the bold lines of the wheels. Tiny leaves and dots sprinkle across the surface, adding texture and depth. Curlicues and floral motifs weave through the cab's contours, while fine accent strokes trace the curves of the wheels, creating a harmonious blend of ornamentation that enhances the truck's form without obscuring its structure.",
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.6,
+  "line_extract": "opencv_bgremove_adaptive",
+  "note": "元線を活かし線に絡む装飾。full=元線+装飾 / deco=元線を引いた装飾のみ(ロボット描画分)"
+}
