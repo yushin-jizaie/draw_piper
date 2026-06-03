@@ -81,6 +81,8 @@ def main():
     # 縦伸ばし比率: ロボット側の縦潰れ/横伸びの応急補正。 生成画像を縦に V 倍に
     # 引き伸ばしてからストローク化する (1.0=補正なし)。
     ap.add_argument("--vstretch", type=float, default=1.0)
+    # --no-split: 複数被写体に分割せず、 入力全体を 1 枚絵として生成 (1オブジェクト扱い)。
+    ap.add_argument("--no-split", action="store_true")
     args = ap.parse_args()
     V = max(0.1, args.vstretch)
 
@@ -90,8 +92,12 @@ def main():
     log("output:", cyc)
 
     inp = Image.open(args.sketch).convert("RGB")
-    objs, (W, H) = split_objects(inp)
-    log(f"split: {len(objs)} object(s), input {W}x{H}")
+    if args.no_split:
+        W, H = inp.size; objs = [((0, 0, W, H), inp.convert("RGB"))]
+        log(f"no-split: 入力全体を1枚絵として生成, input {W}x{H}")
+    else:
+        objs, (W, H) = split_objects(inp)
+        log(f"split: {len(objs)} object(s), input {W}x{H}")
     # user binary (vec_debug 表示用)
     ug = cv2.cvtColor(np.array(inp), cv2.COLOR_RGB2GRAY)
     Image.fromarray(cv2.threshold(ug, 200, 255, cv2.THRESH_BINARY)[1]).save(cyc / "vec_debug" / "02a_user_binary.png")
