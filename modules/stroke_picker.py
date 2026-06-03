@@ -109,6 +109,11 @@ class StrokePicker(tk.Toplevel):
         self._cards: dict[str, ttk.Frame] = {}      # key = str(cycle_dir) (一意)
         self._photo_cache: dict[Path, "ImageTk.PhotoImage"] = {}
         self._selected_key: Optional[str] = None
+        # サムネは描画後に非同期で 1 枚ずつ読み込む (同期だと 60 枚×2 で
+        # UI が数秒固まる)。 _render でキューを作り after() で消化する。
+        self._thumb_queue: list = []
+        self._thumb_job = None
+        self._render_job = None
 
         # 参照元 (logs/ と sketch_variations/<folder>) の label -> Path マップ
         self._sources = self._build_source_map()
@@ -217,7 +222,10 @@ class StrokePicker(tk.Toplevel):
         ttk.Label(tb, text="フィルタ:").pack(side=tk.LEFT)
         ttk.Entry(tb, textvariable=self.var_filter, width=24
                   ).pack(side=tk.LEFT, padx=4)
-        self.var_filter.trace_add("write", lambda *_: self._render())
+        # フィルタは 1 文字毎に _render() を呼ぶと 60枚×2サムネ(≈1.7s) が
+        # キー毎に走り UI が固まる。 入力停止 300ms 後に 1 回だけ再描画する
+        # (デバウンス)。
+        self.var_filter.trace_add("write", lambda *_: self._schedule_render())
         ttk.Label(tb, text="  並び:").pack(side=tk.LEFT, padx=(12, 0))
         ttk.Radiobutton(tb, text="新しい順", variable=self.var_sort,
                          value="newest", command=self._render
@@ -342,13 +350,9 @@ class StrokePicker(tk.Toplevel):
                         meta["subject"] = subj
                 except Exception:
                     pass
-            # strokes.json -> n_strokes (for label)
-            if strokes_json is not None and strokes_json.exists():
-                try:
-                    sd = json.loads(strokes_json.read_text(encoding="utf-8"))
-                    meta["n_strokes"] = sd.get("n_strokes")
-                except Exception:
-                    pass
+            # n_strokes は重い (strokes.json 全体パース)。 ここでは読まず、
+            # 実際に表示するカード (≤MAX_CARDS) で遅延読込する → 数百件
+            # スキャンでも UI が固まらない。 (_build_card 参照)
             # mtime for sort
             meta["mtime"] = cycle.stat().st_mtime
             entries.append(meta)
@@ -375,7 +379,27 @@ class StrokePicker(tk.Toplevel):
     # ------------------------------------------------------------------
     # rendering
     # ------------------------------------------------------------------
+    def _schedule_render(self, delay_ms: int = 300) -> None:
+        """フィルタ入力のデバウンス: 連続入力中は再描画を後ろ倒しし、
+        入力が止まってから 1 回だけ _render する。"""
+        job = getattr(self, "_render_job", None)
+        if job is not None:
+            try:
+                self.after_cancel(job)
+            except Exception:
+                pass
+        self._render_job = self.after(delay_ms, self._render)
+
     def _render(self) -> None:
+        self._render_job = None
+        # 前回の未処理サムネ読込をキャンセル (古い cell を触らない)
+        if self._thumb_job is not None:
+            try:
+                self.after_cancel(self._thumb_job)
+            except Exception:
+                pass
+            self._thumb_job = None
+        self._thumb_queue.clear()
         # clear existing cards
         for w in self.inner.winfo_children():
             w.destroy()
@@ -415,6 +439,8 @@ class StrokePicker(tk.Toplevel):
         # configure column weights
         for c in range(GRID_COLS):
             self.inner.grid_columnconfigure(c, weight=1)
+        # カードは即表示済。 サムネは非同期で 1 枚ずつ埋める (UI 無凍結)。
+        self._start_thumb_loading()
 
     def _build_card(self, parent, entry: dict) -> ttk.Frame:
         # outer frame -> click selects
@@ -433,7 +459,19 @@ class StrokePicker(tk.Toplevel):
         # title
         ts = entry.get("timestamp") or "?"
         subj = entry.get("subject") or "(no subject)"
+        # n_strokes は表示時に遅延読込 (スキャンでは読まない)。 1 回読んだら
+        # entry にキャッシュ。 表示するカードだけなので ≤MAX_CARDS 件で済む。
         n_st = entry.get("n_strokes")
+        if n_st is None and not entry.get("_n_strokes_tried"):
+            entry["_n_strokes_tried"] = True
+            sj = entry.get("strokes_json")
+            if sj is not None and sj.exists():
+                try:
+                    sd = json.loads(sj.read_text(encoding="utf-8"))
+                    n_st = sd.get("n_strokes")
+                    entry["n_strokes"] = n_st
+                except Exception:
+                    pass
         n_lbl = f"  n={n_st}" if isinstance(n_st, int) else ""
         title = tk.Label(outer,
                           text=f"{ts}  {disp}{n_lbl}",
@@ -451,9 +489,9 @@ class StrokePicker(tk.Toplevel):
         thumb_row = tk.Frame(outer, bg="#ffffff")
         thumb_row.pack(padx=4, pady=(4, 4))
         self._add_thumb(thumb_row, entry.get("generated_image"),
-                          fallback="(generated.png なし)")
+                          fallback="(generated.png なし)", key=key)
         self._add_thumb(thumb_row, entry.get("strokes_png"),
-                          fallback="(strokes.png なし)")
+                          fallback="(strokes.png なし)", key=key)
 
         # bind click
         def _click(_e=None, k=key):
@@ -469,29 +507,66 @@ class StrokePicker(tk.Toplevel):
             w.bind("<Double-Button-1>", lambda _e, k=key: self._double_click(k))
         return outer
 
-    def _add_thumb(self, parent, path: Optional[Path], fallback: str) -> None:
+    def _add_thumb(self, parent, path: Optional[Path], fallback: str,
+                    key: Optional[str] = None) -> None:
         cell = tk.Frame(parent, bg="#ffffff", width=THUMB_W, height=THUMB_H + 16)
         cell.pack(side=tk.LEFT, padx=4)
         cell.pack_propagate(False)
-        if path and path.exists() and Image is not None:
-            try:
-                photo = self._thumb_for(path)
-                lbl = tk.Label(cell, image=photo, bg="#fafafa", bd=1, relief=tk.SUNKEN)
-                lbl.image = photo  # keep ref
-                lbl.pack()
-                tk.Label(cell, text=path.name, bg="#ffffff",
-                          fg="#555", font=("Monaco", 9)
-                          ).pack()
-                return
-            except Exception as e:
-                fallback = f"({e})"
-        # fallback placeholder
+        loadable = bool(path and path.exists() and Image is not None)
         placeholder = tk.Canvas(cell, width=THUMB_W, height=THUMB_H,
                                   bg="#eeeeee", highlightthickness=1,
                                   highlightbackground="#bbbbbb")
-        placeholder.create_text(THUMB_W // 2, THUMB_H // 2, text=fallback,
+        placeholder.create_text(THUMB_W // 2, THUMB_H // 2,
+                                 text="(読込中…)" if loadable else fallback,
                                  fill="#888")
         placeholder.pack()
+        if key is not None:
+            placeholder.bind("<Button-1>", lambda _e, k=key: self._select(k))
+        if loadable:
+            # 同期で開くと 60×2 枚で固まる → キューに積んで after() で 1 枚ずつ。
+            self._thumb_queue.append((cell, placeholder, path, fallback, key))
+
+    def _start_thumb_loading(self) -> None:
+        if self._thumb_job is not None:
+            try:
+                self.after_cancel(self._thumb_job)
+            except Exception:
+                pass
+        self._thumb_job = None
+        if self._thumb_queue:
+            self._thumb_job = self.after(1, self._load_next_thumb)
+
+    def _load_next_thumb(self) -> None:
+        self._thumb_job = None
+        if not self._thumb_queue:
+            return
+        cell, placeholder, path, fallback, key = self._thumb_queue.pop(0)
+        try:
+            if not cell.winfo_exists():
+                raise RuntimeError("cell destroyed")
+            photo = self._thumb_for(path)
+            placeholder.destroy()
+            lbl = tk.Label(cell, image=photo, bg="#fafafa", bd=1,
+                            relief=tk.SUNKEN)
+            lbl.image = photo  # keep ref
+            lbl.pack()
+            tk.Label(cell, text=path.name, bg="#ffffff", fg="#555",
+                      font=("Monaco", 9)).pack()
+            if key is not None:
+                lbl.bind("<Button-1>", lambda _e, k=key: self._select(k))
+                lbl.bind("<Double-Button-1>",
+                         lambda _e, k=key: self._double_click(k))
+        except Exception as e:
+            try:
+                if placeholder.winfo_exists():
+                    placeholder.delete("all")
+                    placeholder.create_text(THUMB_W // 2, THUMB_H // 2,
+                                             text=f"({e})"[:40], fill="#a00")
+            except Exception:
+                pass
+        # 次の 1 枚 (UI に制御を返してから)
+        if self._thumb_queue:
+            self._thumb_job = self.after(1, self._load_next_thumb)
 
     def _thumb_for(self, path: Path) -> "ImageTk.PhotoImage":
         if path in self._photo_cache:
