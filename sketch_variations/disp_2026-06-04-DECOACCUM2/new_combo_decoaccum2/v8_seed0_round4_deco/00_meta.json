@@ -1,0 +1,13 @@
+{
+  "sid": "new_combo_decoaccum2",
+  "route": "flux_decorate_accum2",
+  "variant": "round4_deco",
+  "round": 4,
+  "layer": "deco",
+  "cn": 0.55,
+  "seed": 0,
+  "new_deco": 5,
+  "accum_deco": 143,
+  "vision": "Delicate tendrils of swirling vines and curling leaves dance around the bears' forms, their intricate patterns intertwining with the existing lines. Tiny beads and dots sprinkle across the surface, adding texture and depth. Flourishes and repeating motifs weave through the space, enhancing the bears' symmetry without obscuring their features. The entire scene is adorned with fine accent strokes that gracefully follow the contours, creating a rich, ornamental layer that complements.",
+  "note": "元線verbatim+装飾累積+VLMにはOpenCVで元線/前回を消した新規装飾だけ入力 4/4周"
+}
