@@ -26,6 +26,8 @@ BBOX={"new_tree_a":(96,13,452,647),
       "new_car":(43,771,979,532)}
 SEEDS=[0,1,2]
 from scripts.gen_routed import _save_candidate
+from modules.stroke_order import order_strokes_center_out
+CENTER=(PW/2.0, PH/2.0)   # 合成キャンバス中心 (描画始点の基準)
 
 def remap(strokes, bx,by,bw,bh):
     pts=[p for st in strokes for p in st]
@@ -42,7 +44,7 @@ shutil.copy(ROOT/"assets/IMG_4368.jpg", ROOT/"sketch_variations/_inputs/new_comb
 
 if OUT.exists(): shutil.rmtree(OUT)
 for seed in SEEDS:
-    combined=[]
+    obj_lists=[]   # オブジェクト単位の strokes (1つ描き切ってから次へ、 を保つ)
     for sid,(bx,by,bw,bh) in BBOX.items():
         cand=list(SRC.glob(f"{sid}/v*_seed{seed}"))
         if not cand:
@@ -50,13 +52,19 @@ for seed in SEEDS:
         st=json.load(open(cand[0]/"strokes.json"))["strokes"]
         # bbox を 704x1472 パネルフレームへ contain 写像
         tb=(bx*SCALE+XOFF, by*SCALE+YOFF, bw*SCALE, bh*SCALE)
-        combined+=remap(st,*tb)
+        obj_lists.append(remap(st,*tb))
+    # 中心→外側・オブジェクト単位・連続化した描画順に並べ替え (ロボット滑らか描画用)
+    combined=order_strokes_center_out(obj_lists,CENTER)
+    d0=(((combined[0][0][0]-CENTER[0])**2+(combined[0][0][1]-CENTER[1])**2)**0.5
+        if combined else -1)
     outd=OUT/COMBO_SID/f"v{seed+1}_seed{seed}"
     _save_candidate(outd,combined,PW,PH,generated=None,meta={"sid":COMBO_SID,
         "route":"new3_recombine","variant":f"combo_seed{seed}","seed":seed,
         "source":str(SRC.name),"placed_at":"original_bbox_contain",
-        "note":f"{SUF}の3生成を元IMG_4368レイアウト(各bbox)へ戻して1枚に再構成"})
-    print(f"combo seed{seed}: {len(combined)} strokes -> {outd}",flush=True)
+        "stroke_order":"center_out_per_object","center":[round(CENTER[0]),round(CENTER[1])],
+        "start_dist_from_center_px":round(d0,1),
+        "note":f"{SUF}の3生成を元レイアウトへ合成。 描画順=中心最寄りから外側へ(オブジェクト単位)"})
+    print(f"combo seed{seed}: {len(combined)} strokes, start {d0:.0f}px from center -> {outd}",flush=True)
 if DO_PUSH:
     subprocess.run(["./venv/bin/python","-m","scripts.build_selection_webapp"])
     subprocess.run(["git","add",str(OUT),str(SRC),"sketch_variations/_inputs/new_combo.png",
