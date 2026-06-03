@@ -1,0 +1,15 @@
+{
+  "sid": "new_tree_b",
+  "route": "flux_new3",
+  "variant": "strong_cn20_seed0",
+  "cn": 0.2,
+  "min_feature_px": 8,
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.6,
+  "seed": 0,
+  "prompt": "tklineart, A delicate, fully bloomed flower stands gracefully, its five perfectly rounded petals unfurling in soft curves, each adorned with subtle, intricate veining. The slender stem, elegantly curved, supports the vibrant bloom, ending in a gentle arch. A small, dewy drop rests gently on one petal, adding a touch of freshness. manga style, clean bold ink lineart, white background, appealing design, multiple",
+  "vision": "A delicate, fully bloomed flower stands gracefully, its five perfectly rounded petals unfurling in soft curves, each adorned with subtle, intricate veining. The slender stem, elegantly curved, supports the vibrant bloom, ending in a gentle arch. A small, dewy drop rests gently on one petal, adding a touch of freshness.",
+  "placed_at": "fill_board",
+  "line_extract": "opencv_bgremove_adaptive",
+  "note": "新3枚 6/3最新ルート+manga默认スタイル ガチャ"
+}
