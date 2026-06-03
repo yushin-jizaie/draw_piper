@@ -569,8 +569,28 @@ class VLM:
             "pose or expression>.' Flowing prose, under 16 words, no "
             "line/color/medium words."
         ),
+        # complete — 「途中の下書きから人が描こうとしている完成形」 を積極補完して
+        # 1 つの絵として vivid に記述 (FLUX/T5 は長プロンプト可なので語数多め)。
+        # finish と違い pose/composition 縛りを外し、 欠け/未完の部分も補って描かせる
+        # (2026-06-02 ユーザー: VLM は入力に対する「未来の完成形」を指示すべき)。
+        # 出力は命令文でなく「完成画の描写」 (FLUX prompt は記述が効く)。
+        "complete": (
+            "This is a rough, partly-drawn line sketch that a person is still in the "
+            "middle of making. Picture the FINISHED illustration they are aiming for "
+            "and describe that finished picture in RICH, DETAILED design terms. Keep "
+            "the same main subject ({subject}) and its rough placement, but COMPLETE "
+            "and elaborate it: add every part that is missing or only hinted at, and "
+            "pile on distinctive, appealing, concrete DESIGN: a clear expression, a "
+            "definite dynamic pose, characteristic shapes and proportions, surface "
+            "details and textures, several fitting accessories, small props, and a bit "
+            "of supporting setting or background element that suits it. Be specific and "
+            "imaginative about the design. Write flowing, concrete, visual prose "
+            "describing the finished picture, 45 to 75 words. Do NOT say it is a "
+            "sketch, draft or drawing, do NOT mention art style, colors, line, ink, "
+            "pencil or medium, and do NOT use lists."
+        ),
     }
-    _DESIGN_WORDCAP = {"finish": 30, "add": 24, "draw": 18}
+    _DESIGN_WORDCAP = {"finish": 30, "add": 24, "draw": 18, "complete": 75}
 
     def design_instruction(self, image: ImageLike, subject: str = "subject",
                            mode: str = "finish", companion: str = "") -> str:
@@ -608,7 +628,7 @@ class VLM:
         t0 = time.time()
         with torch.inference_mode():
             output_ids = self._model.generate(
-                **inputs, max_new_tokens=80, do_sample=False)
+                **inputs, max_new_tokens=160, do_sample=False)
         if torch.cuda.is_available():
             torch.cuda.synchronize()
         infer_time = time.time() - t0
