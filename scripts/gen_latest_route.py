@@ -168,8 +168,9 @@ def main():
     combined = order_strokes_center_out(obj_lists, (CW / 2.0, CH / 2.0))
     log(f"stroke order: {len(combined)} strokes, center-out per-object")
 
-    # 生成側ワープ補正: 最終ストローク(704x1472=panel比例frame)を panel mm 経由で
-    # affine(desired->command)に通し、 ロボットが自然描画しても正位置になるよう事前歪み補正。
+    # 生成側ワープ補正: ★ストローク点でなく「画像」をワープしてから再ベクトル化する
+    # (点warpは不連続になりやすい→画像warp+再vectorizeの方が滑らかで安定, ユーザー指定)。
+    # combined を 704x1472 線画にレンダ → affine(desired->command)で画像warp → 再vectorize。
     if args.warp_correct:
         from modules.draw_warp_correction import load_correction
         import yaml as _yaml
@@ -177,16 +178,22 @@ def main():
         if corr.enabled:
             _p = _yaml.safe_load(open(ROOT / "calibration" / "panel_frame.yaml")) or {}
             _pb = _p.get("panel", _p); pw = float(_pb["size_mm"][0]); ph = float(_pb["size_mm"][1])
-            uc, vc = pw / 2.0, ph / 2.0                          # canvas-local 原点 = 中心 (dev2 と同じ)
-            def _wc(pt):
-                x, y = pt
-                u = x * pw / CW; v = (CH - y) * ph / CH          # px → panel uv mm (wall GUI と同じ)
-                cl = corr.apply((u - uc, v - vc))                # ★中心基準ローカルで desired→command
-                cu, cv = cl[0] + uc, cl[1] + vc                  # ローカル→絶対 uv
-                nx = cu * CW / pw; ny = CH - cv * CH / ph        # uv mm → px
-                return (min(max(nx, 0.0), CW), min(max(ny, 0.0), CH))
-            combined = [[_wc(p) for p in st] for st in combined]
-            log(f"warp-correct applied (生成側, {corr.summary()})")
+            uc, vc = pw / 2.0, ph / 2.0
+            def _cmd_px(x, y):                                   # desired px → command px (中心基準local)
+                u = x * pw / CW; v = (CH - y) * ph / CH
+                cl = corr.apply((u - uc, v - vc)); cu, cv = cl[0] + uc, cl[1] + vc
+                return (cu * CW / pw, CH - cv * CH / ph)
+            line_img = np.array(render_strokes_to_image(
+                combined, width=CW, height=CH, line_width=2).convert("L"))
+            d3 = np.float32([[CW * 0.3, CH * 0.3], [CW * 0.7, CH * 0.3], [CW * 0.5, CH * 0.7]])
+            c3 = np.float32([_cmd_px(*p) for p in d3])
+            Mfwd = cv2.getAffineTransform(d3, c3)                # desired→command の前進warp (検証済)
+            warped = cv2.warpAffine(line_img, Mfwd, (CW, CH),
+                                    flags=cv2.INTER_LINEAR, borderValue=255)
+            combined = vc.vectorize(
+                generated_image=Image.fromarray(warped).convert("RGB"), user_image=None).strokes
+            combined = order_strokes_center_out([combined], (CW / 2.0, CH / 2.0))
+            log(f"warp-correct (画像warp→再vectorize) applied, {len(combined)} strokes ({corr.summary()})")
         else:
             log("warp-correct 要求されたが correction disabled — 無補正")
 
