@@ -165,6 +165,10 @@ class IpMatsumotoBackend:
     uses_vlm = True
     STAGE2_STRENGTH = 0.45
     IP_SCALE = 0.6
+    # 5/28 gacha は正方で生成 (stage1=1024², stage2=768²)。 パネル縦長(704×1472)で生成すると
+    # 中央の顔+首が歪むので、 当時と同じ正方解像度で生成し、 strokes は place_fill でパネルへ収める。
+    STAGE1_RES = (1024, 1024)
+    STAGE2_RES = (768, 768)
     # 5/28 gacha の character テンプレ (00_auto_prompt.txt から、 被写体に続く suffix)。
     CHAR_SUFFIX = ("manga style character, dynamic pose, expressive ink lines, "
                    "detailed lineart, single continuous black line on plain white background, "
@@ -192,7 +196,8 @@ class IpMatsumotoBackend:
         return two_stage_generate(
             crop, category=self.category, style_ref=self.style_ref,
             stage1_prompt=prompt, stage2_strength=self.STAGE2_STRENGTH,
-            ip_scale=self.IP_SCALE, seed=seed, resolution=(CW, CH))
+            ip_scale=self.IP_SCALE, seed=seed,
+            resolution=self.STAGE2_RES, stage1_resolution=self.STAGE1_RES)
 
     def teardown(self):
         gc.collect(); torch.cuda.empty_cache()
