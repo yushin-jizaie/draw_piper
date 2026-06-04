@@ -613,9 +613,7 @@ const DATE_FILTER_KEY = "draw_piper_date_filter";
       if (c.batch) batches.add(c.batch);   // 例 2026-06-01-B
     }
   }
-  // 作成時刻の新しい順 (DATE_ORDER) に並べる。 DATE_ORDER 外は末尾に文字列降順で。
-  const _oidx = (d) => { const i = DATE_ORDER.indexOf(d); return i < 0 ? 1e9 : i; };
-  const sortedDates = Array.from(dates).sort((a,b) => _oidx(a) - _oidx(b) || (a < b ? 1 : -1));
+  const sortedDates = Array.from(dates).sort().reverse();   // 8桁日付: 降順=新しい順
   for (const d of sortedDates) {
     const opt = document.createElement("option");
     opt.value = d;
@@ -624,7 +622,9 @@ const DATE_FILTER_KEY = "draw_piper_date_filter";
     dateFilterEl.appendChild(opt);
   }
   // 「日付+レター」 バッチ選択肢 (区切りラベルの後に列挙)
-  const sortedBatches = Array.from(batches).sort();
+  // バッチは作成時刻の新しい順 (DATE_ORDER)。 順序外は末尾に。
+  const _bidx = (b) => { const i = DATE_ORDER.indexOf(b); return i < 0 ? 1e9 : i; };
+  const sortedBatches = Array.from(batches).sort((a,b) => _bidx(a) - _bidx(b) || (a < b ? 1 : -1));
   if (sortedBatches.length) {
     const sep = document.createElement("option");
     sep.disabled = true; sep.textContent = "── バッチ ──";
@@ -1124,15 +1124,15 @@ def main() -> int:
     print(f"local meta 載せ: {n_meta} 候補")
     n_batch = _apply_batch_labels(entries)
     print(f"batch ラベル: {n_batch} 候補")
-    # 生成日 dropdown を作成時刻(disp dir mtime)の新しい順に並べる順序リスト
-    date_mtime = {}
+    # バッチ(2026-06-04-XXX) dropdown を作成時刻(disp dir mtime)の新しい順に並べる順序
+    batch_mtime = {}
     for e in entries:
         for c in e.get("candidates", []):
-            d = c.get("date")
-            if d and d not in date_mtime:
-                dp = _ROOT / "sketch_variations" / f"disp_{d}"
-                date_mtime[d] = dp.stat().st_mtime if dp.exists() else 0.0
-    date_order = [d for d, _ in sorted(date_mtime.items(), key=lambda kv: -kv[1])]
+            b = c.get("batch")
+            if b and b not in batch_mtime:
+                dp = _ROOT / "sketch_variations" / f"disp_{b}"
+                batch_mtime[b] = dp.stat().st_mtime if dp.exists() else 0.0
+    date_order = [b for b, _ in sorted(batch_mtime.items(), key=lambda kv: -kv[1])]
     html = HTML_TEMPLATE.replace(
         "__ENTRIES__", json.dumps(entries, ensure_ascii=False)
     ).replace("__DATE_ORDER__", json.dumps(date_order, ensure_ascii=False))
