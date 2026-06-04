@@ -153,21 +153,35 @@ class SdxlText2ImgBackend(SdxlRoutedBackend):
 
 
 class IpMatsumotoBackend:
-    """IP-Adapter 松本画風 two-stage (M15)。 全体1枚で生成 (分割しない)。"""
+    """IP-Adapter 松本画風 two-stage (M15)。 全体1枚で生成 (分割しない)。
+
+    実証済みプリセット = gacha_character_autoprompt_C_face_with_neck_20260528_152755:
+      stage1=illustrious_v2_inpaint(character), stage2_strength=0.45, ip_scale=0.6,
+      stage1_prompt = 被写体 + character テンプレ(5/28版)。 これを焼き込んで再現する。
+    """
     name = "ip_matsumoto"
-    route_label = "IP-Adapter matsumoto two-stage"
+    route_label = "IP-Adapter matsumoto two-stage (gacha 20260528 character preset)"
     multi_object = False
     uses_vlm = True
+    STAGE2_STRENGTH = 0.45
+    IP_SCALE = 0.6
+    # 5/28 gacha の character テンプレ (00_auto_prompt.txt から、 被写体に続く suffix)。
+    CHAR_SUFFIX = ("manga style character, dynamic pose, expressive ink lines, "
+                   "detailed lineart, single continuous black line on plain white background, "
+                   "clean smooth strokes, no shading")
 
     def __init__(self, args):
         self.args = args
         self.category = getattr(args, "category", "character") or "character"
         self.style_ref = getattr(args, "style_ref", None)
-        log(f"{self.name}: category={self.category} style_ref={self.style_ref or '(auto)'}")
+        log(f"{self.name}: category={self.category} style_ref={self.style_ref or '(auto)'} "
+            f"(stage2_str={self.STAGE2_STRENGTH} ip={self.IP_SCALE})")
 
     def build_prompt(self, vision):
-        # stage1 は clean lineart 生成なので literal な被写体記述 (describe_scene) を使う。
-        return vision.get("scene") or vision.get("vision") or "1character, simple background"
+        subj = (vision.get("scene") or vision.get("vision") or "person").strip()
+        if self.category == "object":
+            return subj                          # object は describe をそのまま (companion 相当)
+        return f"{subj}, {self.CHAR_SUFFIX}"      # character: 5/28 実証テンプレを付与
 
     def load(self):
         # two_stage_generate 内で stage2 の SDXL+IP-Adapter を都度ロードする (関数側に委譲)。
@@ -177,7 +191,8 @@ class IpMatsumotoBackend:
         from scripts.test_ip_adapter_two_stage import two_stage_generate
         return two_stage_generate(
             crop, category=self.category, style_ref=self.style_ref,
-            stage1_prompt=prompt, seed=seed, resolution=(CW, CH))
+            stage1_prompt=prompt, stage2_strength=self.STAGE2_STRENGTH,
+            ip_scale=self.IP_SCALE, seed=seed, resolution=(CW, CH))
 
     def teardown(self):
         gc.collect(); torch.cuda.empty_cache()
