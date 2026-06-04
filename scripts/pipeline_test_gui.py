@@ -106,6 +106,8 @@ class PipelineTestGUI:
         self.var_warp_correct = tk.BooleanVar(value=False)
         # 一筆書き: 全ストロークを 1 本に連結 (ペンを上げない連続描画)。
         self.var_one_stroke = tk.BooleanVar(value=False)
+        # 一枚絵(分割なし): 複数被写体に分割せず入力全体を1枚絵として生成。
+        self.var_no_split = tk.BooleanVar(value=False)
         # literal-only: カード推論をやめ「何に見えるか」 を生成 prompt に使い、
         # vectorize も full 抽出 (diff しない) でテストする。
         self.var_literal_only = tk.BooleanVar(value=False)
@@ -324,6 +326,10 @@ class PipelineTestGUI:
         ttk.Checkbutton(
             run_frame, text="一筆書き",
             variable=self.var_one_stroke,
+        ).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Checkbutton(
+            run_frame, text="一枚絵(分割なし)",
+            variable=self.var_no_split,
         ).pack(side=tk.LEFT, padx=(8, 2))
         self.btn_run = ttk.Button(run_frame,
             text="▶ 実行 (VLM → ImageGen → Vectorizer)",
@@ -703,7 +709,8 @@ class PipelineTestGUI:
             "design_mode": self.var_design_mode, "sdxl_steps": self.var_sdxl_steps,
             "seed": self.var_seed, "vstretch": self.var_vstretch,
             "literal_only": self.var_literal_only, "warp_correct": self.var_warp_correct,
-            "one_stroke": self.var_one_stroke, "ip_scale": self.var_ip_scale,
+            "one_stroke": self.var_one_stroke, "no_split": self.var_no_split,
+            "ip_scale": self.var_ip_scale,
             "ip_strength": self.var_ip_strength, "ip_diff": self.var_ip_diff,
             "min_feature": self.var_min_feature, "ip_frac": self.var_ip_frac,
             "place_scale": self.var_place_scale, "place_dx": self.var_place_dx,
@@ -935,6 +942,8 @@ class PipelineTestGUI:
             cmd.append("--warp-correct")
         if self.var_one_stroke.get():
             cmd.append("--one-stroke")
+        if self.var_no_split.get():
+            cmd.append("--no-split")
         if self.var_literal_only.get():
             cmd.append("--literal-only")
         self.log(f"subprocess 起動: {' '.join(cmd)}")
