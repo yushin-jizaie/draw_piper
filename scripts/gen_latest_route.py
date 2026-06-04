@@ -13,12 +13,16 @@ pipeline_test_gui.py と同じ契約:
 入力分割・VLMビジョン・線抽出+vectorize・曲率制約・stroke順・warp・出力は
 modules/route_driver が共通で担い、 生成方式は modules/route_backends が差し替える。
 """
+import os
+# CUDA 断片化対策 (torch import 前に設定)。 FLUX(~14.3GB) が常駐GPUメモリと競合して
+# 末尾 24MiB 程度で OOM するのを防ぐ。
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 import argparse, datetime, sys
 from pathlib import Path
 import cv2, numpy as np
 from PIL import Image
 ROOT = Path("/home/jizaiedev2026/draw_piper"); sys.path.insert(0, str(ROOT))
-import os; os.chdir(ROOT)
+os.chdir(ROOT)
 
 from modules.route_driver import log, split_objects, run_vlm, run_driver
 from modules.route_backends import make_backend
