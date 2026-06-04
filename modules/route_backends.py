@@ -183,8 +183,10 @@ class IpMatsumotoBackend:
         self.ip_scale = float(getattr(args, "ip_scale", None) or self.IP_SCALE)
         self.stage2_strength = float(getattr(args, "stage2_strength", None) or self.STAGE2_STRENGTH)
         self.diff_vs_user = not getattr(args, "ip_no_diff", False)   # OFFで顔も含め全線描く
+        # 被写体フレーミング率 (小さいほど余白大→放射状ink増)。
+        self.frac = float(getattr(args, "ip_frac", None) or 0.38)
         log(f"{self.name}: category={self.category} style_ref={self.style_ref or '(auto)'} "
-            f"(stage2_str={self.stage2_strength} ip={self.ip_scale} diff={self.diff_vs_user})")
+            f"(stage2_str={self.stage2_strength} ip={self.ip_scale} diff={self.diff_vs_user} frac={self.frac})")
 
     def build_prompt(self, vision):
         if self.category == "object":
@@ -204,7 +206,7 @@ class IpMatsumotoBackend:
         from modules.route_driver import frame_subject
         # 被写体を小さく正方枠中央に配置し余白を確保 → inpaint が余白に放射状 ink を描く
         # (5/28 B_round_smiley と同じフレーミング。 検証: 12→24→34本と余白増で放射状増)。
-        guide = frame_subject(crop, frac=0.38, size=self.STAGE1_RES[0])
+        guide = frame_subject(crop, frac=self.frac, size=self.STAGE1_RES[0])
         return two_stage_generate(
             guide, category=self.category, style_ref=self.style_ref,
             stage1_prompt=prompt, stage2_strength=self.stage2_strength,

@@ -119,6 +119,7 @@ class PipelineTestGUI:
         self.var_ip_strength = tk.StringVar(value="0.45")     # stage2 img2img の振り幅
         self.var_ip_diff = tk.BooleanVar(value=True)          # 加筆のみ(diff)。 OFFで全線描く
         self.var_min_feature = tk.StringVar(value="8.0")      # 曲率制約ディテール下限(mm)
+        self.var_ip_frac = tk.StringVar(value="0.38")         # IP被写体サイズ率(小=余白大=放射状増)
         # 透明ボード線抽出 (背景差分 + 色フィルタ) 用の state
         self.background_bgr = None          # 空ボード基準フレーム (np.ndarray BGR)
         self.var_line_mode = tk.StringVar(value="dark")   # dark/black/blue/red/green
@@ -253,10 +254,14 @@ class PipelineTestGUI:
         ttk.Label(ip_row, text="ディテール下限mm:").pack(side=tk.LEFT, padx=(8, 2))
         tk.Spinbox(ip_row, from_=2.0, to=20.0, increment=0.5, width=5, format="%.1f",
             textvariable=self.var_min_feature).pack(side=tk.LEFT, padx=2)
+        ttk.Label(ip_row, text="IP被写体%:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(ip_row, from_=0.20, to=0.60, increment=0.02, width=5, format="%.2f",
+            textvariable=self.var_ip_frac).pack(side=tk.LEFT, padx=2)
         # 行3: ヒント (折り返し)
         ttk.Label(route_frame, justify=tk.LEFT, foreground="#777", wraplength=1100,
             text="design: decorate=元線+装飾 / complete=完成形を設計 / finish=ラフ完成化 (FLUX/SDXLのみ)。  "
-                 "IP濃く: diff OFFで顔ごと全線 / 下限mm↓で細部残す。 ip_scale・stage2強度は上げすぎ厳禁(線が溶ける)。"
+                 "IP放射状を増やす: IP被写体%を下げる(余白↑=放射状↑)。 diff OFFで顔ごと全線。 "
+                 "ip_scale・stage2強度の上げすぎは厳禁(線が溶ける)。"
             ).pack(fill=tk.X, padx=2, pady=(2, 0))
 
         run_frame = ttk.LabelFrame(self.root,
@@ -679,6 +684,7 @@ class PipelineTestGUI:
             "stage2_strength": self.var_ip_strength.get(),
             "ip_diff": bool(self.var_ip_diff.get()),
             "min_feature": self.var_min_feature.get(),
+            "ip_frac": self.var_ip_frac.get(),
         }
         seed_str = self.var_seed.get().strip()
         seed_arg = []
@@ -778,6 +784,8 @@ class PipelineTestGUI:
                 cmd += ["--stage2-strength", str(lv["stage2_strength"])]
             if not lv.get("ip_diff", True):
                 cmd.append("--ip-no-diff")
+            if lv.get("ip_frac"):
+                cmd += ["--ip-frac", str(lv["ip_frac"])]
         if self.var_warp_correct.get():
             cmd.append("--warp-correct")
         if self.var_one_stroke.get():

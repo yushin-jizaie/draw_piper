@@ -52,6 +52,8 @@ def main():
     ap.add_argument("--ip-no-diff", action="store_true")           # IP: 加筆のみdiffをやめ全線を描く
     # 曲率制約のディテール下限(mm)。 小さいほど細部を残す(間引き減=濃い) が描きにくくなる。 既定8。
     ap.add_argument("--min-feature", type=float, default=8.0)
+    # IP-松本: 被写体を枠の何割で配置するか (小さいほど余白大→放射状ink増)。 既定0.38。
+    ap.add_argument("--ip-frac", type=float, default=0.38)
     args = ap.parse_args()
 
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
