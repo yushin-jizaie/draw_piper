@@ -193,6 +193,8 @@ INPUTS = [
     ("new_combo_decoiter","sketch_variations/_inputs/new_combo_decoiter.png","object"),
     # 2026-06-04: 元線verbatim固定+装飾だけ派手に累積 (再生成しない)。
     ("new_combo_decoaccum","sketch_variations/_inputs/new_combo_decoaccum.png","object"),
+    # 2026-06-04: 装飾累積+VLMにOpenCVで元線/前回を消した新規装飾だけ入力。
+    ("new_combo_decoaccum2","sketch_variations/_inputs/new_combo_decoaccum2.png","object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
@@ -582,6 +584,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 <main id="main"></main>
 <script>
 const ENTRIES = __ENTRIES__;
+const DATE_ORDER = __DATE_ORDER__;   // 生成日を作成時刻の新しい順に並べる順序
 const STORAGE_KEY = "draw_piper_selections_v2";
 
 // 構造: { sketch_id: [route1, route2, ...] }
@@ -610,7 +613,9 @@ const DATE_FILTER_KEY = "draw_piper_date_filter";
       if (c.batch) batches.add(c.batch);   // 例 2026-06-01-B
     }
   }
-  const sortedDates = Array.from(dates).sort().reverse();
+  // 作成時刻の新しい順 (DATE_ORDER) に並べる。 DATE_ORDER 外は末尾に文字列降順で。
+  const _oidx = (d) => { const i = DATE_ORDER.indexOf(d); return i < 0 ? 1e9 : i; };
+  const sortedDates = Array.from(dates).sort((a,b) => _oidx(a) - _oidx(b) || (a < b ? 1 : -1));
   for (const d of sortedDates) {
     const opt = document.createElement("option");
     opt.value = d;
@@ -1119,8 +1124,18 @@ def main() -> int:
     print(f"local meta 載せ: {n_meta} 候補")
     n_batch = _apply_batch_labels(entries)
     print(f"batch ラベル: {n_batch} 候補")
+    # 生成日 dropdown を作成時刻(disp dir mtime)の新しい順に並べる順序リスト
+    date_mtime = {}
+    for e in entries:
+        for c in e.get("candidates", []):
+            d = c.get("date")
+            if d and d not in date_mtime:
+                dp = _ROOT / "sketch_variations" / f"disp_{d}"
+                date_mtime[d] = dp.stat().st_mtime if dp.exists() else 0.0
+    date_order = [d for d, _ in sorted(date_mtime.items(), key=lambda kv: -kv[1])]
     html = HTML_TEMPLATE.replace(
-        "__ENTRIES__", json.dumps(entries, ensure_ascii=False))
+        "__ENTRIES__", json.dumps(entries, ensure_ascii=False)
+    ).replace("__DATE_ORDER__", json.dumps(date_order, ensure_ascii=False))
     out_dir = _ROOT / "docs" / "selection"
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "index.html"
