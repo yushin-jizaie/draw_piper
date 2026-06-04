@@ -123,6 +123,7 @@ def run_driver(objs, backend, args, cyc, visions, W, H):
 
     V = max(0.1, args.vstretch)
     vc = Vectorizer(gen_line_mode="binarize", **load_binarize_config())
+    vc_plain = None     # diff ルート(IP-松本)用: 5/28 standalone と同じ素の Vectorizer (lazy)
     SCALE = min(CW / W, CH / H); XOFF = (CW - W * SCALE) / 2; YOFF = (CH - H * SCALE) / 2
     multi = len(objs) > 1
     obj_lists = []; prompts = []; gen_imgs = []
@@ -143,9 +144,13 @@ def run_driver(objs, backend, args, cyc, visions, W, H):
         if getattr(backend, "diff_vs_user", False):
             # 入力線(顔+首等)は既にボード上 → diff で引き、 生成で加筆された分だけ抽出
             # (raw画像 + user_image diff。 robot_draws_only_additions 方針)。
+            # 抽出は 5/28 standalone と同じ素の Vectorizer (binarize設定は暗背景FLUX用で
+            # クリーン白背景のIP/SDXL出力だと線を取りこぼす)。
+            if vc_plain is None:
+                vc_plain = Vectorizer()
             user_img = crop.convert("RGB").resize(vimg.size)
-            log("vectorize (diff vs user, 加筆分のみ) obj%d (vstretch=%.2f)" % (i, V))
-            st = vc.vectorize(generated_image=vimg, user_image=user_img).strokes
+            log("vectorize (diff vs user, 加筆分のみ, plain) obj%d (vstretch=%.2f)" % (i, V))
+            st = vc_plain.vectorize(generated_image=vimg, user_image=user_img).strokes
         else:
             log("vectorize / OpenCV line extract obj%d (vstretch=%.2f)" % (i, V))
             st = vc.vectorize(generated_image=extract_lines(vimg), user_image=None).strokes
