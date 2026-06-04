@@ -197,6 +197,8 @@ INPUTS = [
     ("new_combo_decoaccum2","sketch_variations/_inputs/new_combo_decoaccum2.png","object"),
     # 2026-06-04: DECOACCUM生成画像を太い線・塗りなしに整えて線化。
     ("new_combo_decobold","sketch_variations/_inputs/new_combo_decoaccum.png","object"),
+    # 2026-06-04: DECOWARPクリーン路線(CN0.3+decorate+warp 単発, クラックル抑制)を1枚で。
+    ("new_combo_decowclean","sketch_variations/_inputs/new_combo_decoaccum.png","object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
