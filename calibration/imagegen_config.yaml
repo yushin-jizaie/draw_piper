@@ -1,18 +1,17 @@
 imagegen:
-  preset: illustrious_v2_inpaint
-  num_inference_steps: 28
+  preset: illustrious_v2_lineart_char
+  # ↓ FLUX schnell ルート(gen_latest_route)で効くのは下記2項目のみ。
+  #   num_inference_steps: schnell 既定 4 (多いほど遅い・微変化、 1-50 で clamp)。
+  #   controlnet_conditioning_scale: 入力線への追従度。 高=忠実/低=自由(飛躍)。 DECORATE は 0.55。
+  num_inference_steps: 4
   guidance_scale: 6.5
-  controlnet_conditioning_scale: 0.85
-  # 解像度方針:
-  #   auto_from_panel: true → canvas_calibration.whiteboard_computed の
-  #     panel 寸法 (mm) から panel aspect を読み、 SDXL bucket (64 倍数、
-  #     area ≈ 1024²) を自動選択。 これで生成画像が panel と同じ aspect
-  #     になり、 vectorize_to_panel の px → mm スケールが等方になる。
-  #   resolution: [W, H] を直接指定すると bucket 自動選択を上書き。
+  controlnet_conditioning_scale: 0.55
+  negative_prompt: color, blue background, gradient, hatching, crosshatch, screentone,
+    halftone, filled background, scribble, sketchy, shading, gray, fill, silhouette,
+    brush stroke, dry brush, faded lines, watermark, signature, text, frame, border,
+    blurry, noise, jpeg artifacts
   auto_from_panel: true
-  # resolution: [704, 1472]   # 明示指定する場合 (auto_from_panel を上書き)
-
 prompt:
-  base_template: null
-  fallback_template: null
+  base_template: ''
+  fallback_template: ''
   confidence_threshold: 0.3

@@ -105,6 +105,23 @@ def main():
     args = ap.parse_args()
     V = max(0.1, args.vstretch)
 
+    # SDXL/プロンプト設定ダイアログ (imagegen_config.yaml) のうち、 FLUX schnell で
+    # 実際に効く項目だけ反映する: controlnet_conditioning_scale と num_inference_steps。
+    # preset/guidance/negative/prompt_template は schnell では無効なので読まない
+    # (guidance は 0 固定、 negative は無視、 prompt は VLM 完成形ビジョン路線を維持)。
+    cn_scale = CN_SCALE; steps = max(1, int(args.steps))
+    try:
+        from modules.image_gen import load_imagegen_config
+        _ig = load_imagegen_config()
+        if _ig.get("controlnet_conditioning_scale") is not None:
+            cn_scale = float(_ig["controlnet_conditioning_scale"])
+        if _ig.get("num_inference_steps"):
+            steps = max(1, min(50, int(_ig["num_inference_steps"])))
+        log(f"imagegen_config 反映: CN_scale={cn_scale:.2f} steps={steps} "
+            f"(FLUXで有効な項目のみ; preset/guidance/negative/promptテンプレは無効)")
+    except Exception as e:
+        log(f"imagegen_config 読込スキップ ({e}) — CN_scale={cn_scale:.2f} steps={steps} 既定")
+
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     cyc = args.log_dir / f"vlm_to_image_{ts}" / "cycle_01"
     (cyc / "vec_debug").mkdir(parents=True, exist_ok=True)
@@ -160,11 +177,11 @@ def main():
     for i, (bbox, crop) in enumerate(objs):
         vision = visions[i]["vision"]; prompt = f"{TRIGGER}, {vision} {STYLE}"; prompts.append(prompt)
         ctrl = canny_ctrl(square_pad(crop, SIZE))
-        log(f"FLUX generate obj{i} (CN{CN_SCALE})")
+        log(f"FLUX generate obj{i} (CN{cn_scale:.2f}, steps{steps})")
         try:
             img = pipe(prompt=prompt, control_image=ctrl, control_mode=0,
-                       controlnet_conditioning_scale=CN_SCALE, width=SIZE, height=SIZE,
-                       num_inference_steps=4, guidance_scale=0.0,
+                       controlnet_conditioning_scale=cn_scale, width=SIZE, height=SIZE,
+                       num_inference_steps=steps, guidance_scale=0.0,
                        generator=torch.Generator("cpu").manual_seed(args.seed)).images[0]
         except Exception as e:
             log("FAIL gen", i, repr(e)); traceback.print_exc(); continue
