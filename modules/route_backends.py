@@ -201,8 +201,12 @@ class IpMatsumotoBackend:
 
     def generate_object_image(self, crop, prompt, seed):
         from scripts.test_ip_adapter_two_stage import two_stage_generate
+        from modules.route_driver import frame_subject
+        # 被写体を小さく正方枠中央に配置し余白を確保 → inpaint が余白に放射状 ink を描く
+        # (5/28 B_round_smiley と同じフレーミング。 検証: 12→24→34本と余白増で放射状増)。
+        guide = frame_subject(crop, frac=0.38, size=self.STAGE1_RES[0])
         return two_stage_generate(
-            crop, category=self.category, style_ref=self.style_ref,
+            guide, category=self.category, style_ref=self.style_ref,
             stage1_prompt=prompt, stage2_strength=self.stage2_strength,
             ip_scale=self.ip_scale, seed=seed,
             resolution=self.STAGE2_RES, stage1_resolution=self.STAGE1_RES)

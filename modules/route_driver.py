@@ -70,6 +70,37 @@ def split_objects(pil, pad=40, dil=35, min_area=5000):
     return out, (W, H)
 
 
+def frame_subject(pil, frac=0.38, size=1024):
+    """被写体を小さく・正方白枠の中央に余白たっぷりで配置 (B_round_smiley 風フレーミング)。
+
+    inpaint(stage1) は被写体周りの**余白に放射状 ink を描き足す**ため、 余白が多いほど
+    放射状が出る。 写真/縦長/枠いっぱい入力だと余白が無く放射状が弱い → ここで被写体を
+    インク領域にクロップ→size*frac に縮小→白正方の中央へ置き、 余白を確保する。
+    線が分離できない生写真等は中央寄せのみ (クロップ省略)。
+    """
+    g = cv2.cvtColor(np.array(pil.convert("RGB")), cv2.COLOR_RGB2GRAY)
+    H, W = g.shape
+    _, binv = cv2.threshold(g, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    f = float((binv > 0).mean())
+    if 0.0005 < f < 0.45:
+        k = max(15, W // 60)
+        d = cv2.dilate(binv, cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k)), iterations=2)
+        n, lab, stats, _ = cv2.connectedComponentsWithStats(d, 8)
+        comps = [i for i in range(1, n) if stats[i, cv2.CC_STAT_AREA] > 2000]
+        if comps:
+            i = max(comps, key=lambda j: stats[j, cv2.CC_STAT_AREA])
+            x0 = stats[i, cv2.CC_STAT_LEFT]; y0 = stats[i, cv2.CC_STAT_TOP]
+            x1 = x0 + stats[i, cv2.CC_STAT_WIDTH]; y1 = y0 + stats[i, cv2.CC_STAT_HEIGHT]
+            pil = pil.convert("RGB").crop((x0, y0, x1, y1))
+    sub = pil.convert("RGB")
+    sw, sh = sub.size; sc = size * frac / max(sw, sh)
+    rw, rh = max(1, int(sw * sc)), max(1, int(sh * sc))
+    sub = sub.resize((rw, rh), Image.LANCZOS)
+    canvas = Image.new("RGB", (size, size), (255, 255, 255))
+    canvas.paste(sub, ((size - rw) // 2, (size - rh) // 2))
+    return canvas
+
+
 def remap(strokes, bx, by, bw, bh):
     pts = [p for st in strokes for p in st]
     if not pts: return []
