@@ -69,3 +69,33 @@ def order_strokes_one(object_stroke_lists, center):
     for st in ordered:
         one.extend(st)
     return [one]
+
+
+def order_strokes_tsp_joined(object_stroke_lists, center, max_connect=80.0):
+    """渡り最小(TSP)優先で並べ、 短い渡りだけ連結・長い渡りはペンアップ (ほぼ一筆書き)。
+
+    reorder_strokes_tsp(greedy NN→2-opt, 向き付き) で総渡り距離を最小化した順に並べ、
+    連続ストロークの間隙(渡り)が max_connect 以下なら 1 本に連結(描画される)、
+    超えたらそこでペンを上げて別ストロークにする (長い渡り線が描かれない)。
+    → 描画されるコネクタは短いものだけ。 返りは「ほぼ一筆書き」の数本のストローク。
+    max_connect: px (704x1472 フレーム想定)。 小さいほど一筆書き度が下がる(ペンアップ増)。
+    """
+    strokes = [list(s) for obj in object_stroke_lists for s in obj if len(s) >= 2]
+    if not strokes:
+        return []
+    try:
+        from modules.stroke_planner import reorder_strokes_tsp
+        ordered, _ = reorder_strokes_tsp(
+            strokes, start_point=center, two_opt=True, two_opt_max_iters=100)
+    except Exception:
+        ordered = order_strokes_center_out([strokes], center)
+    out = []
+    run = list(ordered[0])
+    for i in range(1, len(ordered)):
+        gx = run[-1][0] - ordered[i][0][0]; gy = run[-1][1] - ordered[i][0][1]
+        if (gx * gx + gy * gy) ** 0.5 <= max_connect:
+            run.extend(ordered[i])              # 短い渡り → 連結 (描画)
+        else:
+            out.append(run); run = list(ordered[i])   # 長い渡り → ペンアップ
+    out.append(run)
+    return out

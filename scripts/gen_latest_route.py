@@ -138,7 +138,7 @@ def main():
     from modules.input_prep import square_pad
     from modules.vectorizer import Vectorizer, load_binarize_config
     from modules.gen_line_extract import extract_lines
-    from modules.stroke_order import order_strokes_center_out, order_strokes_one
+    from modules.stroke_order import order_strokes_center_out, order_strokes_tsp_joined
     vc = Vectorizer(gen_line_mode="binarize", **load_binarize_config())
 
     SCALE = min(CW / W, CH / H); XOFF = (CW - W * SCALE) / 2; YOFF = (CH - H * SCALE) / 2
@@ -169,8 +169,9 @@ def main():
 
     # 中心→外側・オブジェクト単位の描画順
     if args.one_stroke:
-        combined = order_strokes_one(obj_lists, (CW / 2.0, CH / 2.0))
-        log(f"one-stroke (一筆書き): 1 stroke, {sum(len(s) for s in combined)} pts")
+        # ほぼ一筆書き: TSP で渡り最小化 → 短い渡りは連結・長い渡りはペンアップ
+        combined = order_strokes_tsp_joined(obj_lists, (CW / 2.0, CH / 2.0), max_connect=80.0)
+        log(f"one-stroke (TSP+長渡りペンアップ): {len(combined)} runs, {sum(len(s) for s in combined)} pts")
     else:
         combined = order_strokes_center_out(obj_lists, (CW / 2.0, CH / 2.0))
         log(f"stroke order: {len(combined)} strokes, center-out per-object")
@@ -199,8 +200,10 @@ def main():
                                     flags=cv2.INTER_LINEAR, borderValue=255)
             combined = vc.vectorize(
                 generated_image=Image.fromarray(warped).convert("RGB"), user_image=None).strokes
-            _order = order_strokes_one if args.one_stroke else order_strokes_center_out
-            combined = _order([combined], (CW / 2.0, CH / 2.0))
+            if args.one_stroke:
+                combined = order_strokes_tsp_joined([combined], (CW / 2.0, CH / 2.0), max_connect=80.0)
+            else:
+                combined = order_strokes_center_out([combined], (CW / 2.0, CH / 2.0))
             log(f"warp-correct (画像warp→再vectorize) applied, {len(combined)} strokes ({corr.summary()})")
         else:
             log("warp-correct 要求されたが correction disabled — 無補正")
