@@ -135,8 +135,15 @@ def run_driver(objs, backend, args, cyc, visions, W, H):
         # 縦伸ばし補正: 生成画像の高さを V 倍にしてからストローク化 (配置はアスペクト
         # 保持なので伸びが維持され、 place_fill/contain が枠内に収め直す→はみ出し無し)。
         vimg = img if V == 1.0 else img.resize((img.width, max(1, round(img.height * V))), Image.LANCZOS)
-        log("vectorize / OpenCV line extract obj%d (vstretch=%.2f)" % (i, V))
-        st = vc.vectorize(generated_image=extract_lines(vimg), user_image=None).strokes
+        if getattr(backend, "diff_vs_user", False):
+            # 入力線(顔+首等)は既にボード上 → diff で引き、 生成で加筆された分だけ抽出
+            # (raw画像 + user_image diff。 robot_draws_only_additions 方針)。
+            user_img = crop.convert("RGB").resize(vimg.size)
+            log("vectorize (diff vs user, 加筆分のみ) obj%d (vstretch=%.2f)" % (i, V))
+            st = vc.vectorize(generated_image=vimg, user_image=user_img).strokes
+        else:
+            log("vectorize / OpenCV line extract obj%d (vstretch=%.2f)" % (i, V))
+            st = vc.vectorize(generated_image=extract_lines(vimg), user_image=None).strokes
         if multi:
             bx, by, bw, bh = bbox
             obj_lists.append(remap(st, bx * SCALE + XOFF, by * SCALE + YOFF, bw * SCALE, bh * SCALE))

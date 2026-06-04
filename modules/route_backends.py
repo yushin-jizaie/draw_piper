@@ -163,6 +163,7 @@ class IpMatsumotoBackend:
     route_label = "IP-Adapter matsumoto two-stage (gacha 20260528 character preset)"
     multi_object = False
     uses_vlm = True
+    diff_vs_user = True       # 入力線(顔+首)は既にボード上 → 加筆分だけ描く (diff)
     STAGE2_STRENGTH = 0.45
     IP_SCALE = 0.6
     # 5/28 gacha は正方で生成 (stage1=1024², stage2=768²)。 パネル縦長(704×1472)で生成すると
