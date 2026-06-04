@@ -64,6 +64,20 @@ ROUTE_NAME_TO_ID = {
     "ip_matsumoto (IP-Adapter 2段)": "ip_matsumoto",
 }
 
+# USBカメラを反時計回り90度で縦向きに搭載したので、 キャプチャ画像を回転して正立させる。
+# 向きが逆(上下/左右が想定と違う)なら "cw" に変える。 "ccw"=反時計90 / "cw"=時計90 / "180" / None=無回転。
+CAMERA_ROTATE = "ccw"
+
+
+def _rotate_cam(frame_bgr):
+    """カメラ搭載向きの補正: キャプチャ frame を CAMERA_ROTATE 方向に回転して正立させる。"""
+    if cv2 is None or CAMERA_ROTATE is None or frame_bgr is None:
+        return frame_bgr
+    code = {"ccw": cv2.ROTATE_90_COUNTERCLOCKWISE,
+            "cw": cv2.ROTATE_90_CLOCKWISE,
+            "180": cv2.ROTATE_180}.get(CAMERA_ROTATE)
+    return cv2.rotate(frame_bgr, code) if code is not None else frame_bgr
+
 
 class PipelineTestGUI:
     def __init__(self, root: tk.Tk):
@@ -493,6 +507,7 @@ class PipelineTestGUI:
             return
         try:
             frame_bgr = self.camera._read_one()  # 1 frame だけ取り出し
+            frame_bgr = _rotate_cam(frame_bgr)    # カメラ搭載向き補正 (90度回転)
             if cv2 is not None:
                 rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                 pil = Image.fromarray(rgb) if Image else None
@@ -519,6 +534,7 @@ class PipelineTestGUI:
         except Exception as e:
             self.log(f"撮影失敗: {e}")
             return
+        captured_bgr = _rotate_cam(captured_bgr)   # カメラ搭載向き補正 (90度回転)
         # 一時ファイル保存
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         capture_path = LOGS_DIR / f"camera_capture_{ts}.png"
