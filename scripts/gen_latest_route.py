@@ -25,7 +25,19 @@ REPO = "chutesai/FLUX.1-schnell"; CN = "Shakker-Labs/FLUX.1-dev-ControlNet-Union
 # 2026-06-04: DECORATE ルートに戻す (complete+CN0.2 は被写体を作り替えすぎ=飛躍しすぎ)。
 # decorate モード + CN0.55 で元線を保ちつつ装飾を足す。
 CN_SCALE = 0.55; MINF = 8
-STYLE = ("manga style, clean bold black ink lineart on white background")
+# ロボットが物理的に描ける形に誘導: 太く大胆・滑らかな大曲線・微小ディテール/渦巻き/小円なし。
+STYLE = ("manga style, clean bold black ink lineart on white background, "
+         "thick smooth confident strokes, large gentle curves, simple bold shapes, "
+         "no tiny details, no fine hatching, no spirals, no small concentric circles, "
+         "no intricate texture")
+# panel 実寸 (mm)。 曲率制約を mm 空間で評価するため。
+import yaml as _yaml_panel
+def _panel_mm():
+    try:
+        p = _yaml_panel.safe_load(open(ROOT / "calibration" / "panel_frame.yaml")) or {}
+        pb = p.get("panel", p); return float(pb["size_mm"][0]), float(pb["size_mm"][1])
+    except Exception:
+        return 145.31, 264.41
 
 def log(*a): print("[latest]", *a, flush=True)
 
@@ -168,6 +180,21 @@ def main():
         else:
             obj_lists.append(place_fill(st))
 
+    # ロボット描画制約: 曲率半径>=8mm・微小ディテール/渦巻き/小円を除去 (mm 空間で評価)。
+    # 並べ替え/一筆書き連結の前に、 オブジェクト単位で清掃する。
+    from modules.robot_draw_constraints import enforce_robot_constraints
+    PW, PH = _panel_mm(); sx = PW / CW; sy = PH / CH
+    cleaned = []; tot = {"dropped_tiny": 0, "dropped_loop": 0, "dropped_spiral": 0, "dropped_kinky": 0}
+    for ol in obj_lists:
+        mm = [[(x * sx, y * sy) for x, y in st] for st in ol]
+        ce, info = enforce_robot_constraints(mm)
+        for k in tot: tot[k] += info.get(k, 0)
+        cleaned.append([[(x / sx, y / sy) for x, y in st] for st in ce])
+    obj_lists = [o for o in cleaned if o]
+    log(f"robot constraints: kept {sum(len(o) for o in obj_lists)} strokes, "
+        f"dropped tiny={tot['dropped_tiny']} loop={tot['dropped_loop']} "
+        f"spiral={tot['dropped_spiral']} kinky={tot['dropped_kinky']} (>=8mm radius)")
+
     # 中心→外側・オブジェクト単位の描画順
     if args.one_stroke:
         # ほぼ一筆書き: TSP で渡り最小化 → 短い渡りは連結・長い渡りはペンアップ
@@ -201,6 +228,9 @@ def main():
                                     flags=cv2.INTER_LINEAR, borderValue=255)
             combined = vc.vectorize(
                 generated_image=Image.fromarray(warped).convert("RGB"), user_image=None).strokes
+            _mm = [[(x * sx, y * sy) for x, y in st] for st in combined]
+            _ce, _ = enforce_robot_constraints(_mm)            # warp 後も曲率制約を再保証
+            combined = [[(x / sx, y / sy) for x, y in st] for st in _ce]
             if args.one_stroke:
                 combined = order_strokes_tsp_joined([combined], (CW / 2.0, CH / 2.0), max_connect=80.0)
             else:
