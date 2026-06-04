@@ -71,6 +71,9 @@ class PipelineTestGUI:
         # 縦伸ばし比率: ロボット側の縦潰れ/横伸びの応急補正。 生成画像を縦に
         # この倍率で引き伸ばしてからストローク化する (1.0 = 補正なし)。
         self.var_vstretch = tk.StringVar(value="1.0")
+        # ワープ補正(生成側): アーム側のワープ補正が効かないので、 生成後の
+        # ストロークに draw_warp_correction の affine を事前適用する。
+        self.var_warp_correct = tk.BooleanVar(value=False)
         # literal-only: カード推論をやめ「何に見えるか」 を生成 prompt に使い、
         # vectorize も full 抽出 (diff しない) でテストする。
         self.var_literal_only = tk.BooleanVar(value=False)
@@ -197,6 +200,10 @@ class PipelineTestGUI:
         tk.Spinbox(run_frame, from_=0.5, to=2.5, increment=0.05, width=5,
             format="%.2f", textvariable=self.var_vstretch
         ).pack(side=tk.LEFT, padx=2)
+        ttk.Checkbutton(
+            run_frame, text="ワープ補正(生成側)",
+            variable=self.var_warp_correct,
+        ).pack(side=tk.LEFT, padx=(8, 2))
         self.btn_run = ttk.Button(run_frame,
             text="▶ 実行 (VLM → ImageGen → Vectorizer)",
             command=self.on_run_pipeline, width=40)
@@ -656,6 +663,8 @@ class PipelineTestGUI:
             "--log-dir", str(LOGS_DIR),
             "--vstretch", f"{vstretch:.3f}",
         ] + seed_arg
+        if self.var_warp_correct.get():
+            cmd.append("--warp-correct")
         if self.var_literal_only.get():
             cmd.append("--literal-only")
         self.log(f"subprocess 起動: {' '.join(cmd)}")

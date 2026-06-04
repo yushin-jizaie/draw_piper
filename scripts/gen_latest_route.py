@@ -83,6 +83,9 @@ def main():
     ap.add_argument("--vstretch", type=float, default=1.0)
     # --no-split: 複数被写体に分割せず、 入力全体を 1 枚絵として生成 (1オブジェクト扱い)。
     ap.add_argument("--no-split", action="store_true")
+    # --warp-correct: ロボット歪みの事前補正を「生成側」で適用 (アーム側補正が効かない場合)。
+    # calibration/draw_warp_correction.yaml の affine(desired->command)を最終ストロークに適用。
+    ap.add_argument("--warp-correct", action="store_true")
     args = ap.parse_args()
     V = max(0.1, args.vstretch)
 
@@ -165,6 +168,28 @@ def main():
     combined = order_strokes_center_out(obj_lists, (CW / 2.0, CH / 2.0))
     log(f"stroke order: {len(combined)} strokes, center-out per-object")
 
+    # 生成側ワープ補正: 最終ストローク(704x1472=panel比例frame)を panel mm 経由で
+    # affine(desired->command)に通し、 ロボットが自然描画しても正位置になるよう事前歪み補正。
+    if args.warp_correct:
+        from modules.draw_warp_correction import load_correction
+        import yaml as _yaml
+        corr = load_correction()
+        if corr.enabled:
+            _p = _yaml.safe_load(open(ROOT / "calibration" / "panel_frame.yaml")) or {}
+            _pb = _p.get("panel", _p); pw = float(_pb["size_mm"][0]); ph = float(_pb["size_mm"][1])
+            uc, vc = pw / 2.0, ph / 2.0                          # canvas-local 原点 = 中心 (dev2 と同じ)
+            def _wc(pt):
+                x, y = pt
+                u = x * pw / CW; v = (CH - y) * ph / CH          # px → panel uv mm (wall GUI と同じ)
+                cl = corr.apply((u - uc, v - vc))                # ★中心基準ローカルで desired→command
+                cu, cv = cl[0] + uc, cl[1] + vc                  # ローカル→絶対 uv
+                nx = cu * CW / pw; ny = CH - cv * CH / ph        # uv mm → px
+                return (min(max(nx, 0.0), CW), min(max(ny, 0.0), CH))
+            combined = [[_wc(p) for p in st] for st in combined]
+            log(f"warp-correct applied (生成側, {corr.summary()})")
+        else:
+            log("warp-correct 要求されたが correction disabled — 無補正")
+
     # --- 出力 (GUI 契約ファイル) ---
     from modules.stroke_render import render_strokes_to_image
     render_strokes_to_image(combined, width=CW, height=CH, line_width=2).save(cyc / "vec_debug" / "06_strokes.png")
@@ -189,7 +214,7 @@ def main():
     sc0 = visions[0]["scene"] if visions else "?"
     json.dump({"subject": {"ja": sc0, "en": sc0}, "location": {"ja": ""},
                "action": {"ja": ""}, "confidence": 1.0,
-               "n_objects": len(objs), "vstretch": V,
+               "n_objects": len(objs), "vstretch": V, "warp_correct": bool(args.warp_correct),
                "route": "M19_latest (FLUX+winnersLoRA+complete+manga+opencv+center-out)",
                "visions": visions}, open(cyc / "topic_guess.json", "w"), ensure_ascii=False, indent=2)
     log("DONE")
