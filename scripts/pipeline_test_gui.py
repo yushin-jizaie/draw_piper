@@ -111,6 +111,9 @@ class PipelineTestGUI:
         self.var_route = tk.StringVar(value=ROUTE_CHOICES[0])
         # IP-松本ルートの参照画風プール (character/object/other)。
         self.var_ip_category = tk.StringVar(value="character")
+        # VLM design mode: decorate=元線維持+装飾 / complete=未来の完成形 / finish=ラフ完成化。
+        # FLUX/SDXLルートで効く (ip_matsumoto は無関係)。
+        self.var_design_mode = tk.StringVar(value="decorate")
         # 透明ボード線抽出 (背景差分 + 色フィルタ) 用の state
         self.background_bgr = None          # 空ボード基準フレーム (np.ndarray BGR)
         self.var_line_mode = tk.StringVar(value="dark")   # dark/black/blue/red/green
@@ -225,8 +228,12 @@ class PipelineTestGUI:
         ttk.Combobox(route_frame, textvariable=self.var_ip_category, width=10,
             state="readonly", values=["character", "object", "other"]
             ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(route_frame, text="design:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Combobox(route_frame, textvariable=self.var_design_mode, width=10,
+            state="readonly", values=["decorate", "complete", "finish"]
+            ).pack(side=tk.LEFT, padx=2)
         ttk.Label(route_frame,
-            text="FLUX: steps4固定/preset・negative無効  SDXL: preset/negative/steps有効  IP: categoryで参照画風",
+            text="design: decorate=元線+装飾 / complete=完成形を設計 / finish=ラフ完成化 (FLUX/SDXLのみ)",
             foreground="#777").pack(side=tk.LEFT, padx=(10, 2))
 
         run_frame = ttk.LabelFrame(self.root,
@@ -643,6 +650,7 @@ class PipelineTestGUI:
         # ルート/category は Tk var なのでメインスレッドで読む (worker へ値渡し)。
         route_id = ROUTE_NAME_TO_ID.get(self.var_route.get(), "flux_decorate")
         ip_category = self.var_ip_category.get()
+        design_mode = self.var_design_mode.get()
         seed_str = self.var_seed.get().strip()
         seed_arg = []
         if seed_str:
@@ -700,7 +708,7 @@ class PipelineTestGUI:
         self.btn_view_topic.config(state=tk.DISABLED)
         self.pipeline_thread = threading.Thread(
             target=self._do_run_pipeline,
-            args=(self.selected_sketch_path, steps, seed_arg, route_id, ip_category),
+            args=(self.selected_sketch_path, steps, seed_arg, route_id, ip_category, design_mode),
             daemon=True)
         self.pipeline_thread.start()
         # cycle_dir 監視ループも起動
@@ -710,7 +718,8 @@ class PipelineTestGUI:
     def _do_run_pipeline(self, sketch_path: Path, steps: int,
                          seed_arg: list[str],
                          route_id: str = "flux_decorate",
-                         ip_category: str = "character"):
+                         ip_category: str = "character",
+                         design_mode: str = "decorate"):
         python = sys.executable
         try:
             vstretch = float(self.var_vstretch.get())
@@ -724,6 +733,7 @@ class PipelineTestGUI:
             "--log-dir", str(LOGS_DIR),
             "--vstretch", f"{vstretch:.3f}",
             "--route", route_id,
+            "--design-mode", design_mode,
         ] + seed_arg
         if route_id == "ip_matsumoto":
             cmd += ["--category", ip_category]

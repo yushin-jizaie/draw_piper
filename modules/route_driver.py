@@ -90,8 +90,13 @@ def place_fill(strokes, margin=0.92):
 
 
 def run_vlm(objs, args):
-    """各被写体の完成形ビジョン (backend ロード前に VLM を回して解放)。"""
-    log("VLM load")
+    """各被写体の完成形ビジョン (backend ロード前に VLM を回して解放)。
+
+    design_instruction の mode は args.design_mode (decorate=元線維持+装飾 /
+    complete=未来の完成形を積極デザイン / finish=ラフを完成イラスト化)。 既定 decorate。
+    """
+    mode = getattr(args, "design_mode", "decorate") or "decorate"
+    log("VLM load (design_mode=%s)" % mode)
     from modules.vlm import VLM
     vlm = VLM(verbose=True); visions = []
     for i, (bbox, crop) in enumerate(objs):
@@ -100,7 +105,7 @@ def run_vlm(objs, args):
         else:
             log("VLM predict_intent /scene")
             scene = vlm.describe_scene(crop) or "subject"
-            vision = vlm.design_instruction(crop, scene, mode="decorate") or scene
+            vision = vlm.design_instruction(crop, scene, mode=mode) or scene
         visions.append({"scene": scene, "vision": vision}); log(f"obj{i} vision:", vision)
     del vlm; import gc; gc.collect(); torch.cuda.empty_cache()
     return visions
