@@ -19,9 +19,21 @@ from PIL import Image, ImageDraw
 
 OUT_ROOT = os.path.join(os.path.dirname(__file__), "..",
                         "sketch_variations", "test_shapes")
-# パネル基準サイズ (mm)。 実機 panel と違っても GUI が aspect 維持で fit する。
-PANEL_W_MM = 96.62
-PANEL_H_MM = 181.38
+# パネル基準サイズ (mm)。 ★実機 calibration/panel_frame.yaml の size_mm を使う。
+# 壁面描画 GUI は panel_uv_mm を u/v 独立スケールするため、 ここを実機と一致させないと
+# 円が楕円に歪む (実機一致なら su=sv=1.0 で真円)。
+_PANEL_YAML = os.path.join(os.path.dirname(__file__), "..",
+                           "calibration", "panel_frame.yaml")
+try:
+    import yaml
+    _p = yaml.safe_load(open(_PANEL_YAML)) or {}
+    _pb = _p.get("panel", _p)
+    PANEL_W_MM = float(_pb["size_mm"][0])
+    PANEL_H_MM = float(_pb["size_mm"][1])
+    print(f"panel_frame.yaml size_mm = {PANEL_W_MM} x {PANEL_H_MM} (実機一致で生成)")
+except Exception as _e:  # noqa: BLE001 — yaml 無ければ従来既定
+    PANEL_W_MM, PANEL_H_MM = 96.62, 181.38
+    print(f"panel_frame.yaml 読めず ({_e}); 既定 {PANEL_W_MM}x{PANEL_H_MM} で生成")
 MARGIN = 0.85  # パネル短辺に対する figure 占有率
 
 
