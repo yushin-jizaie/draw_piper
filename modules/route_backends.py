@@ -187,10 +187,13 @@ class IpMatsumotoBackend:
             f"(stage2_str={self.stage2_strength} ip={self.ip_scale} diff={self.diff_vs_user})")
 
     def build_prompt(self, vision):
-        subj = (vision.get("scene") or vision.get("vision") or "person").strip()
         if self.category == "object":
-            return subj                          # object は describe をそのまま (companion 相当)
-        return f"{subj}, {self.CHAR_SUFFIX}"      # character: 5/28 実証テンプレを付与
+            return (vision.get("scene") or vision.get("literal") or "object").strip()
+        # character: 短い主語(literal 1-2語) + 5/28テンプレ。 長い顔記述だとモデルが顔だけに
+        # 集中して dynamic pose/放射状ink が出ない (5/28 は "face"/"person" の短主語)。
+        subj = (vision.get("literal") or vision.get("scene") or "person").strip()
+        subj = " ".join(subj.split()[:3])         # 念のため3語に短縮
+        return f"{subj}, {self.CHAR_SUFFIX}"
 
     def load(self):
         # two_stage_generate 内で stage2 の SDXL+IP-Adapter を都度ロードする (関数側に委譲)。

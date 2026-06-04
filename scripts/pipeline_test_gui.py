@@ -226,21 +226,20 @@ class PipelineTestGUI:
         route_frame = ttk.LabelFrame(self.root,
             text="② ルート選択 (生成バックボーン)", padding=6)
         route_frame.pack(fill=tk.X, padx=6, pady=(4, 0))
-        ttk.Label(route_frame, text="ルート:").pack(side=tk.LEFT, padx=(2, 2))
-        ttk.Combobox(route_frame, textvariable=self.var_route, width=26,
+        # 行1: ルート / IP category / design (コンボボックス群)
+        r1 = ttk.Frame(route_frame); r1.pack(fill=tk.X)
+        ttk.Label(r1, text="ルート:").pack(side=tk.LEFT, padx=(2, 2))
+        ttk.Combobox(r1, textvariable=self.var_route, width=26,
             state="readonly", values=ROUTE_CHOICES).pack(side=tk.LEFT, padx=2)
-        ttk.Label(route_frame, text="IP category:").pack(side=tk.LEFT, padx=(10, 2))
-        ttk.Combobox(route_frame, textvariable=self.var_ip_category, width=10,
+        ttk.Label(r1, text="IP category:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Combobox(r1, textvariable=self.var_ip_category, width=10,
             state="readonly", values=["character", "object", "other"]
             ).pack(side=tk.LEFT, padx=2)
-        ttk.Label(route_frame, text="design:").pack(side=tk.LEFT, padx=(10, 2))
-        ttk.Combobox(route_frame, textvariable=self.var_design_mode, width=10,
+        ttk.Label(r1, text="design:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Combobox(r1, textvariable=self.var_design_mode, width=10,
             state="readonly", values=["decorate", "complete", "finish"]
             ).pack(side=tk.LEFT, padx=2)
-        ttk.Label(route_frame,
-            text="design: decorate=元線+装飾 / complete=完成形を設計 / finish=ラフ完成化 (FLUX/SDXLのみ)",
-            foreground="#777").pack(side=tk.LEFT, padx=(10, 2))
-        # IP-松本 濃さレバー + 曲率制約のディテール下限 (CN無関係ルート用の別調整)
+        # 行2: IP-松本 濃さレバー + 曲率制約のディテール下限 (CN無関係ルート用の別調整)
         ip_row = ttk.Frame(route_frame)
         ip_row.pack(fill=tk.X, pady=(4, 0))
         ttk.Label(ip_row, text="IP ip_scale:").pack(side=tk.LEFT, padx=(2, 2))
@@ -254,9 +253,11 @@ class PipelineTestGUI:
         ttk.Label(ip_row, text="ディテール下限mm:").pack(side=tk.LEFT, padx=(8, 2))
         tk.Spinbox(ip_row, from_=2.0, to=20.0, increment=0.5, width=5, format="%.1f",
             textvariable=self.var_min_feature).pack(side=tk.LEFT, padx=2)
-        ttk.Label(ip_row,
-            text="IP濃く: ip_scale↑/強度↑/diff OFF(全線)/下限mm↓ (下限mmは全ルート共通)",
-            foreground="#777").pack(side=tk.LEFT, padx=(10, 2))
+        # 行3: ヒント (折り返し)
+        ttk.Label(route_frame, justify=tk.LEFT, foreground="#777", wraplength=1100,
+            text="design: decorate=元線+装飾 / complete=完成形を設計 / finish=ラフ完成化 (FLUX/SDXLのみ)。  "
+                 "IP濃く: diff OFFで顔ごと全線 / 下限mm↓で細部残す。 ip_scale・stage2強度は上げすぎ厳禁(線が溶ける)。"
+            ).pack(fill=tk.X, padx=2, pady=(2, 0))
 
         run_frame = ttk.LabelFrame(self.root,
             text="③ パイプライン実行", padding=8)

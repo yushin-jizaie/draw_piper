@@ -101,12 +101,16 @@ def run_vlm(objs, args):
     vlm = VLM(verbose=True); visions = []
     for i, (bbox, crop) in enumerate(objs):
         if getattr(args, "literal_only", False):
-            sub = vlm.describe_literal(crop) or "subject"; vision = sub; scene = sub
+            sub = vlm.describe_literal(crop) or "subject"; vision = sub; scene = sub; literal = sub
         else:
             log("VLM predict_intent /scene")
             scene = vlm.describe_scene(crop) or "subject"
             vision = vlm.design_instruction(crop, scene, mode=mode) or scene
-        visions.append({"scene": scene, "vision": vision}); log(f"obj{i} vision:", vision)
+            # 短い literal 主語 (1-2語)。 IP-松本は長い顔記述だとモデルが顔だけに集中するので
+            # こちらを主語に使う (5/28 は "face"/"person" の短主語で放射状inkが出た)。
+            literal = vlm.describe_literal(crop) or scene
+        visions.append({"scene": scene, "vision": vision, "literal": literal})
+        log(f"obj{i} vision:", vision)
     del vlm; import gc; gc.collect(); torch.cuda.empty_cache()
     return visions
 
