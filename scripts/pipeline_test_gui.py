@@ -716,6 +716,32 @@ class PipelineTestGUI:
         except Exception:
             return {}
 
+    _IMAGEGEN_CFG = ROOT / "calibration" / "imagegen_config.yaml"
+
+    def _read_sdxl_cfg(self):
+        """imagegen_config.yaml の SDXL preset / CN を読む (sdxl_routed が使う設定)。"""
+        try:
+            import yaml
+            ig = (yaml.safe_load(self._IMAGEGEN_CFG.read_text()) or {}).get("imagegen", {})
+            return ig.get("preset"), ig.get("controlnet_conditioning_scale")
+        except Exception:
+            return None, None
+
+    def _write_sdxl_cfg(self, preset, cn):
+        """プリセット読込時に SDXL preset / CN を imagegen_config.yaml へ反映。"""
+        try:
+            import yaml
+            d = yaml.safe_load(self._IMAGEGEN_CFG.read_text()) or {}
+            ig = d.setdefault("imagegen", {})
+            if preset is not None:
+                ig["preset"] = preset
+            if cn is not None:
+                ig["controlnet_conditioning_scale"] = cn
+            self._IMAGEGEN_CFG.write_text(
+                yaml.safe_dump(d, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        except Exception as e:
+            self.log(f"imagegen_config 書込失敗: {e}")
+
     def _preset_names(self):
         return sorted(self._load_presets_file().keys())
 
@@ -730,7 +756,10 @@ class PipelineTestGUI:
         if not name:
             return
         data = self._load_presets_file()
-        data[name] = {k: v.get() for k, v in self._preset_var_map().items()}
+        entry = {k: v.get() for k, v in self._preset_var_map().items()}
+        sp, scn = self._read_sdxl_cfg()        # SDXL preset/CN (sdxl_routed用) も保存
+        entry["sdxl_preset"] = sp; entry["sdxl_cn"] = scn
+        data[name] = entry
         PRESETS_FILE.parent.mkdir(parents=True, exist_ok=True)
         PRESETS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
         self.var_preset_name.set(name)
@@ -749,7 +778,10 @@ class PipelineTestGUI:
                     v.set(d[k])
                 except Exception:
                     pass
-        self.log(f"プリセット読込: {name}")
+        # SDXL preset/CN は imagegen_config.yaml へ反映 (sdxl_routed が読む)
+        if d.get("sdxl_preset") is not None or d.get("sdxl_cn") is not None:
+            self._write_sdxl_cfg(d.get("sdxl_preset"), d.get("sdxl_cn"))
+        self.log(f"プリセット読込: {name} (SDXL preset={d.get('sdxl_preset')} CN={d.get('sdxl_cn')})")
 
     def on_delete_preset(self):
         name = self.var_preset_name.get()

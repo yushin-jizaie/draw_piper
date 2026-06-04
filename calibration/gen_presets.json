@@ -16,6 +16,29 @@
     "ip_frac": "0.26",
     "place_scale": "1.00",
     "place_dx": "0",
-    "place_dy": "0"
+    "place_dy": "0",
+    "sdxl_preset": null,
+    "sdxl_cn": null
+  },
+  "物体 詳細線画 (gacha object/M16)": {
+    "route": "sdxl_routed (SDXL+ルート判定)",
+    "ip_category": "object",
+    "design_mode": "complete",
+    "sdxl_steps": 28,
+    "seed": "",
+    "vstretch": "1.00",
+    "literal_only": false,
+    "warp_correct": false,
+    "one_stroke": false,
+    "ip_scale": "0.60",
+    "ip_strength": "0.45",
+    "ip_diff": true,
+    "min_feature": "8.0",
+    "ip_frac": "0.38",
+    "place_scale": "1.00",
+    "place_dx": "0",
+    "place_dy": "0",
+    "sdxl_preset": "illustrious_v2_object",
+    "sdxl_cn": 0.65
   }
 }
