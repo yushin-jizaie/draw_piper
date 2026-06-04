@@ -62,6 +62,9 @@ def main():
     ap.add_argument("--place-scale", type=float, default=1.0)
     ap.add_argument("--place-dx-mm", type=float, default=0.0)   # +右
     ap.add_argument("--place-dy-mm", type=float, default=0.0)   # +上
+    # FLUX-decorate ルート: style 文 (decorate=manga装飾 / simple=太く少ない線・枠いっぱい) と LoRA強度。
+    ap.add_argument("--flux-style", type=str, default="decorate", choices=["decorate", "simple"])
+    ap.add_argument("--lora-str", type=float, default=0.6)
     args = ap.parse_args()
 
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

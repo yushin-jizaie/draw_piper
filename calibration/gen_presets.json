@@ -40,5 +40,29 @@
     "place_dy": "0",
     "sdxl_preset": "illustrious_v2_object",
     "sdxl_cn": 0.65
+  },
+  "FLUX bold simple (cn_sweep/2026-06-02)": {
+    "route": "flux_decorate (現行)",
+    "ip_category": "character",
+    "design_mode": "complete",
+    "sdxl_steps": 4,
+    "seed": "1",
+    "vstretch": "1.00",
+    "literal_only": false,
+    "warp_correct": false,
+    "one_stroke": false,
+    "no_split": true,
+    "flux_style": "simple",
+    "lora_str": "0.80",
+    "ip_scale": "0.60",
+    "ip_strength": "0.45",
+    "ip_diff": true,
+    "min_feature": "8.0",
+    "ip_frac": "0.38",
+    "place_scale": "1.00",
+    "place_dx": "0",
+    "place_dy": "0",
+    "sdxl_preset": null,
+    "sdxl_cn": 0.2
   }
 }

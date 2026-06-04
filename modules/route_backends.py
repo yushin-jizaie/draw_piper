@@ -22,6 +22,12 @@ STYLE = ("manga style, clean bold black ink lineart on white background, "
          "thick smooth confident strokes, large gentle curves, simple bold shapes, "
          "no tiny details, no fine hatching, no spirals, no small concentric circles, "
          "no intricate texture")
+# SIMPLE: flux_cn_sweep(2026-06-02) の style 文。 太く少ない線・枠いっぱいの単一被写体 →
+# ロボット描画向き(断片化しにくい)。 flux_style="simple" で選択。
+SIMPLE_STYLE = ("bold simple cartoon line art, thick black outlines, one single large "
+                "subject centered and filling the frame, minimal detail, few clean lines, "
+                "white background, no fill, no shading, no background objects, no text")
+FLUX_STYLES = {"decorate": STYLE, "simple": SIMPLE_STYLE}
 
 
 def _cn_steps_from_config(args, default_cn):
@@ -49,12 +55,15 @@ class FluxDecorateBackend:
     def __init__(self, args):
         self.args = args
         self.cn_scale, self.steps = _cn_steps_from_config(args, CN_SCALE)
+        self.style = FLUX_STYLES.get(getattr(args, "flux_style", "decorate") or "decorate", STYLE)
+        self.lora_str = float(getattr(args, "lora_str", None) or LORA_STR)
         log(f"flux_decorate: CN_scale={self.cn_scale:.2f} steps={self.steps} "
+            f"style={getattr(args,'flux_style','decorate')} lora={self.lora_str} "
             f"(preset/guidance/negative は schnell では無効)")
         self.pipe = None
 
     def build_prompt(self, vision):
-        return f"{TRIGGER}, {vision.get('vision') or vision.get('scene') or 'subject'} {STYLE}"
+        return f"{TRIGGER}, {vision.get('vision') or vision.get('scene') or 'subject'} {self.style}"
 
     def load(self):
         log("FLUX/imagegen load")
@@ -69,7 +78,7 @@ class FluxDecorateBackend:
         self.pipe = FluxControlNetPipeline.from_pretrained(
             REPO, transformer=tr, text_encoder_2=te2, controlnet=cnet, torch_dtype=torch.bfloat16)
         self.pipe.load_lora_weights(LORA_DIR, adapter_name="winners")
-        self.pipe.set_adapters(["winners"], [LORA_STR])
+        self.pipe.set_adapters(["winners"], [self.lora_str])
         self.pipe.enable_model_cpu_offload()
         log("FLUX ready")
 

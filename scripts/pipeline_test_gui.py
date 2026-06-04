@@ -129,6 +129,9 @@ class PipelineTestGUI:
         self.var_place_dx = tk.StringVar(value="0")           # 横ずらしmm(+右)
         self.var_place_dy = tk.StringVar(value="0")           # 縦ずらしmm(+上)
         self.var_preset_name = tk.StringVar(value="")         # 選択中プリセット名
+        # FLUX-decorate ルート: style文(decorate/simple) と LoRA強度
+        self.var_flux_style = tk.StringVar(value="decorate")
+        self.var_lora_str = tk.StringVar(value="0.6")
         # 透明ボード線抽出 (背景差分 + 色フィルタ) 用の state
         self.background_bgr = None          # 空ボード基準フレーム (np.ndarray BGR)
         self.var_line_mode = tk.StringVar(value="dark")   # dark/black/blue/red/green
@@ -261,6 +264,12 @@ class PipelineTestGUI:
         ttk.Combobox(r1, textvariable=self.var_design_mode, width=10,
             state="readonly", values=["decorate", "complete", "finish"]
             ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(r1, text="FLUXstyle:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Combobox(r1, textvariable=self.var_flux_style, width=9,
+            state="readonly", values=["decorate", "simple"]).pack(side=tk.LEFT, padx=2)
+        ttk.Label(r1, text="LoRA:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(r1, from_=0.0, to=1.2, increment=0.05, width=5, format="%.2f",
+            textvariable=self.var_lora_str).pack(side=tk.LEFT, padx=2)
         # 行2: IP-松本 濃さレバー + 曲率制約のディテール下限 (CN無関係ルート用の別調整)
         ip_row = ttk.Frame(route_frame)
         ip_row.pack(fill=tk.X, pady=(4, 0))
@@ -710,6 +719,7 @@ class PipelineTestGUI:
             "seed": self.var_seed, "vstretch": self.var_vstretch,
             "literal_only": self.var_literal_only, "warp_correct": self.var_warp_correct,
             "one_stroke": self.var_one_stroke, "no_split": self.var_no_split,
+            "flux_style": self.var_flux_style, "lora_str": self.var_lora_str,
             "ip_scale": self.var_ip_scale,
             "ip_strength": self.var_ip_strength, "ip_diff": self.var_ip_diff,
             "min_feature": self.var_min_feature, "ip_frac": self.var_ip_frac,
@@ -734,8 +744,8 @@ class PipelineTestGUI:
         except Exception:
             return None, None
 
-    def _write_sdxl_cfg(self, preset, cn):
-        """プリセット読込時に SDXL preset / CN を imagegen_config.yaml へ反映。"""
+    def _write_sdxl_cfg(self, preset, cn, steps=None):
+        """プリセット読込時に SDXL preset / CN / steps を imagegen_config.yaml へ反映。"""
         try:
             import yaml
             d = yaml.safe_load(self._IMAGEGEN_CFG.read_text()) or {}
@@ -744,6 +754,8 @@ class PipelineTestGUI:
                 ig["preset"] = preset
             if cn is not None:
                 ig["controlnet_conditioning_scale"] = cn
+            if steps is not None:
+                ig["num_inference_steps"] = int(steps)
             self._IMAGEGEN_CFG.write_text(
                 yaml.safe_dump(d, allow_unicode=True, sort_keys=False), encoding="utf-8")
         except Exception as e:
@@ -785,9 +797,9 @@ class PipelineTestGUI:
                     v.set(d[k])
                 except Exception:
                     pass
-        # SDXL preset/CN は imagegen_config.yaml へ反映 (sdxl_routed が読む)
+        # SDXL preset/CN/steps は imagegen_config.yaml へ反映 (flux_decorate/sdxl_routed が読む)
         if d.get("sdxl_preset") is not None or d.get("sdxl_cn") is not None:
-            self._write_sdxl_cfg(d.get("sdxl_preset"), d.get("sdxl_cn"))
+            self._write_sdxl_cfg(d.get("sdxl_preset"), d.get("sdxl_cn"), d.get("sdxl_steps"))
         self.log(f"プリセット読込: {name} (SDXL preset={d.get('sdxl_preset')} CN={d.get('sdxl_cn')})")
 
     def on_delete_preset(self):
@@ -831,6 +843,8 @@ class PipelineTestGUI:
             "place_scale": self.var_place_scale.get(),
             "place_dx": self.var_place_dx.get(),
             "place_dy": self.var_place_dy.get(),
+            "flux_style": self.var_flux_style.get(),
+            "lora_str": self.var_lora_str.get(),
         }
         seed_str = self.var_seed.get().strip()
         seed_arg = []
@@ -928,6 +942,10 @@ class PipelineTestGUI:
             cmd += ["--place-dx-mm", str(lv["place_dx"])]
         if lv.get("place_dy"):
             cmd += ["--place-dy-mm", str(lv["place_dy"])]
+        if lv.get("flux_style"):
+            cmd += ["--flux-style", str(lv["flux_style"])]
+        if lv.get("lora_str"):
+            cmd += ["--lora-str", str(lv["lora_str"])]
         if route_id == "ip_matsumoto":
             cmd += ["--category", ip_category]
             if lv.get("ip_scale"):
