@@ -86,6 +86,9 @@ def main():
     # --warp-correct: ロボット歪みの事前補正を「生成側」で適用 (アーム側補正が効かない場合)。
     # calibration/draw_warp_correction.yaml の affine(desired->command)を最終ストロークに適用。
     ap.add_argument("--warp-correct", action="store_true")
+    # --one-stroke: 全ストロークを 1 本に連結 (一筆書き、 ペンを上げない連続描画)。
+    # ストローク間は直線コネクタで繋がる。
+    ap.add_argument("--one-stroke", action="store_true")
     args = ap.parse_args()
     V = max(0.1, args.vstretch)
 
@@ -135,7 +138,7 @@ def main():
     from modules.input_prep import square_pad
     from modules.vectorizer import Vectorizer, load_binarize_config
     from modules.gen_line_extract import extract_lines
-    from modules.stroke_order import order_strokes_center_out
+    from modules.stroke_order import order_strokes_center_out, order_strokes_one
     vc = Vectorizer(gen_line_mode="binarize", **load_binarize_config())
 
     SCALE = min(CW / W, CH / H); XOFF = (CW - W * SCALE) / 2; YOFF = (CH - H * SCALE) / 2
@@ -165,8 +168,12 @@ def main():
             obj_lists.append(place_fill(st))
 
     # 中心→外側・オブジェクト単位の描画順
-    combined = order_strokes_center_out(obj_lists, (CW / 2.0, CH / 2.0))
-    log(f"stroke order: {len(combined)} strokes, center-out per-object")
+    if args.one_stroke:
+        combined = order_strokes_one(obj_lists, (CW / 2.0, CH / 2.0))
+        log(f"one-stroke (一筆書き): 1 stroke, {sum(len(s) for s in combined)} pts")
+    else:
+        combined = order_strokes_center_out(obj_lists, (CW / 2.0, CH / 2.0))
+        log(f"stroke order: {len(combined)} strokes, center-out per-object")
 
     # 生成側ワープ補正: ★ストローク点でなく「画像」をワープしてから再ベクトル化する
     # (点warpは不連続になりやすい→画像warp+再vectorizeの方が滑らかで安定, ユーザー指定)。
@@ -192,7 +199,8 @@ def main():
                                     flags=cv2.INTER_LINEAR, borderValue=255)
             combined = vc.vectorize(
                 generated_image=Image.fromarray(warped).convert("RGB"), user_image=None).strokes
-            combined = order_strokes_center_out([combined], (CW / 2.0, CH / 2.0))
+            _order = order_strokes_one if args.one_stroke else order_strokes_center_out
+            combined = _order([combined], (CW / 2.0, CH / 2.0))
             log(f"warp-correct (画像warp→再vectorize) applied, {len(combined)} strokes ({corr.summary()})")
         else:
             log("warp-correct 要求されたが correction disabled — 無補正")

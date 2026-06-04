@@ -53,3 +53,19 @@ def order_strokes_center_out(object_stroke_lists, center):
             out.append(s)
             pen = s[-1]
     return out
+
+
+def order_strokes_one(object_stroke_lists, center):
+    """一筆書き化: 中心→外側・最近傍で並べた全ストロークを 1 本に連結して返す。
+
+    各ストロークの終点→次ストロークの始点は直線コネクタとして繋がる (ペンを上げず
+    連続描画)。 戻りは [single_stroke] (ストローク 1 本のリスト)。 コネクタが短くなる
+    よう order_strokes_center_out の最近傍順を流用する。
+    """
+    ordered = order_strokes_center_out(object_stroke_lists, center)
+    if not ordered:
+        return []
+    one = []
+    for st in ordered:
+        one.extend(st)
+    return [one]

@@ -74,6 +74,8 @@ class PipelineTestGUI:
         # ワープ補正(生成側): アーム側のワープ補正が効かないので、 生成後の
         # ストロークに draw_warp_correction の affine を事前適用する。
         self.var_warp_correct = tk.BooleanVar(value=False)
+        # 一筆書き: 全ストロークを 1 本に連結 (ペンを上げない連続描画)。
+        self.var_one_stroke = tk.BooleanVar(value=False)
         # literal-only: カード推論をやめ「何に見えるか」 を生成 prompt に使い、
         # vectorize も full 抽出 (diff しない) でテストする。
         self.var_literal_only = tk.BooleanVar(value=False)
@@ -203,6 +205,10 @@ class PipelineTestGUI:
         ttk.Checkbutton(
             run_frame, text="ワープ補正(生成側)",
             variable=self.var_warp_correct,
+        ).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Checkbutton(
+            run_frame, text="一筆書き",
+            variable=self.var_one_stroke,
         ).pack(side=tk.LEFT, padx=(8, 2))
         self.btn_run = ttk.Button(run_frame,
             text="▶ 実行 (VLM → ImageGen → Vectorizer)",
@@ -665,6 +671,8 @@ class PipelineTestGUI:
         ] + seed_arg
         if self.var_warp_correct.get():
             cmd.append("--warp-correct")
+        if self.var_one_stroke.get():
+            cmd.append("--one-stroke")
         if self.var_literal_only.get():
             cmd.append("--literal-only")
         self.log(f"subprocess 起動: {' '.join(cmd)}")
