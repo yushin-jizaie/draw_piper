@@ -54,6 +54,10 @@ def main():
     ap.add_argument("--min-feature", type=float, default=8.0)
     # IP-松本: 被写体を枠の何割で配置するか (小さいほど余白大→放射状ink増)。 既定0.38。
     ap.add_argument("--ip-frac", type=float, default=0.38)
+    # 配置微調整 (カメラとアームパネルのズレ補正): 拡大率 + 上下左右オフセット(mm)。 全ルート共通。
+    ap.add_argument("--place-scale", type=float, default=1.0)
+    ap.add_argument("--place-dx-mm", type=float, default=0.0)   # +右
+    ap.add_argument("--place-dy-mm", type=float, default=0.0)   # +上
     args = ap.parse_args()
 
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

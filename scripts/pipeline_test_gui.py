@@ -120,6 +120,10 @@ class PipelineTestGUI:
         self.var_ip_diff = tk.BooleanVar(value=True)          # 加筆のみ(diff)。 OFFで全線描く
         self.var_min_feature = tk.StringVar(value="8.0")      # 曲率制約ディテール下限(mm)
         self.var_ip_frac = tk.StringVar(value="0.38")         # IP被写体サイズ率(小=余白大=放射状増)
+        # 配置微調整 (カメラ↔アームパネルのズレ補正、 全ルート共通)
+        self.var_place_scale = tk.StringVar(value="1.00")     # 拡大率
+        self.var_place_dx = tk.StringVar(value="0")           # 横ずらしmm(+右)
+        self.var_place_dy = tk.StringVar(value="0")           # 縦ずらしmm(+上)
         # 透明ボード線抽出 (背景差分 + 色フィルタ) 用の state
         self.background_bgr = None          # 空ボード基準フレーム (np.ndarray BGR)
         self.var_line_mode = tk.StringVar(value="dark")   # dark/black/blue/red/green
@@ -257,6 +261,20 @@ class PipelineTestGUI:
         ttk.Label(ip_row, text="IP被写体%:").pack(side=tk.LEFT, padx=(8, 2))
         tk.Spinbox(ip_row, from_=0.20, to=0.60, increment=0.02, width=5, format="%.2f",
             textvariable=self.var_ip_frac).pack(side=tk.LEFT, padx=2)
+        # 配置微調整行 (カメラ↔アームパネルのズレ補正、 全ルート共通)
+        pl_row = ttk.Frame(route_frame)
+        pl_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(pl_row, text="配置 拡大率:").pack(side=tk.LEFT, padx=(2, 2))
+        tk.Spinbox(pl_row, from_=0.5, to=1.3, increment=0.02, width=5, format="%.2f",
+            textvariable=self.var_place_scale).pack(side=tk.LEFT, padx=2)
+        ttk.Label(pl_row, text="横ずらしmm(+右):").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(pl_row, from_=-100, to=100, increment=1, width=5,
+            textvariable=self.var_place_dx).pack(side=tk.LEFT, padx=2)
+        ttk.Label(pl_row, text="縦ずらしmm(+上):").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(pl_row, from_=-150, to=150, increment=1, width=5,
+            textvariable=self.var_place_dy).pack(side=tk.LEFT, padx=2)
+        ttk.Label(pl_row, text="← カメラとアームのサイズ/位置ズレ補正 (全ルート共通)",
+            foreground="#777").pack(side=tk.LEFT, padx=(8, 2))
         # 行3: ヒント (折り返し)
         ttk.Label(route_frame, justify=tk.LEFT, foreground="#777", wraplength=1100,
             text="design: decorate=元線+装飾 / complete=完成形を設計 / finish=ラフ完成化 (FLUX/SDXLのみ)。  "
@@ -685,6 +703,9 @@ class PipelineTestGUI:
             "ip_diff": bool(self.var_ip_diff.get()),
             "min_feature": self.var_min_feature.get(),
             "ip_frac": self.var_ip_frac.get(),
+            "place_scale": self.var_place_scale.get(),
+            "place_dx": self.var_place_dx.get(),
+            "place_dy": self.var_place_dy.get(),
         }
         seed_str = self.var_seed.get().strip()
         seed_arg = []
@@ -773,9 +794,15 @@ class PipelineTestGUI:
             "--design-mode", design_mode,
         ] + seed_arg
         lv = ip_levers or {}
-        # ディテール下限は全ルート共通
+        # ディテール下限・配置微調整は全ルート共通
         if lv.get("min_feature"):
             cmd += ["--min-feature", str(lv["min_feature"])]
+        if lv.get("place_scale"):
+            cmd += ["--place-scale", str(lv["place_scale"])]
+        if lv.get("place_dx"):
+            cmd += ["--place-dx-mm", str(lv["place_dx"])]
+        if lv.get("place_dy"):
+            cmd += ["--place-dy-mm", str(lv["place_dy"])]
         if route_id == "ip_matsumoto":
             cmd += ["--category", ip_category]
             if lv.get("ip_scale"):

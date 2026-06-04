@@ -252,6 +252,19 @@ def run_driver(objs, backend, args, cyc, visions, W, H):
         else:
             log("warp-correct 要求されたが correction disabled — 無補正")
 
+    # --- 配置微調整 (カメラとアームパネルのズレ補正) ---
+    # 拡大率 + 上下左右オフセット(mm)。 パネル中心基準でスケール、 mm→px 変換してシフト。
+    pscale = float(getattr(args, "place_scale", 1.0) or 1.0)
+    pdx_mm = float(getattr(args, "place_dx_mm", 0.0) or 0.0)
+    pdy_mm = float(getattr(args, "place_dy_mm", 0.0) or 0.0)
+    if pscale != 1.0 or pdx_mm or pdy_mm:
+        cx, cy = CW / 2.0, CH / 2.0
+        dxp = pdx_mm * (CW / PW)          # +右
+        dyp = -pdy_mm * (CH / PH)         # +上 = 画像yは減 (壁GUIは v=(h-y))
+        combined = [[((x - cx) * pscale + cx + dxp,
+                      (y - cy) * pscale + cy + dyp) for x, y in st] for st in combined]
+        log(f"配置微調整: scale={pscale} dx={pdx_mm}mm dy={pdy_mm}mm")
+
     # --- 出力 (GUI 契約ファイル) ---
     render_strokes_to_image(combined, width=CW, height=CH, line_width=2).save(cyc / "vec_debug" / "06_strokes.png")
     # generated.png: 各被写体の生成画像を panel レイアウトへ合成
