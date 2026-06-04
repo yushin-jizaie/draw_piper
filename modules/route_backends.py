@@ -179,8 +179,12 @@ class IpMatsumotoBackend:
         self.args = args
         self.category = getattr(args, "category", "character") or "character"
         self.style_ref = getattr(args, "style_ref", None)
+        # 濃さレバー (args 優先、 無ければ実証プリセット既定)。
+        self.ip_scale = float(getattr(args, "ip_scale", None) or self.IP_SCALE)
+        self.stage2_strength = float(getattr(args, "stage2_strength", None) or self.STAGE2_STRENGTH)
+        self.diff_vs_user = not getattr(args, "ip_no_diff", False)   # OFFで顔も含め全線描く
         log(f"{self.name}: category={self.category} style_ref={self.style_ref or '(auto)'} "
-            f"(stage2_str={self.STAGE2_STRENGTH} ip={self.IP_SCALE})")
+            f"(stage2_str={self.stage2_strength} ip={self.ip_scale} diff={self.diff_vs_user})")
 
     def build_prompt(self, vision):
         subj = (vision.get("scene") or vision.get("vision") or "person").strip()
@@ -196,8 +200,8 @@ class IpMatsumotoBackend:
         from scripts.test_ip_adapter_two_stage import two_stage_generate
         return two_stage_generate(
             crop, category=self.category, style_ref=self.style_ref,
-            stage1_prompt=prompt, stage2_strength=self.STAGE2_STRENGTH,
-            ip_scale=self.IP_SCALE, seed=seed,
+            stage1_prompt=prompt, stage2_strength=self.stage2_strength,
+            ip_scale=self.ip_scale, seed=seed,
             resolution=self.STAGE2_RES, stage1_resolution=self.STAGE1_RES)
 
     def teardown(self):

@@ -46,6 +46,12 @@ def main():
     # finish=ラフを完成イラスト化。 FLUX/SDXLルートで効く (ip_matsumoto は describe_scene 使用で無関係)。
     ap.add_argument("--design-mode", type=str, default="decorate",
                     choices=["decorate", "complete", "finish"])
+    # IP-松本 濃さ調整 (CN は無関係なルートなので別レバー)。
+    ap.add_argument("--ip-scale", type=float, default=0.6)          # IP-Adapter style 転写の強さ
+    ap.add_argument("--stage2-strength", type=float, default=0.45)  # stage2 img2img の振り幅
+    ap.add_argument("--ip-no-diff", action="store_true")           # IP: 加筆のみdiffをやめ全線を描く
+    # 曲率制約のディテール下限(mm)。 小さいほど細部を残す(間引き減=濃い) が描きにくくなる。 既定8。
+    ap.add_argument("--min-feature", type=float, default=8.0)
     args = ap.parse_args()
 
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")

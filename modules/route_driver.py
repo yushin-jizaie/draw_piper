@@ -155,12 +155,15 @@ def run_driver(objs, backend, args, cyc, visions, W, H):
         else:
             obj_lists.append(place_fill(st))
 
-    # ロボット描画制約: 曲率半径>=8mm・微小ディテール/渦巻き/小円を除去 (mm 空間で評価)。
+    # ロボット描画制約: 曲率半径・微小ディテール/渦巻き/小円を除去 (mm 空間で評価)。
+    # min_feature でディテール下限を可変 (小さいほど細部を残す=濃い)。 既定8mm。
+    mf = float(getattr(args, "min_feature", 8.0) or 8.0)
+    _rc = dict(min_radius_mm=mf, min_feature_mm=mf, min_loop_perim_mm=mf * 3.125)
     PW, PH = _panel_mm(); sx = PW / CW; sy = PH / CH
     cleaned = []; tot = {"dropped_tiny": 0, "dropped_loop": 0, "dropped_spiral": 0, "dropped_kinky": 0}
     for ol in obj_lists:
         mm = [[(x * sx, y * sy) for x, y in st] for st in ol]
-        ce, info = enforce_robot_constraints(mm)
+        ce, info = enforce_robot_constraints(mm, **_rc)
         for k in tot: tot[k] += info.get(k, 0)
         cleaned.append([[(x / sx, y / sy) for x, y in st] for st in ce])
     obj_lists = [o for o in cleaned if o]
@@ -199,7 +202,7 @@ def run_driver(objs, backend, args, cyc, visions, W, H):
             combined = vc.vectorize(
                 generated_image=Image.fromarray(warped).convert("RGB"), user_image=None).strokes
             _mm = [[(x * sx, y * sy) for x, y in st] for st in combined]
-            _ce, _ = enforce_robot_constraints(_mm)  # warp 後も曲率制約を再保証
+            _ce, _ = enforce_robot_constraints(_mm, **_rc)  # warp 後も曲率制約を再保証
             combined = [[(x / sx, y / sy) for x, y in st] for st in _ce]
             if args.one_stroke:
                 combined = order_strokes_tsp_joined([combined], (CW / 2.0, CH / 2.0), max_connect=80.0)

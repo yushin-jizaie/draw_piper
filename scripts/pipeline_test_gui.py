@@ -114,6 +114,11 @@ class PipelineTestGUI:
         # VLM design mode: decorate=元線維持+装飾 / complete=未来の完成形 / finish=ラフ完成化。
         # FLUX/SDXLルートで効く (ip_matsumoto は無関係)。
         self.var_design_mode = tk.StringVar(value="decorate")
+        # IP-松本 濃さレバー (CN無関係ルートの別調整) + 曲率制約のディテール下限。
+        self.var_ip_scale = tk.StringVar(value="0.60")        # IP-Adapter style 転写の強さ
+        self.var_ip_strength = tk.StringVar(value="0.45")     # stage2 img2img の振り幅
+        self.var_ip_diff = tk.BooleanVar(value=True)          # 加筆のみ(diff)。 OFFで全線描く
+        self.var_min_feature = tk.StringVar(value="8.0")      # 曲率制約ディテール下限(mm)
         # 透明ボード線抽出 (背景差分 + 色フィルタ) 用の state
         self.background_bgr = None          # 空ボード基準フレーム (np.ndarray BGR)
         self.var_line_mode = tk.StringVar(value="dark")   # dark/black/blue/red/green
@@ -234,6 +239,23 @@ class PipelineTestGUI:
             ).pack(side=tk.LEFT, padx=2)
         ttk.Label(route_frame,
             text="design: decorate=元線+装飾 / complete=完成形を設計 / finish=ラフ完成化 (FLUX/SDXLのみ)",
+            foreground="#777").pack(side=tk.LEFT, padx=(10, 2))
+        # IP-松本 濃さレバー + 曲率制約のディテール下限 (CN無関係ルート用の別調整)
+        ip_row = ttk.Frame(route_frame)
+        ip_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(ip_row, text="IP ip_scale:").pack(side=tk.LEFT, padx=(2, 2))
+        tk.Spinbox(ip_row, from_=0.0, to=1.2, increment=0.05, width=5, format="%.2f",
+            textvariable=self.var_ip_scale).pack(side=tk.LEFT, padx=2)
+        ttk.Label(ip_row, text="stage2 強度:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(ip_row, from_=0.2, to=0.9, increment=0.05, width=5, format="%.2f",
+            textvariable=self.var_ip_strength).pack(side=tk.LEFT, padx=2)
+        ttk.Checkbutton(ip_row, text="加筆のみ(diff)", variable=self.var_ip_diff
+            ).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Label(ip_row, text="ディテール下限mm:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(ip_row, from_=2.0, to=20.0, increment=0.5, width=5, format="%.1f",
+            textvariable=self.var_min_feature).pack(side=tk.LEFT, padx=2)
+        ttk.Label(ip_row,
+            text="IP濃く: ip_scale↑/強度↑/diff OFF(全線)/下限mm↓ (下限mmは全ルート共通)",
             foreground="#777").pack(side=tk.LEFT, padx=(10, 2))
 
         run_frame = ttk.LabelFrame(self.root,
@@ -651,6 +673,12 @@ class PipelineTestGUI:
         route_id = ROUTE_NAME_TO_ID.get(self.var_route.get(), "flux_decorate")
         ip_category = self.var_ip_category.get()
         design_mode = self.var_design_mode.get()
+        ip_levers = {
+            "ip_scale": self.var_ip_scale.get(),
+            "stage2_strength": self.var_ip_strength.get(),
+            "ip_diff": bool(self.var_ip_diff.get()),
+            "min_feature": self.var_min_feature.get(),
+        }
         seed_str = self.var_seed.get().strip()
         seed_arg = []
         if seed_str:
@@ -708,7 +736,8 @@ class PipelineTestGUI:
         self.btn_view_topic.config(state=tk.DISABLED)
         self.pipeline_thread = threading.Thread(
             target=self._do_run_pipeline,
-            args=(self.selected_sketch_path, steps, seed_arg, route_id, ip_category, design_mode),
+            args=(self.selected_sketch_path, steps, seed_arg, route_id,
+                  ip_category, design_mode, ip_levers),
             daemon=True)
         self.pipeline_thread.start()
         # cycle_dir 監視ループも起動
@@ -719,7 +748,8 @@ class PipelineTestGUI:
                          seed_arg: list[str],
                          route_id: str = "flux_decorate",
                          ip_category: str = "character",
-                         design_mode: str = "decorate"):
+                         design_mode: str = "decorate",
+                         ip_levers: dict | None = None):
         python = sys.executable
         try:
             vstretch = float(self.var_vstretch.get())
@@ -735,8 +765,18 @@ class PipelineTestGUI:
             "--route", route_id,
             "--design-mode", design_mode,
         ] + seed_arg
+        lv = ip_levers or {}
+        # ディテール下限は全ルート共通
+        if lv.get("min_feature"):
+            cmd += ["--min-feature", str(lv["min_feature"])]
         if route_id == "ip_matsumoto":
             cmd += ["--category", ip_category]
+            if lv.get("ip_scale"):
+                cmd += ["--ip-scale", str(lv["ip_scale"])]
+            if lv.get("stage2_strength"):
+                cmd += ["--stage2-strength", str(lv["stage2_strength"])]
+            if not lv.get("ip_diff", True):
+                cmd.append("--ip-no-diff")
         if self.var_warp_correct.get():
             cmd.append("--warp-correct")
         if self.var_one_stroke.get():
