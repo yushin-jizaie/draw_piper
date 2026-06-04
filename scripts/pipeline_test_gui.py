@@ -215,8 +215,8 @@ class PipelineTestGUI:
             command=self.on_run_pipeline, width=40)
         self.btn_run.pack(side=tk.LEFT, padx=(12, 4))
         self.btn_abort = ttk.Button(run_frame,
-            text="中止",
-            command=self.on_abort_pipeline, width=8,
+            text="■ 生成キャンセル",
+            command=self.on_abort_pipeline, width=14,
             state=tk.DISABLED)
         self.btn_abort.pack(side=tk.LEFT, padx=2)
 
@@ -917,13 +917,24 @@ class PipelineTestGUI:
         self.btn_view_strokes.config(state=tk.NORMAL)
 
     def on_abort_pipeline(self):
-        if self.pipeline_proc is None:
+        proc = self.pipeline_proc
+        if proc is None:
             return
         try:
-            self.pipeline_proc.terminate()
-            self.log("⛔ パイプライン中止リクエスト")
+            proc.terminate()
+            self.log("⛔ 生成キャンセル要求 (terminate)")
+            self.btn_abort.config(state=tk.DISABLED)
+            # FLUX 生成中は terminate で即死しないことがある → 2 秒後に強制 kill。
+            def _force_kill():
+                try:
+                    if proc.poll() is None:
+                        proc.kill()
+                        self.log("⛔ 強制終了 (kill)")
+                except Exception:
+                    pass
+            self.root.after(2000, _force_kill)
         except Exception as e:
-            self.log(f"中止失敗: {e}")
+            self.log(f"キャンセル失敗: {e}")
 
     def _find_latest_cycle(self) -> Path | None:
         candidates = sorted(LOGS_DIR.glob("vlm_to_image_*/cycle_*"))
