@@ -7,8 +7,8 @@ pipeline_test_gui.py と同じ契約:
         vec_debug/{02a_user_binary.png,06_strokes.png}
 
 M19 ルート: 入力を connected components で分割(複数被写体) → 各被写体を
-FLUX.1-schnell + ControlNet(Union canny, CN0.2) + winners LoRA@0.6 +
-VLM完成形ビジョン(describe_scene→design_instruction complete) + manga default style
+FLUX.1-schnell + ControlNet(Union canny, CN0.55=DECORATEルート) + winners LoRA@0.6 +
+VLM装飾ビジョン(describe_scene→design_instruction decorate) + manga default style
 + OpenCV線抽出 で生成 → 元レイアウトの各 bbox へ contain 配置(複数時) or panel fill
 (単一時) → 中心→外側・オブジェクト単位の描画順に並べ替え。
 """
@@ -22,9 +22,10 @@ import os; os.chdir(ROOT)
 CW, CH, SIZE = 704, 1472, 1024
 LORA_DIR = "models/flux_lora_winners"; LORA_STR = 0.6; TRIGGER = "tklineart"
 REPO = "chutesai/FLUX.1-schnell"; CN = "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro"
-CN_SCALE = 0.2; MINF = 8
-# M19 default style 文
-STYLE = ("manga style, clean bold ink lineart, white background, appealing design, multiple")
+# 2026-06-04: DECORATE ルートに戻す (complete+CN0.2 は被写体を作り替えすぎ=飛躍しすぎ)。
+# decorate モード + CN0.55 で元線を保ちつつ装飾を足す。
+CN_SCALE = 0.55; MINF = 8
+STYLE = ("manga style, clean bold black ink lineart on white background")
 
 def log(*a): print("[latest]", *a, flush=True)
 
@@ -118,7 +119,7 @@ def main():
         else:
             log("VLM predict_intent /scene")
             scene = vlm.describe_scene(crop) or "subject"
-            vision = vlm.design_instruction(crop, scene, mode="complete") or scene
+            vision = vlm.design_instruction(crop, scene, mode="decorate") or scene
         visions.append({"scene": scene, "vision": vision}); log(f"obj{i} vision:", vision)
     del vlm; import gc; gc.collect(); torch.cuda.empty_cache()
 
@@ -233,7 +234,7 @@ def main():
     json.dump({"subject": {"ja": sc0, "en": sc0}, "location": {"ja": ""},
                "action": {"ja": ""}, "confidence": 1.0,
                "n_objects": len(objs), "vstretch": V, "warp_correct": bool(args.warp_correct),
-               "route": "M19_latest (FLUX+winnersLoRA+complete+manga+opencv+center-out)",
+               "route": "DECORATE (FLUX+winnersLoRA+decorate+CN0.55+manga+opencv+center-out)",
                "visions": visions}, open(cyc / "topic_guess.json", "w"), ensure_ascii=False, indent=2)
     log("DONE")
     return 0
