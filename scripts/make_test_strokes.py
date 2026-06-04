@@ -102,8 +102,10 @@ def make_square(pts_per_edge: int = 12):
 
 if __name__ == "__main__":
     os.makedirs(OUT_ROOT, exist_ok=True)
+    # 名前に実機パネルサイズを入れて「どの panel 用に生成したか」を明示 (更新が分かる)。
+    _tag = f"p{int(round(PANEL_W_MM))}x{int(round(PANEL_H_MM))}"
     print("test strokes 生成:")
-    _write("circle", make_circle(), "テスト丸")
-    _write("square", make_square(), "テスト四角")
-    print("完了。 GUI の「選択...」→ 参照元プルダウン sketch_variations/ "
-          "→ test_shapes/circle or square を選択して描画。")
+    _write(f"circle_{_tag}", make_circle(), f"テスト丸 {_tag}")
+    _write(f"square_{_tag}", make_square(), f"テスト四角 {_tag}")
+    print(f"完了。 GUI の「選択...」→ 参照元プルダウン sketch_variations/ "
+          f"→ test_shapes/circle_{_tag} or square_{_tag} を選択して描画。")
