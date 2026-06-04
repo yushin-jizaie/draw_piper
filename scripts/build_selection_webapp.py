@@ -195,6 +195,8 @@ INPUTS = [
     ("new_combo_decoaccum","sketch_variations/_inputs/new_combo_decoaccum.png","object"),
     # 2026-06-04: 装飾累積+VLMにOpenCVで元線/前回を消した新規装飾だけ入力。
     ("new_combo_decoaccum2","sketch_variations/_inputs/new_combo_decoaccum2.png","object"),
+    # 2026-06-04: DECOACCUM生成画像を太い線・塗りなしに整えて線化。
+    ("new_combo_decobold","sketch_variations/_inputs/new_combo_decoaccum.png","object"),
 ]
 
 # 2026-06-01: GUI (pipeline_test_gui) からアップロードされた候補の入力定義。
