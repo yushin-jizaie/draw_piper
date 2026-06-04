@@ -100,6 +100,20 @@ def make_square(pts_per_edge: int = 12):
     return [pts]
 
 
+def make_spiral(turns: float = 5.0, segments: int = 400):
+    """中心から外へ連続する 1 本のアルキメデス螺旋 (中心→外側の連続描画テストに最適)。"""
+    cx, cy = PANEL_W_MM / 2.0, PANEL_H_MM / 2.0
+    max_r = (min(PANEL_W_MM, PANEL_H_MM) / 2.0) * MARGIN
+    pts = []
+    for i in range(segments + 1):
+        t = i / segments                       # 0..1 (中心→外)
+        r = max_r * t
+        theta = 2 * math.pi * turns * t
+        pts.append([round(cx + r * math.cos(theta), 3),
+                    round(cy + r * math.sin(theta), 3)])
+    return [pts]
+
+
 if __name__ == "__main__":
     os.makedirs(OUT_ROOT, exist_ok=True)
     # 名前に実機パネルサイズを入れて「どの panel 用に生成したか」を明示 (更新が分かる)。
@@ -107,5 +121,6 @@ if __name__ == "__main__":
     print("test strokes 生成:")
     _write(f"circle_{_tag}", make_circle(), f"テスト丸 {_tag}")
     _write(f"square_{_tag}", make_square(), f"テスト四角 {_tag}")
+    _write(f"spiral_{_tag}", make_spiral(), f"テスト螺旋 {_tag}")
     print(f"完了。 GUI の「選択...」→ 参照元プルダウン sketch_variations/ "
-          f"→ test_shapes/circle_{_tag} or square_{_tag} を選択して描画。")
+          f"→ test_shapes/{{circle,square,spiral}}_{_tag} を選択して描画。")
