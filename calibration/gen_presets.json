@@ -1,0 +1,21 @@
+{
+  "松本 放射状ink (5/28風)": {
+    "route": "ip_matsumoto (IP-Adapter 2段)",
+    "ip_category": "character",
+    "design_mode": "decorate",
+    "sdxl_steps": 4,
+    "seed": "",
+    "vstretch": "1.00",
+    "literal_only": false,
+    "warp_correct": false,
+    "one_stroke": false,
+    "ip_scale": "0.60",
+    "ip_strength": "0.50",
+    "ip_diff": false,
+    "min_feature": "5.0",
+    "ip_frac": "0.26",
+    "place_scale": "1.00",
+    "place_dx": "0",
+    "place_dy": "0"
+  }
+}

@@ -49,6 +49,8 @@ except Exception as e:
 # 旧 SDXL パイプラインに戻すなら scripts/test_vlm_to_image.py を指す。
 PIPELINE_SCRIPT = ROOT / "scripts" / "gen_latest_route.py"
 LOGS_DIR = ROOT / "logs"
+# 生成設定プリセット (ルート/レバー/配置をまとめて保存・呼び出し)
+PRESETS_FILE = ROOT / "calibration" / "gen_presets.json"
 
 # 生成ルート (バックボーン) の選択肢。 表示名 → gen_latest_route.py の --route ID。
 ROUTE_CHOICES = [
@@ -124,6 +126,7 @@ class PipelineTestGUI:
         self.var_place_scale = tk.StringVar(value="1.00")     # 拡大率
         self.var_place_dx = tk.StringVar(value="0")           # 横ずらしmm(+右)
         self.var_place_dy = tk.StringVar(value="0")           # 縦ずらしmm(+上)
+        self.var_preset_name = tk.StringVar(value="")         # 選択中プリセット名
         # 透明ボード線抽出 (背景差分 + 色フィルタ) 用の state
         self.background_bgr = None          # 空ボード基準フレーム (np.ndarray BGR)
         self.var_line_mode = tk.StringVar(value="dark")   # dark/black/blue/red/green
@@ -231,6 +234,18 @@ class PipelineTestGUI:
         route_frame = ttk.LabelFrame(self.root,
             text="② ルート選択 (生成バックボーン)", padding=6)
         route_frame.pack(fill=tk.X, padx=6, pady=(4, 0))
+        # 行0: プリセット (ルート/レバー/配置をまとめて保存・呼び出し)
+        ps_row = ttk.Frame(route_frame); ps_row.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(ps_row, text="プリセット:").pack(side=tk.LEFT, padx=(2, 2))
+        self.cmb_preset = ttk.Combobox(ps_row, textvariable=self.var_preset_name,
+            width=28, state="readonly", values=self._preset_names())
+        self.cmb_preset.pack(side=tk.LEFT, padx=2)
+        self.cmb_preset.bind("<<ComboboxSelected>>", lambda e: self.on_load_preset())
+        ttk.Button(ps_row, text="読込", command=self.on_load_preset, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Button(ps_row, text="保存", command=self.on_save_preset, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Button(ps_row, text="削除", command=self.on_delete_preset, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Label(ps_row, text="← 現在の設定を名前を付けて保存 / 選んで読込",
+            foreground="#777").pack(side=tk.LEFT, padx=(8, 2))
         # 行1: ルート / IP category / design (コンボボックス群)
         r1 = ttk.Frame(route_frame); r1.pack(fill=tk.X)
         ttk.Label(r1, text="ルート:").pack(side=tk.LEFT, padx=(2, 2))
@@ -677,6 +692,77 @@ class PipelineTestGUI:
             self._show_preview_pil(img)
 
     # ---------- パイプライン実行 ----------
+
+    # ------------------------------------------------------------------
+    # 生成設定プリセット (ルート/レバー/配置を一括 保存・呼び出し)
+    # ------------------------------------------------------------------
+    def _preset_var_map(self):
+        """プリセットに保存する var の {キー: tk変数}。"""
+        return {
+            "route": self.var_route, "ip_category": self.var_ip_category,
+            "design_mode": self.var_design_mode, "sdxl_steps": self.var_sdxl_steps,
+            "seed": self.var_seed, "vstretch": self.var_vstretch,
+            "literal_only": self.var_literal_only, "warp_correct": self.var_warp_correct,
+            "one_stroke": self.var_one_stroke, "ip_scale": self.var_ip_scale,
+            "ip_strength": self.var_ip_strength, "ip_diff": self.var_ip_diff,
+            "min_feature": self.var_min_feature, "ip_frac": self.var_ip_frac,
+            "place_scale": self.var_place_scale, "place_dx": self.var_place_dx,
+            "place_dy": self.var_place_dy,
+        }
+
+    def _load_presets_file(self) -> dict:
+        try:
+            return json.loads(PRESETS_FILE.read_text(encoding="utf-8")) or {}
+        except Exception:
+            return {}
+
+    def _preset_names(self):
+        return sorted(self._load_presets_file().keys())
+
+    def _refresh_preset_dropdown(self):
+        if hasattr(self, "cmb_preset"):
+            self.cmb_preset.config(values=self._preset_names())
+
+    def on_save_preset(self):
+        name = simpledialog.askstring("プリセット保存",
+            "プリセット名を入力 (既存名で上書き):",
+            initialvalue=self.var_preset_name.get() or "")
+        if not name:
+            return
+        data = self._load_presets_file()
+        data[name] = {k: v.get() for k, v in self._preset_var_map().items()}
+        PRESETS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PRESETS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.var_preset_name.set(name)
+        self._refresh_preset_dropdown()
+        self.log(f"プリセット保存: {name}")
+
+    def on_load_preset(self):
+        name = self.var_preset_name.get()
+        data = self._load_presets_file()
+        if name not in data:
+            return
+        d = data[name]
+        for k, v in self._preset_var_map().items():
+            if k in d:
+                try:
+                    v.set(d[k])
+                except Exception:
+                    pass
+        self.log(f"プリセット読込: {name}")
+
+    def on_delete_preset(self):
+        name = self.var_preset_name.get()
+        data = self._load_presets_file()
+        if name not in data:
+            return
+        if not messagebox.askyesno("プリセット削除", f"「{name}」を削除しますか?"):
+            return
+        del data[name]
+        PRESETS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.var_preset_name.set("")
+        self._refresh_preset_dropdown()
+        self.log(f"プリセット削除: {name}")
 
     def on_run_pipeline(self):
         if self.selected_sketch_path is None:
