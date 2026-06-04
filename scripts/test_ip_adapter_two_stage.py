@@ -87,6 +87,132 @@ def _resolve_style_ref(args) -> Path:
     return Path(chosen)
 
 
+DEFAULT_STAGE1_PROMPT = ("1boy, solo, young boy with full body, "
+                         "messy hair, surprised expression, simple t-shirt")
+
+
+def _resolve_style_ref_for(category, style_ref, seed, skip_stage2):
+    """category/明示指定から style ref Path を解決 (skip 時 or other は None)。"""
+    if skip_stage2:
+        return None
+    if style_ref is not None:
+        return Path(style_ref)
+    pool = STYLE_REF_POOLS.get(category, [])
+    if not pool:
+        return None
+    import random
+    return Path(random.Random(seed).choice(pool))
+
+
+def two_stage_generate(user_sketch, *, category="character", style_ref=None,
+                       stage1_prompt=DEFAULT_STAGE1_PROMPT, stage2_prompt=None,
+                       stage2_strength=0.45, ip_scale=0.6, seed=42,
+                       resolution=None, stage1_resolution=None,
+                       skip_stage2=False, stage1_preset=None, work_dir=None):
+    """sketch → matsumoto two-stage → 最終線画 PIL を返す (vectorize はしない=呼び側の責務)。
+
+    user_sketch: PIL.Image か path。 PIL の場合 work_dir に一時保存して Stage1 subprocess へ渡す。
+    resolution / stage1_resolution: (W,H) tuple か None (None=panel aspect の SDXL bucket)。
+    work_dir: Stage1 出力・中間画像の置き場。 None なら tempdir (CLI は args.output を渡す)。
+    """
+    from PIL import Image
+    import torch, subprocess, tempfile
+    from modules.panel_geometry import panel_image_resolution
+
+    _tmp = None
+    if work_dir is None:
+        _tmp = tempfile.TemporaryDirectory(); wd = Path(_tmp.name)
+    else:
+        wd = Path(work_dir); wd.mkdir(parents=True, exist_ok=True)
+
+    panel_wh = panel_image_resolution()
+    res_w, res_h = resolution if resolution else panel_wh
+    s1_w, s1_h = stage1_resolution if stage1_resolution else panel_wh
+
+    if isinstance(user_sketch, (str, Path)):
+        sketch_path = Path(user_sketch)
+    else:
+        sketch_path = wd / "_input_sketch.png"
+        user_sketch.convert("RGB").save(sketch_path)
+
+    if stage1_preset is None:
+        stage1_preset = CATEGORY_TO_STAGE1_PRESET.get(category, "illustrious_v2_inpaint")
+    style_ref_p = _resolve_style_ref_for(category, style_ref, seed, skip_stage2)
+    print(f"[2stage] category={category} stage1_preset={stage1_preset} "
+          f"style_ref={style_ref_p or '(none→skip)'} res s1={s1_w}x{s1_h} s2={res_w}x{res_h}")
+
+    # Stage 1: 構図確定 (compare_imagegen_models 経由、 別プロセスで SDXL ロード→終了で解放)
+    s1_dir = wd / "stage1"; s1_dir.mkdir(exist_ok=True)
+    rc = subprocess.run([
+        "./venv/bin/python", "-m", "scripts.compare_imagegen_models",
+        "--guide", str(sketch_path), "--prompt", stage1_prompt,
+        "--presets", stage1_preset, "--seed", str(seed),
+        "--resolution", f"{s1_w}x{s1_h}", "--out", str(s1_dir),
+    ], cwd=str(_ROOT)).returncode
+    if rc != 0:
+        raise RuntimeError(f"Stage 1 failed (exit {rc})")
+    s1_out = s1_dir / f"{stage1_preset}.png"
+    if not s1_out.exists():
+        raise RuntimeError(f"Stage 1 output not found: {s1_out}")
+
+    if style_ref_p is None:
+        # Stage 2 skip: Stage 1 出力をそのまま最終結果に
+        final = Image.open(s1_out).convert("RGB").resize((res_w, res_h))
+        if work_dir is not None:
+            final.save(wd / "20_final_no_ip_adapter.png")
+        if _tmp is not None:
+            _tmp.cleanup()
+        return final
+
+    if not style_ref_p.exists():
+        raise FileNotFoundError(f"style ref not found: {style_ref_p}")
+
+    # Stage 2: img2img + IP-Adapter で style 転写 (構図維持)
+    print("[2stage] Stage 2: IP-Adapter style transfer")
+    from diffusers import StableDiffusionXLImg2ImgPipeline
+    try:
+        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            "John6666/illustrious-xl-early-release-v0-sdxl",
+            torch_dtype=torch.float16, variant="fp16", use_safetensors=True)
+    except (ValueError, OSError) as e:
+        print(f"[2stage] variant=fp16 not available, retrying without: {e}")
+        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
+            "John6666/illustrious-xl-early-release-v0-sdxl",
+            torch_dtype=torch.float16, use_safetensors=True)
+    pipe = pipe.to("cuda")
+    pipe.enable_vae_tiling(); pipe.enable_vae_slicing()
+    pipe.load_ip_adapter("h94/IP-Adapter", subfolder="sdxl_models",
+                         weight_name="ip-adapter_sdxl.safetensors")
+    pipe.set_ip_adapter_scale(ip_scale)
+
+    init = Image.open(s1_out).convert("RGB").resize((res_w, res_h))
+    style_ref_img = Image.open(style_ref_p).convert("RGB").resize((res_w, res_h))
+    if work_dir is not None:
+        init.save(wd / "10_init_from_stage1.png")
+        style_ref_img.save(wd / "11_style_ref.png")
+
+    full = (stage2_prompt or stage1_prompt) + (
+        ", monochrome, greyscale, lineart, sketch, white_background, simple_background")
+    negative = ("color, colored, blue background, cyan, sky, gradient, "
+                "hatching, crosshatch, screentone, halftone, dot pattern, "
+                "filled background, paper texture, scribble, sketchy, "
+                "shading, gray, sepia, watermark, signature, text, frame, border, "
+                "blurry, noise, jpeg artifacts")
+    gen = torch.Generator("cuda").manual_seed(seed)
+    t0 = time.time()
+    result = pipe(prompt=full, negative_prompt=negative, image=init,
+                  ip_adapter_image=style_ref_img, strength=stage2_strength,
+                  num_inference_steps=28, guidance_scale=6.5, generator=gen)
+    final = result.images[0]
+    print(f"[2stage] Stage 2 done ({time.time()-t0:.1f}s)")
+    if work_dir is not None:
+        final.save(wd / f"20_stage2_str{stage2_strength:.2f}_ip{ip_scale:.2f}.png")
+    del pipe; import gc; gc.collect(); torch.cuda.empty_cache()
+    if _tmp is not None:
+        _tmp.cleanup()
+    return final
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(
         description=__doc__,
@@ -126,170 +252,50 @@ def main() -> int:
                          "実行時間 ~64s → ~30s に短縮、 Stage 2 の副作用 (style 過剰 / "
                          "副題材化) も回避可能。")
     args = ap.parse_args()
-
     args.output.mkdir(parents=True, exist_ok=True)
 
-    # 解像度: 省略時は panel aspect の SDXL bucket (= ボードと同じ縦横比)。
-    # Stage 1 / Stage 2 を同一解像度で揃え、 init/final のアスペクト不整合を防ぐ。
     from modules.panel_geometry import parse_resolution, panel_image_resolution
     panel_wh = panel_image_resolution()
-    res_w, res_h = parse_resolution(args.resolution) or panel_wh
-    s1_w, s1_h = parse_resolution(args.stage1_resolution) or panel_wh
-    print(f"[2stage] resolution: stage1={s1_w}x{s1_h}, stage2={res_w}x{res_h}")
+    res = parse_resolution(args.resolution) or panel_wh
+    s1res = parse_resolution(args.stage1_resolution) or panel_wh
+    res_w, res_h = res
 
-    # stage1 preset 解決
-    if args.stage1_preset is None:
-        args.stage1_preset = CATEGORY_TO_STAGE1_PRESET[args.category]
-    print(f"[2stage] category={args.category}, stage1_preset={args.stage1_preset}")
-
-    # --skip-stage2: Stage 2 自体を skip (style_ref を None 扱いに)
-    # 後続の "if style_ref is None" 分岐で Stage 2 skip 経路に入る
-    if args.skip_stage2:
-        print(f"[2stage] --skip-stage2: Stage 1 + Vectorize のみ実行")
-        style_ref = None
-    else:
-        # style ref 解決 (--style-ref 直指定 or --category から ランダム選択)
-        style_ref = _resolve_style_ref(args)
-    if style_ref is None:
-        print(f"[2stage] Stage 2 skip (--skip-stage2 or category 'other')")
-    else:
-        if not style_ref.exists():
-            print(f"[2stage] style ref not found: {style_ref}")
-            return 2
-        print(f"[2stage] style ref ({args.category}): {style_ref}")
-
-    from PIL import Image
-    import torch
-
-    # ============================================================
-    # Stage 1: illustrious_v2_inpaint で構図確定 (compare_imagegen_models 経由)
-    # ============================================================
-    print(f"[2stage] Stage 1: 構図確定 ({args.stage1_preset})")
-    import subprocess
-    s1_dir = args.output / "stage1"
-    s1_dir.mkdir(exist_ok=True)
-    res_code = subprocess.run([
-        "./venv/bin/python", "-m", "scripts.compare_imagegen_models",
-        "--guide", str(args.user_sketch),
-        "--prompt", args.stage1_prompt,
-        "--presets", args.stage1_preset,
-        "--seed", str(args.seed),
-        "--resolution", f"{s1_w}x{s1_h}",
-        "--out", str(s1_dir),
-    ], cwd=str(_ROOT)).returncode
-    if res_code != 0:
-        print(f"[2stage] Stage 1 failed (exit {res_code})")
-        return res_code
-    s1_out = s1_dir / f"{args.stage1_preset}.png"
-    if not s1_out.exists():
-        print(f"[2stage] Stage 1 output not found: {s1_out}")
-        return 2
-    print(f"[2stage] Stage 1 ok: {s1_out}")
-
-    # ============================================================
-    # Stage 2: img2img + IP-Adapter で style 転写 (構図維持)
-    # other category なら Stage 2 skip (Plan E のみで clean lineart)
-    # ============================================================
-    if style_ref is None:
-        # Stage 2 skip mode: Stage 1 の出力をそのまま 最終結果に
-        from modules.vectorizer import Vectorizer
-        from modules.stroke_render import render_strokes_to_image
-        final = Image.open(s1_out).convert("RGB").resize((res_w, res_h))
-        final.save(args.output / f"20_final_no_ip_adapter.png")
-        vec = Vectorizer()
-        # object mode は img2img で sketch を stylize するため、 Vectorizer
-        # に user_image を渡すと diff で元線が引かれて 0 strokes になる。
-        # → user_image=None で 全 strokes を抽出。
-        # character/other は inpaint なので user_image diff で「追加された線」
-        # だけ抽出するのが妥当 (元 sketch は別途 robot 側で描画想定)。
-        if args.category == "object":
-            r = vec.vectorize(generated_image=final, user_image=None)
-            mode_label = "object (no diff)"
-        else:
-            user_full = Image.open(args.user_sketch).convert("RGB").resize((res_w, res_h))
-            r = vec.vectorize(generated_image=final, user_image=user_full)
-            mode_label = "other (diff vs user)"
-        rendered = render_strokes_to_image(
-            r.strokes, width=r.image_shape[1], height=r.image_shape[0],
-            line_width=2)
-        rendered.save(args.output / "30_vectorized_strokes.png")
-        print(f"[2stage] {mode_label}: {r.n_strokes} strokes, {r.n_points} pts")
-        return 0
-
-    print(f"[2stage] Stage 2: IP-Adapter style transfer")
-    from diffusers import StableDiffusionXLImg2ImgPipeline
-
-    # variant=fp16 が無い場合のフォールバック
+    # 生成本体は two_stage_generate に委譲 (最終線画 PIL を返す)。 中間画像は
+    # work_dir=args.output に出力されるので CLI 互換 (stage1/, 10_init, 11_style_ref,
+    # 20_stage2..., 20_final_no_ip_adapter)。
     try:
-        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-            "John6666/illustrious-xl-early-release-v0-sdxl",
-            torch_dtype=torch.float16,
-            variant="fp16",
-            use_safetensors=True,
-        )
-    except (ValueError, OSError) as e:
-        print(f"[2stage] variant=fp16 not available, retrying without: {e}")
-        pipe = StableDiffusionXLImg2ImgPipeline.from_pretrained(
-            "John6666/illustrious-xl-early-release-v0-sdxl",
-            torch_dtype=torch.float16,
-            use_safetensors=True,
-        )
-    pipe = pipe.to("cuda")
-    pipe.enable_vae_tiling()
-    pipe.enable_vae_slicing()
-    pipe.load_ip_adapter(
-        "h94/IP-Adapter",
-        subfolder="sdxl_models",
-        weight_name="ip-adapter_sdxl.safetensors",
-    )
-    pipe.set_ip_adapter_scale(args.ip_scale)
+        final = two_stage_generate(
+            args.user_sketch, category=args.category, style_ref=args.style_ref,
+            stage1_prompt=args.stage1_prompt, stage2_prompt=args.stage2_prompt,
+            stage2_strength=args.stage2_strength, ip_scale=args.ip_scale,
+            seed=args.seed, resolution=res, stage1_resolution=s1res,
+            skip_stage2=args.skip_stage2, stage1_preset=args.stage1_preset,
+            work_dir=args.output)
+    except Exception as e:
+        print(f"[2stage] generation failed: {e}")
+        return 2
 
-    init = Image.open(s1_out).convert("RGB").resize((res_w, res_h))
-    style_ref_img = Image.open(style_ref).convert("RGB").resize((res_w, res_h))
-    init.save(args.output / "10_init_from_stage1.png")
-    style_ref_img.save(args.output / "11_style_ref.png")
-
-    stage2_prompt = args.stage2_prompt or args.stage1_prompt
-    style_hint = (", monochrome, greyscale, lineart, sketch, "
-                  "white_background, simple_background")
-    full = stage2_prompt + style_hint
-    negative = ("color, colored, blue background, cyan, sky, gradient, "
-                "hatching, crosshatch, screentone, halftone, dot pattern, "
-                "filled background, paper texture, scribble, sketchy, "
-                "shading, gray, sepia, "
-                "watermark, signature, text, frame, border, "
-                "blurry, noise, jpeg artifacts")
-
-    gen = torch.Generator("cuda").manual_seed(args.seed)
-    t0 = time.time()
-    result = pipe(
-        prompt=full,
-        negative_prompt=negative,
-        image=init,
-        ip_adapter_image=style_ref_img,
-        strength=args.stage2_strength,
-        num_inference_steps=28,
-        guidance_scale=6.5,
-        generator=gen,
-    )
-    elapsed = time.time() - t0
-    out = args.output / (
-        f"20_stage2_str{args.stage2_strength:.2f}"
-        f"_ip{args.ip_scale:.2f}.png")
-    result.images[0].save(out)
-    print(f"[2stage] Stage 2 saved {out} ({elapsed:.1f}s)")
-
-    # Vectorize もまとめて
+    # Vectorize + render (CLI 出力 30_vectorized_strokes.png)。
+    # Stage 2 が走った / 走らなかった (skip or other) で diff モードを分ける:
+    #   object かつ Stage2 無し → user diff すると 0 strokes になるので no-diff。
+    #   それ以外 → user_image diff で「追加された線」だけ抽出。
+    from PIL import Image
     from modules.vectorizer import Vectorizer
     from modules.stroke_render import render_strokes_to_image
+    used_ip = _resolve_style_ref_for(
+        args.category, args.style_ref, args.seed, args.skip_stage2) is not None
     vec = Vectorizer()
-    user_full = Image.open(args.user_sketch).convert("RGB").resize((res_w, res_h))
-    r = vec.vectorize(generated_image=result.images[0], user_image=user_full)
-    rendered = render_strokes_to_image(
+    if not used_ip and args.category == "object":
+        r = vec.vectorize(generated_image=final, user_image=None)
+        mode_label = "object (no diff)"
+    else:
+        user_full = Image.open(args.user_sketch).convert("RGB").resize((res_w, res_h))
+        r = vec.vectorize(generated_image=final, user_image=user_full)
+        mode_label = "stage2/diff vs user"
+    render_strokes_to_image(
         r.strokes, width=r.image_shape[1], height=r.image_shape[0],
-        line_width=2)
-    rendered.save(args.output / "30_vectorized_strokes.png")
-    print(f"[2stage] Vectorize: {r.n_strokes} strokes, {r.n_points} pts")
+        line_width=2).save(args.output / "30_vectorized_strokes.png")
+    print(f"[2stage] {mode_label}: {r.n_strokes} strokes, {r.n_points} pts")
     return 0
 
 

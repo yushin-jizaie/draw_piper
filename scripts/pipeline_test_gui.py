@@ -50,6 +50,20 @@ except Exception as e:
 PIPELINE_SCRIPT = ROOT / "scripts" / "gen_latest_route.py"
 LOGS_DIR = ROOT / "logs"
 
+# 生成ルート (バックボーン) の選択肢。 表示名 → gen_latest_route.py の --route ID。
+ROUTE_CHOICES = [
+    "flux_decorate (現行)",
+    "sdxl_routed (SDXL+ルート判定)",
+    "sdxl_text2img (SDXL prompt駆動)",
+    "ip_matsumoto (IP-Adapter 2段)",
+]
+ROUTE_NAME_TO_ID = {
+    "flux_decorate (現行)": "flux_decorate",
+    "sdxl_routed (SDXL+ルート判定)": "sdxl_routed",
+    "sdxl_text2img (SDXL prompt駆動)": "sdxl_text2img",
+    "ip_matsumoto (IP-Adapter 2段)": "ip_matsumoto",
+}
+
 
 class PipelineTestGUI:
     def __init__(self, root: tk.Tk):
@@ -79,6 +93,10 @@ class PipelineTestGUI:
         # literal-only: カード推論をやめ「何に見えるか」 を生成 prompt に使い、
         # vectorize も full 抽出 (diff しない) でテストする。
         self.var_literal_only = tk.BooleanVar(value=False)
+        # 生成ルート (バックボーン)。 default は現行 FLUX-decorate。
+        self.var_route = tk.StringVar(value=ROUTE_CHOICES[0])
+        # IP-松本ルートの参照画風プール (character/object/other)。
+        self.var_ip_category = tk.StringVar(value="character")
         # 透明ボード線抽出 (背景差分 + 色フィルタ) 用の state
         self.background_bgr = None          # 空ボード基準フレーム (np.ndarray BGR)
         self.var_line_mode = tk.StringVar(value="dark")   # dark/black/blue/red/green
@@ -182,8 +200,23 @@ class PipelineTestGUI:
         self.btn_extract_lines.pack(side=tk.LEFT, padx=(10, 2))
 
         # ② パイプライン実行
+        # ルート選択 (生成バックボーン)
+        route_frame = ttk.LabelFrame(self.root,
+            text="② ルート選択 (生成バックボーン)", padding=6)
+        route_frame.pack(fill=tk.X, padx=6, pady=(4, 0))
+        ttk.Label(route_frame, text="ルート:").pack(side=tk.LEFT, padx=(2, 2))
+        ttk.Combobox(route_frame, textvariable=self.var_route, width=26,
+            state="readonly", values=ROUTE_CHOICES).pack(side=tk.LEFT, padx=2)
+        ttk.Label(route_frame, text="IP category:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Combobox(route_frame, textvariable=self.var_ip_category, width=10,
+            state="readonly", values=["character", "object", "other"]
+            ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(route_frame,
+            text="FLUX: steps4固定/preset・negative無効  SDXL: preset/negative/steps有効  IP: categoryで参照画風",
+            foreground="#777").pack(side=tk.LEFT, padx=(10, 2))
+
         run_frame = ttk.LabelFrame(self.root,
-            text="② パイプライン実行", padding=8)
+            text="③ パイプライン実行", padding=8)
         run_frame.pack(fill=tk.X, padx=6, pady=4)
         ttk.Label(run_frame, text="SDXL steps:").pack(side=tk.LEFT, padx=2)
         tk.Spinbox(run_frame, from_=1, to=30, width=4,
@@ -591,6 +624,9 @@ class PipelineTestGUI:
                 "別のパイプラインが実行中です。")
             return
         steps = int(self.var_sdxl_steps.get())
+        # ルート/category は Tk var なのでメインスレッドで読む (worker へ値渡し)。
+        route_id = ROUTE_NAME_TO_ID.get(self.var_route.get(), "flux_decorate")
+        ip_category = self.var_ip_category.get()
         seed_str = self.var_seed.get().strip()
         seed_arg = []
         if seed_str:
@@ -604,6 +640,7 @@ class PipelineTestGUI:
         if not messagebox.askyesno("パイプライン実行確認",
                 f"以下の設定でパイプラインを実行しますか?\n\n"
                 f"  入力: {self.selected_sketch_path}\n"
+                f"  ルート: {route_id}\n"
                 f"  SDXL steps: {steps}\n"
                 f"  Seed: {seed_str or '自動'}\n\n"
                 "VLM → ImageGen → Vectorizer の順で実行 "
@@ -647,7 +684,7 @@ class PipelineTestGUI:
         self.btn_view_topic.config(state=tk.DISABLED)
         self.pipeline_thread = threading.Thread(
             target=self._do_run_pipeline,
-            args=(self.selected_sketch_path, steps, seed_arg),
+            args=(self.selected_sketch_path, steps, seed_arg, route_id, ip_category),
             daemon=True)
         self.pipeline_thread.start()
         # cycle_dir 監視ループも起動
@@ -655,7 +692,9 @@ class PipelineTestGUI:
         self.root.after(500, self._poll_stage_files)
 
     def _do_run_pipeline(self, sketch_path: Path, steps: int,
-                         seed_arg: list[str]):
+                         seed_arg: list[str],
+                         route_id: str = "flux_decorate",
+                         ip_category: str = "character"):
         python = sys.executable
         try:
             vstretch = float(self.var_vstretch.get())
@@ -668,7 +707,10 @@ class PipelineTestGUI:
             "--cycles", "1",
             "--log-dir", str(LOGS_DIR),
             "--vstretch", f"{vstretch:.3f}",
+            "--route", route_id,
         ] + seed_arg
+        if route_id == "ip_matsumoto":
+            cmd += ["--category", ip_category]
         if self.var_warp_correct.get():
             cmd.append("--warp-correct")
         if self.var_one_stroke.get():
