@@ -282,7 +282,7 @@ class PipelineTestGUI:
         ttk.Checkbutton(ip_row, text="加筆のみ(diff)", variable=self.var_ip_diff
             ).pack(side=tk.LEFT, padx=(8, 2))
         ttk.Label(ip_row, text="ディテール下限mm:").pack(side=tk.LEFT, padx=(8, 2))
-        tk.Spinbox(ip_row, from_=2.0, to=20.0, increment=0.5, width=5, format="%.1f",
+        tk.Spinbox(ip_row, from_=0.0, to=20.0, increment=0.5, width=5, format="%.1f",
             textvariable=self.var_min_feature).pack(side=tk.LEFT, padx=2)
         ttk.Label(ip_row, text="IP被写体%:").pack(side=tk.LEFT, padx=(8, 2))
         tk.Spinbox(ip_row, from_=0.20, to=0.60, increment=0.02, width=5, format="%.2f",

@@ -170,16 +170,20 @@ def revectorize(gen_png, args, cyc):
     obj_lists = [place_fill(st)] if st else []
     log(f"revectorize: vectorize {len(st)} strokes from {gen_png}")
 
-    mf = float(getattr(args, "min_feature", 8.0) or 8.0)
-    _rc = dict(min_radius_mm=mf, min_feature_mm=mf, min_loop_perim_mm=mf * 3.125)
+    _mfraw = getattr(args, "min_feature", 8.0)
+    mf = 8.0 if _mfraw is None else float(_mfraw)
     PW, PH = _panel_mm(); sx = PW / CW; sy = PH / CH
-    cleaned = []
-    for ol in obj_lists:
-        mm = [[(x * sx, y * sy) for x, y in s] for s in ol]
-        ce, info = enforce_robot_constraints(mm, **_rc)
-        cleaned.append([[(x / sx, y / sy) for x, y in s] for s in ce])
-    obj_lists = [o for o in cleaned if o]
-    log(f"revectorize robot constraints (下限{mf}mm): kept {sum(len(o) for o in obj_lists)} strokes")
+    if mf > 0:
+        _rc = dict(min_radius_mm=mf, min_feature_mm=mf, min_loop_perim_mm=mf * 3.125)
+        cleaned = []
+        for ol in obj_lists:
+            mm = [[(x * sx, y * sy) for x, y in s] for s in ol]
+            ce, info = enforce_robot_constraints(mm, **_rc)
+            cleaned.append([[(x / sx, y / sy) for x, y in s] for s in ce])
+        obj_lists = [o for o in cleaned if o]
+        log(f"revectorize robot constraints (下限{mf}mm): kept {sum(len(o) for o in obj_lists)} strokes")
+    else:
+        log("revectorize ディテール下限0: 曲率制約スキップ (生ストローク保持・平滑化なし)")
 
     if obj_lists:
         if args.one_stroke:
@@ -261,20 +265,25 @@ def run_driver(objs, backend, args, cyc, visions, W, H):
             obj_lists.append(place_fill(st))
 
     # ロボット描画制約: 曲率半径・微小ディテール/渦巻き/小円を除去 (mm 空間で評価)。
-    # min_feature でディテール下限を可変 (小さいほど細部を残す=濃い)。 既定8mm。
-    mf = float(getattr(args, "min_feature", 8.0) or 8.0)
-    _rc = dict(min_radius_mm=mf, min_feature_mm=mf, min_loop_perim_mm=mf * 3.125)
+    # min_feature でディテール下限を可変。 0 以下なら制約を完全スキップ (生ストローク保持=
+    # 平滑化されず detail がそのまま。 ★0 を falsy で 8 に化けさせないよう明示判定)。
+    _mfraw = getattr(args, "min_feature", 8.0)
+    mf = 8.0 if _mfraw is None else float(_mfraw)
     PW, PH = _panel_mm(); sx = PW / CW; sy = PH / CH
-    cleaned = []; tot = {"dropped_tiny": 0, "dropped_loop": 0, "dropped_spiral": 0, "dropped_kinky": 0}
-    for ol in obj_lists:
-        mm = [[(x * sx, y * sy) for x, y in st] for st in ol]
-        ce, info = enforce_robot_constraints(mm, **_rc)
-        for k in tot: tot[k] += info.get(k, 0)
-        cleaned.append([[(x / sx, y / sy) for x, y in st] for st in ce])
-    obj_lists = [o for o in cleaned if o]
-    log(f"robot constraints: kept {sum(len(o) for o in obj_lists)} strokes, "
-        f"dropped tiny={tot['dropped_tiny']} loop={tot['dropped_loop']} "
-        f"spiral={tot['dropped_spiral']} kinky={tot['dropped_kinky']} (>=8mm radius)")
+    if mf > 0:
+        _rc = dict(min_radius_mm=mf, min_feature_mm=mf, min_loop_perim_mm=mf * 3.125)
+        cleaned = []; tot = {"dropped_tiny": 0, "dropped_loop": 0, "dropped_spiral": 0, "dropped_kinky": 0}
+        for ol in obj_lists:
+            mm = [[(x * sx, y * sy) for x, y in st] for st in ol]
+            ce, info = enforce_robot_constraints(mm, **_rc)
+            for k in tot: tot[k] += info.get(k, 0)
+            cleaned.append([[(x / sx, y / sy) for x, y in st] for st in ce])
+        obj_lists = [o for o in cleaned if o]
+        log(f"robot constraints (下限{mf}mm): kept {sum(len(o) for o in obj_lists)} strokes, "
+            f"dropped tiny={tot['dropped_tiny']} loop={tot['dropped_loop']} "
+            f"spiral={tot['dropped_spiral']} kinky={tot['dropped_kinky']}")
+    else:
+        log("ディテール下限0: 曲率制約スキップ (生ストローク保持・平滑化なし)")
 
     # 中心→外側・オブジェクト単位の描画順
     if args.one_stroke:
@@ -306,9 +315,11 @@ def run_driver(objs, backend, args, cyc, visions, W, H):
                                     flags=cv2.INTER_LINEAR, borderValue=255)
             combined = vc.vectorize(
                 generated_image=Image.fromarray(warped).convert("RGB"), user_image=None).strokes
-            _mm = [[(x * sx, y * sy) for x, y in st] for st in combined]
-            _ce, _ = enforce_robot_constraints(_mm, **_rc)  # warp 後も曲率制約を再保証
-            combined = [[(x / sx, y / sy) for x, y in st] for st in _ce]
+            if mf > 0:
+                _mm = [[(x * sx, y * sy) for x, y in st] for st in combined]
+                _ce, _ = enforce_robot_constraints(
+                    _mm, min_radius_mm=mf, min_feature_mm=mf, min_loop_perim_mm=mf * 3.125)
+                combined = [[(x / sx, y / sy) for x, y in st] for st in _ce]
             if args.one_stroke:
                 combined = order_strokes_tsp_joined([combined], (CW / 2.0, CH / 2.0), max_connect=80.0)
             else:
