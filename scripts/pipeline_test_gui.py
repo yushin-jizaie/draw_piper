@@ -1710,6 +1710,7 @@ class BinarizeCalibWindow:
     def _update_preview(self):
         if Image is None or ImageTk is None:
             return
+        import numpy as np      # メソッドローカル (np は __init__ ローカルで scope 外のため)
         # 元画像
         pil_orig = Image.fromarray(self.gray)
         self._tk_orig = self._fit_canvas_image(pil_orig, self.canvas_orig)
