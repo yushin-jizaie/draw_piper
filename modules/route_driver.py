@@ -146,6 +146,71 @@ def run_vlm(objs, args):
     return visions
 
 
+def revectorize(gen_png, args, cyc):
+    """既存の生成画像(panel composite)から strokes だけ作り直す (生成をスキップ)。
+
+    生成はOKだがストローク密度/制約だけ変えたい時に使う。 vectorize → place_fill →
+    曲率制約(min_feature) → stroke順(one_stroke) → 配置微調整 → cycle_01 出力。
+    生成(FLUX/SDXL)を呼ばないので即時・GPU不要 (CPU vectorize のみ)。
+    """
+    from modules.vectorizer import Vectorizer, load_binarize_config
+    from modules.gen_line_extract import extract_lines
+    from modules.stroke_order import order_strokes_center_out, order_strokes_tsp_joined
+    from modules.stroke_render import render_strokes_to_image
+    from modules.robot_draw_constraints import enforce_robot_constraints
+
+    (cyc / "vec_debug").mkdir(parents=True, exist_ok=True)
+    img = Image.open(gen_png).convert("RGB")
+    if img.size != (CW, CH):
+        img = img.resize((CW, CH))
+    V = max(0.1, args.vstretch)
+    vimg = img if V == 1.0 else img.resize((img.width, max(1, round(img.height * V))), Image.LANCZOS)
+    vc = Vectorizer(gen_line_mode="binarize", **load_binarize_config())
+    st = vc.vectorize(generated_image=extract_lines(vimg), user_image=None).strokes
+    obj_lists = [place_fill(st)] if st else []
+    log(f"revectorize: vectorize {len(st)} strokes from {gen_png}")
+
+    mf = float(getattr(args, "min_feature", 8.0) or 8.0)
+    _rc = dict(min_radius_mm=mf, min_feature_mm=mf, min_loop_perim_mm=mf * 3.125)
+    PW, PH = _panel_mm(); sx = PW / CW; sy = PH / CH
+    cleaned = []
+    for ol in obj_lists:
+        mm = [[(x * sx, y * sy) for x, y in s] for s in ol]
+        ce, info = enforce_robot_constraints(mm, **_rc)
+        cleaned.append([[(x / sx, y / sy) for x, y in s] for s in ce])
+    obj_lists = [o for o in cleaned if o]
+    log(f"revectorize robot constraints (下限{mf}mm): kept {sum(len(o) for o in obj_lists)} strokes")
+
+    if obj_lists:
+        if args.one_stroke:
+            combined = order_strokes_tsp_joined(obj_lists, (CW / 2.0, CH / 2.0), max_connect=80.0)
+        else:
+            combined = order_strokes_center_out(obj_lists, (CW / 2.0, CH / 2.0))
+    else:
+        combined = []
+
+    pscale = float(getattr(args, "place_scale", 1.0) or 1.0)
+    pdx_mm = float(getattr(args, "place_dx_mm", 0.0) or 0.0)
+    pdy_mm = float(getattr(args, "place_dy_mm", 0.0) or 0.0)
+    if combined and (pscale != 1.0 or pdx_mm or pdy_mm):
+        cx, cy = CW / 2.0, CH / 2.0; dxp = pdx_mm * (CW / PW); dyp = -pdy_mm * (CH / PH)
+        combined = [[((x - cx) * pscale + cx + dxp, (y - cy) * pscale + cy + dyp) for x, y in s] for s in combined]
+
+    render_strokes_to_image(combined, width=CW, height=CH, line_width=2).save(cyc / "vec_debug" / "06_strokes.png")
+    img.save(cyc / "generated.png")
+    g = cv2.cvtColor(np.array(img), cv2.COLOR_RGB2GRAY)
+    Image.fromarray(cv2.threshold(g, 200, 255, cv2.THRESH_BINARY)[1]).save(cyc / "vec_debug" / "02a_user_binary.png")
+    json.dump({"image_shape": [CH, CW], "n_strokes": len(combined),
+               "n_points": sum(len(s) for s in combined), "strokes": combined},
+              open(cyc / "strokes.json", "w"))
+    (cyc / "prompt.txt").write_text("(revectorize: strokes remade from existing image)", encoding="utf-8")
+    json.dump({"subject": {"ja": "再ベクトル化", "en": "revectorize"}, "location": {"ja": ""},
+               "action": {"ja": ""}, "confidence": 1.0, "n_objects": 1,
+               "route": f"revectorize (strokes only, 下限{mf}mm)", "src": str(gen_png)},
+              open(cyc / "topic_guess.json", "w"), ensure_ascii=False, indent=2)
+    log("DONE (revectorize)")
+
+
 def run_driver(objs, backend, args, cyc, visions, W, H):
     """全ルート共通: per-obj 生成 → 線抽出+vectorize → 配置 → 曲率制約 → stroke順
     → warp補正 → cycle_01 契約ファイル出力。 backend.generate_object_image で生成方式が差し替わる。

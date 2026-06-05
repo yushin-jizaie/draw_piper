@@ -30,7 +30,9 @@ from modules.route_backends import make_backend
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--sketch", type=Path, required=True)
+    ap.add_argument("--sketch", type=Path, default=None)
+    # 既存の生成画像(panel composite)から strokes だけ作り直す (生成スキップ・即時)。
+    ap.add_argument("--revectorize", type=Path, default=None)
     ap.add_argument("--steps", type=int, default=4)        # FLUX schnell は 4 step 固定
     ap.add_argument("--cycles", type=int, default=1)       # 互換のため受けるが 1 のみ
     ap.add_argument("--log-dir", type=Path, default=ROOT / "logs")
@@ -70,6 +72,16 @@ def main():
     ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     cyc = args.log_dir / f"vlm_to_image_{ts}" / "cycle_01"
     (cyc / "vec_debug").mkdir(parents=True, exist_ok=True)
+
+    # 再ベクトル化モード: 既存生成画像から strokes だけ作り直す (生成スキップ・即時・GPU不要)。
+    if args.revectorize is not None:
+        from modules.route_driver import revectorize
+        log("revectorize:", args.revectorize, "→", cyc)
+        revectorize(args.revectorize, args, cyc)
+        return 0
+
+    if args.sketch is None:
+        ap.error("--sketch is required (unless --revectorize is given)")
     log("output:", cyc, "route:", args.route)
 
     backend = make_backend(args.route, args)

@@ -349,6 +349,10 @@ class PipelineTestGUI:
             command=self.on_abort_pipeline, width=14,
             state=tk.DISABLED)
         self.btn_abort.pack(side=tk.LEFT, padx=2)
+        self.btn_revec = ttk.Button(run_frame,
+            text="✎ ストローク再生成",
+            command=self.on_revectorize, width=18)
+        self.btn_revec.pack(side=tk.LEFT, padx=2)
 
         # ③ 4 画像プレビュー (横並び、 コンパクト)
         preview_frame = ttk.LabelFrame(self.root,
@@ -911,59 +915,124 @@ class PipelineTestGUI:
         self._stage_polling = True
         self.root.after(500, self._poll_stage_files)
 
+    def on_revectorize(self):
+        """生成はそのまま、 既存の生成画像から strokes だけ作り直す (現在の下限/配置設定で・即時)。"""
+        gen_png = None
+        if self.last_cycle_dir:
+            p = Path(self.last_cycle_dir) / "generated.png"
+            if p.exists():
+                gen_png = p
+        if gen_png is None:
+            cands = sorted(LOGS_DIR.glob("vlm_to_image_*/cycle_*/generated.png"),
+                           key=lambda p: p.stat().st_mtime)
+            if cands:
+                gen_png = cands[-1]
+        if gen_png is None or not gen_png.exists():
+            messagebox.showerror("生成画像なし",
+                "再ベクトル化する生成画像が見つかりません。 先に生成してください。")
+            return
+        if self.pipeline_thread is not None and self.pipeline_thread.is_alive():
+            messagebox.showerror("実行中", "別のパイプラインが実行中です。")
+            return
+        ip_levers = {
+            "min_feature": self.var_min_feature.get(),
+            "place_scale": self.var_place_scale.get(),
+            "place_dx": self.var_place_dx.get(),
+            "place_dy": self.var_place_dy.get(),
+        }
+        self.log(f"再ベクトル化 元画像: {gen_png}")
+        self.btn_run.config(state=tk.DISABLED)
+        self.btn_abort.config(state=tk.NORMAL)
+        self._set_status("再ベクトル化中 (生成スキップ)...", "blue")
+        self._stage_seen = set()
+        self._pre_run_cycles = set(
+            str(p) for p in LOGS_DIR.glob("vlm_to_image_*/cycle_*"))
+        self.last_cycle_dir = None
+        self.lbl_strokes_stat.config(text="(再ベクトル化 待機中...)", fg="#555")
+        for canvas in (self.canvas_strokes,):
+            canvas.delete("all")
+            cw = canvas.winfo_width() or 170; ch = canvas.winfo_height() or 170
+            canvas.create_text(cw // 2, ch // 2, text="(待機中...)",
+                fill="#888", font=("Monaco", 9))
+        self._img_strokes = None
+        self.pipeline_thread = threading.Thread(
+            target=self._do_run_pipeline,
+            args=(None, 4, [], "flux_decorate", "character", "decorate", ip_levers, gen_png),
+            daemon=True)
+        self.pipeline_thread.start()
+        self._stage_polling = True
+        self.root.after(500, self._poll_stage_files)
+
     def _do_run_pipeline(self, sketch_path: Path, steps: int,
                          seed_arg: list[str],
                          route_id: str = "flux_decorate",
                          ip_category: str = "character",
                          design_mode: str = "decorate",
-                         ip_levers: dict | None = None):
+                         ip_levers: dict | None = None,
+                         revectorize_src=None):
         python = sys.executable
         try:
             vstretch = float(self.var_vstretch.get())
         except Exception:
             vstretch = 1.0
-        cmd = [
-            python, str(PIPELINE_SCRIPT),
-            "--sketch", str(sketch_path),
-            "--steps", str(steps),
-            "--cycles", "1",
-            "--log-dir", str(LOGS_DIR),
-            "--vstretch", f"{vstretch:.3f}",
-            "--route", route_id,
-            "--design-mode", design_mode,
-        ] + seed_arg
         lv = ip_levers or {}
-        # ディテール下限・配置微調整は全ルート共通
-        if lv.get("min_feature"):
-            cmd += ["--min-feature", str(lv["min_feature"])]
-        if lv.get("place_scale"):
-            cmd += ["--place-scale", str(lv["place_scale"])]
-        if lv.get("place_dx"):
-            cmd += ["--place-dx-mm", str(lv["place_dx"])]
-        if lv.get("place_dy"):
-            cmd += ["--place-dy-mm", str(lv["place_dy"])]
-        if lv.get("flux_style"):
-            cmd += ["--flux-style", str(lv["flux_style"])]
-        if lv.get("lora_str"):
-            cmd += ["--lora-str", str(lv["lora_str"])]
-        if route_id == "ip_matsumoto":
-            cmd += ["--category", ip_category]
-            if lv.get("ip_scale"):
-                cmd += ["--ip-scale", str(lv["ip_scale"])]
-            if lv.get("stage2_strength"):
-                cmd += ["--stage2-strength", str(lv["stage2_strength"])]
-            if not lv.get("ip_diff", True):
-                cmd.append("--ip-no-diff")
-            if lv.get("ip_frac"):
-                cmd += ["--ip-frac", str(lv["ip_frac"])]
-        if self.var_warp_correct.get():
-            cmd.append("--warp-correct")
-        if self.var_one_stroke.get():
-            cmd.append("--one-stroke")
-        if self.var_no_split.get():
-            cmd.append("--no-split")
-        if self.var_literal_only.get():
-            cmd.append("--literal-only")
+        if revectorize_src is not None:
+            # 再ベクトル化モード: 既存生成画像から strokes だけ作り直す (生成スキップ・即時)
+            cmd = [python, str(PIPELINE_SCRIPT),
+                   "--revectorize", str(revectorize_src),
+                   "--log-dir", str(LOGS_DIR), "--vstretch", f"{vstretch:.3f}"]
+            if lv.get("min_feature"):
+                cmd += ["--min-feature", str(lv["min_feature"])]
+            if lv.get("place_scale"):
+                cmd += ["--place-scale", str(lv["place_scale"])]
+            if lv.get("place_dx"):
+                cmd += ["--place-dx-mm", str(lv["place_dx"])]
+            if lv.get("place_dy"):
+                cmd += ["--place-dy-mm", str(lv["place_dy"])]
+            if self.var_one_stroke.get():
+                cmd.append("--one-stroke")
+        else:
+            cmd = [
+                python, str(PIPELINE_SCRIPT),
+                "--sketch", str(sketch_path),
+                "--steps", str(steps),
+                "--cycles", "1",
+                "--log-dir", str(LOGS_DIR),
+                "--vstretch", f"{vstretch:.3f}",
+                "--route", route_id,
+                "--design-mode", design_mode,
+            ] + seed_arg
+            # ディテール下限・配置微調整は全ルート共通
+            if lv.get("min_feature"):
+                cmd += ["--min-feature", str(lv["min_feature"])]
+            if lv.get("place_scale"):
+                cmd += ["--place-scale", str(lv["place_scale"])]
+            if lv.get("place_dx"):
+                cmd += ["--place-dx-mm", str(lv["place_dx"])]
+            if lv.get("place_dy"):
+                cmd += ["--place-dy-mm", str(lv["place_dy"])]
+            if lv.get("flux_style"):
+                cmd += ["--flux-style", str(lv["flux_style"])]
+            if lv.get("lora_str"):
+                cmd += ["--lora-str", str(lv["lora_str"])]
+            if route_id == "ip_matsumoto":
+                cmd += ["--category", ip_category]
+                if lv.get("ip_scale"):
+                    cmd += ["--ip-scale", str(lv["ip_scale"])]
+                if lv.get("stage2_strength"):
+                    cmd += ["--stage2-strength", str(lv["stage2_strength"])]
+                if not lv.get("ip_diff", True):
+                    cmd.append("--ip-no-diff")
+                if lv.get("ip_frac"):
+                    cmd += ["--ip-frac", str(lv["ip_frac"])]
+            if self.var_warp_correct.get():
+                cmd.append("--warp-correct")
+            if self.var_one_stroke.get():
+                cmd.append("--one-stroke")
+            if self.var_no_split.get():
+                cmd.append("--no-split")
+            if self.var_literal_only.get():
+                cmd.append("--literal-only")
         self.log(f"subprocess 起動: {' '.join(cmd)}")
         t0 = time.time()
         try:
