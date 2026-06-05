@@ -1574,7 +1574,12 @@ class BinarizeCalibWindow:
         # Window
         self.win = tk.Toplevel(parent_gui.root)
         self.win.title("二値化キャリブ")
-        self.win.geometry("1100x600")
+        # 画面右側に配置 (メインGUIと並べて見られるように)
+        try:
+            sw = self.win.winfo_screenwidth()
+            self.win.geometry(f"1100x600+{max(0, sw - 1130)}+60")
+        except Exception:
+            self.win.geometry("1100x600")
         self._build_ui()
         self._update_preview()
 
@@ -1650,8 +1655,9 @@ class BinarizeCalibWindow:
         f_row.pack(fill=tk.X, pady=(2, 0))
         ttk.Label(f_row, text="min_pixels (連結成分 最小 px):"
                   ).pack(side=tk.LEFT, padx=4)
-        tk.Scale(f_row, from_=5, to=100, orient=tk.HORIZONTAL,
-            variable=self.var_min_pixels, length=160
+        tk.Scale(f_row, from_=5, to=1000, orient=tk.HORIZONTAL,
+            variable=self.var_min_pixels, length=160,
+            command=lambda _v: self._update_preview()
         ).pack(side=tk.LEFT, padx=4)
         ttk.Label(f_row, text="  min_length (ポリライン 最短 点数):"
                   ).pack(side=tk.LEFT, padx=(8, 4))
@@ -1721,15 +1727,28 @@ class BinarizeCalibWindow:
             self.lbl_state.config(text=f"binarize 失敗: {e}",
                                    foreground="red")
             return
+        # min_pixels 連結成分フィルタをプレビューにも反映 (小さい成分=反射ノイズを除去して表示)。
+        min_pix = int(self.var_min_pixels.get())
+        n_total = n_kept = 0
+        if min_pix > 0:
+            n, lab, stats, _ = cv2.connectedComponentsWithStats(
+                (mask > 0).astype(np.uint8), 8)
+            n_total = max(0, n - 1)
+            keep = np.zeros_like(mask)
+            for i in range(1, n):
+                if stats[i, cv2.CC_STAT_AREA] >= min_pix:
+                    keep[lab == i] = 255; n_kept += 1
+            mask = keep
         # 白地黒線で表示 (mask は ink=255 なので反転)
         bin_disp = 255 - mask
         pil_bin = Image.fromarray(bin_disp)
         self._tk_bin = self._fit_canvas_image(pil_bin, self.canvas_bin)
-        # 状態 (ink ピクセル率)
+        # 状態 (ink ピクセル率 + min_pixels で残した連結成分数)
         ink_ratio = float((mask == 255).mean())
         self.lbl_state.config(
             text=(f"method={method}  block={block}  c={c}  fixed={fixed}"
-                   f"  ink 率={ink_ratio:.1%}  画像={self.image_path.name}"),
+                   f"  min_pixels={min_pix}(成分 {n_kept}/{n_total}残)"
+                   f"  ink率={ink_ratio:.1%}  画像={self.image_path.name}"),
             foreground="black")
 
     def _fit_canvas_image(self, pil_img, canvas):
