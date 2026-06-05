@@ -102,7 +102,9 @@ def _bad_frac(s, min_radius_mm):
 
 def enforce_robot_constraints(strokes, min_radius_mm=8.0, min_feature_mm=8.0,
                               min_loop_perim_mm=25.0, resample_mm=2.5, max_iters=60,
-                              spiral_turn_rad=4.0 * math.pi, drop_bad_frac=0.5):
+                              spiral_turn_rad=12.0 * math.pi, drop_bad_frac=0.5):
+    # spiral_turn_rad: 総旋回角がこれを超えるストロークを「描けない渦巻き」として除去。
+    # 4π は羽根状の葉/細密な曲線を誤除去するので 12π に緩和 (描画可能性は min_radius が別途保証)。
     """mm 座標の strokes をロボット描画可能(曲率半径>=8mm, 微小なし)に整えて返す。
 
     微小ディテール・微小ループ・渦巻き(多重周回)・平滑化しても急曲率が解けない
