@@ -158,6 +158,9 @@ class PipelineTestGUI:
         ttk.Button(status_bar, text="ログフォルダを開く",
             command=self.open_logs_folder, width=20
         ).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(status_bar, text="ログ窓を表示",
+            command=self._show_log_window, width=12
+        ).pack(side=tk.RIGHT, padx=4)
 
         # ① 入力ソース選択
         input_frame = ttk.LabelFrame(self.root,
@@ -482,10 +485,21 @@ class PipelineTestGUI:
         # cycle dir 監視用
         self._stage_seen = set()
 
-        # ログ
-        log_frame = ttk.LabelFrame(self.root,
-            text="ログ", padding=4)
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
+        # ログ (画面右の別ウィンドウに切り出し。 メイン窓と並べて見られる)
+        self.log_win = tk.Toplevel(self.root)
+        self.log_win.title("ログ")
+        try:
+            sw = self.root.winfo_screenwidth(); sh = self.root.winfo_screenheight()
+            self.log_win.geometry(f"500x{max(400, sh - 140)}+{max(0, sw - 520)}+40")
+        except Exception:
+            self.log_win.geometry("500x700")
+        # 閉じても破棄せず隠す (self.log_text を生かす)
+        self.log_win.protocol("WM_DELETE_WINDOW", self.log_win.withdraw)
+        log_frame = ttk.LabelFrame(self.log_win, text="ログ", padding=4)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        ttk.Button(log_frame, text="クリア",
+            command=lambda: self.log_text.delete("1.0", tk.END), width=8
+            ).pack(anchor=tk.E, pady=(0, 2))
         self.log_text = scrolledtext.ScrolledText(log_frame,
             font=("Monaco", 9), wrap=tk.WORD, height=8)
         self.log_text.pack(fill=tk.BOTH, expand=True)
@@ -528,6 +542,13 @@ class PipelineTestGUI:
             text=str(self.selected_sketch_path), foreground="black")
         self._show_preview_from_file(self.selected_sketch_path)
         self.log(f"ファイル選択: {self.selected_sketch_path}")
+
+    def _show_log_window(self):
+        """ログ別窓を再表示 (閉じた/隠れた時用)。"""
+        try:
+            self.log_win.deiconify(); self.log_win.lift()
+        except Exception:
+            pass
 
     def on_crop_input(self):
         """入力画像を手作業でクロップ (二値化の残ノイズ領域を切り落とす)。"""
