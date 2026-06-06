@@ -50,6 +50,8 @@ def main():
     ap.add_argument("--style-ref", type=Path, default=None)     # IP-松本のスタイル参照(任意)
     # 被写体 手動指定 (空=VLM自動)。 VLMの誤読を回避し prompt 主語を固定 ("house" 等)。
     ap.add_argument("--subject", type=str, default="")
+    # 選択中プリセット名 (topic_guess.json に記録するだけ。 どの設定で生成したか後で分かる用)。
+    ap.add_argument("--preset-name", type=str, default="")
     # VLM design mode: decorate=元線維持+装飾 / complete=未来の完成形を積極デザイン /
     # finish=ラフを完成イラスト化。 FLUX/SDXLルートで効く (ip_matsumoto は describe_scene 使用で無関係)。
     ap.add_argument("--design-mode", type=str, default="decorate",

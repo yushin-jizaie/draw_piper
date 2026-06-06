@@ -226,6 +226,7 @@ def revectorize(gen_png, args, cyc):
     (cyc / "prompt.txt").write_text("(revectorize: strokes remade from existing image)", encoding="utf-8")
     json.dump({"subject": {"ja": "再ベクトル化", "en": "revectorize"}, "location": {"ja": ""},
                "action": {"ja": ""}, "confidence": 1.0, "n_objects": 1,
+               "preset": (getattr(args, "preset_name", "") or "").strip(),
                "route": f"revectorize (strokes only, 下限{mf}mm)", "src": str(gen_png)},
               open(cyc / "topic_guess.json", "w"), ensure_ascii=False, indent=2)
     log("DONE (revectorize)")
@@ -380,9 +381,11 @@ def run_driver(objs, backend, args, cyc, visions, W, H):
               open(cyc / "strokes.json", "w"))
     (cyc / "prompt.txt").write_text("\n\n".join(prompts), encoding="utf-8")
     sc0 = visions[0]["scene"] if visions else "?"
-    json.dump({"subject": {"ja": sc0, "en": sc0}, "location": {"ja": ""},
+    json.dump({"preset": (getattr(args, "preset_name", "") or "").strip(),
+               "subject": {"ja": sc0, "en": sc0}, "location": {"ja": ""},
                "action": {"ja": ""}, "confidence": 1.0,
                "n_objects": len(objs), "vstretch": V, "warp_correct": bool(args.warp_correct),
+               "design_mode": getattr(args, "design_mode", ""),
                "route": backend.route_label, "visions": visions},
               open(cyc / "topic_guess.json", "w"), ensure_ascii=False, indent=2)
     log("DONE")

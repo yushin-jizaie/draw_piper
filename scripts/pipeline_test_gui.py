@@ -182,6 +182,10 @@ class PipelineTestGUI:
             text="ファイルを選択...",
             command=self.on_file_select, width=18)
         self.btn_file_select.pack(side=tk.LEFT, padx=2)
+        self.btn_crop = ttk.Button(self.file_frame,
+            text="✂ クロップ",
+            command=self.on_crop_input, width=12)
+        self.btn_crop.pack(side=tk.LEFT, padx=2)
         self.lbl_file_path = ttk.Label(self.file_frame,
             text="(未選択)", font=("Monaco", 9), foreground="#777")
         self.lbl_file_path.pack(side=tk.LEFT, padx=8, fill=tk.X, expand=True)
@@ -524,6 +528,18 @@ class PipelineTestGUI:
             text=str(self.selected_sketch_path), foreground="black")
         self._show_preview_from_file(self.selected_sketch_path)
         self.log(f"ファイル選択: {self.selected_sketch_path}")
+
+    def on_crop_input(self):
+        """入力画像を手作業でクロップ (二値化の残ノイズ領域を切り落とす)。"""
+        if self.selected_sketch_path is None or \
+                not Path(self.selected_sketch_path).exists():
+            messagebox.showerror("入力なし",
+                "先に入力画像 (ファイル選択 or カメラ撮影) を確定してください。")
+            return
+        if Image is None or ImageTk is None:
+            messagebox.showerror("PIL なし", "Pillow が必要です。")
+            return
+        CropWindow(self, Path(self.selected_sketch_path))
 
     def _show_preview_from_file(self, path: Path):
         if Image is None or ImageTk is None:
@@ -986,7 +1002,8 @@ class PipelineTestGUI:
             # 再ベクトル化モード: 既存生成画像から strokes だけ作り直す (生成スキップ・即時)
             cmd = [python, str(PIPELINE_SCRIPT),
                    "--revectorize", str(revectorize_src),
-                   "--log-dir", str(LOGS_DIR), "--vstretch", f"{vstretch:.3f}"]
+                   "--log-dir", str(LOGS_DIR), "--vstretch", f"{vstretch:.3f}",
+                   "--preset-name", self.var_preset_name.get()]
             if lv.get("min_feature"):
                 cmd += ["--min-feature", str(lv["min_feature"])]
             if lv.get("place_scale"):
@@ -1007,6 +1024,7 @@ class PipelineTestGUI:
                 "--vstretch", f"{vstretch:.3f}",
                 "--route", route_id,
                 "--design-mode", design_mode,
+                "--preset-name", self.var_preset_name.get(),
             ] + seed_arg
             # ディテール下限・配置微調整は全ルート共通
             if lv.get("min_feature"):
@@ -1541,6 +1559,77 @@ class PipelineTestGUI:
             self.log_text.see(tk.END)
         except Exception:
             print(line, end="")
+
+
+class CropWindow:
+    """入力画像をドラッグで矩形選択してクロップ → 入力に再設定 (残ノイズ除去用)。"""
+
+    def __init__(self, parent_gui, image_path):
+        self.parent = parent_gui
+        self.image_path = Path(image_path)
+        self.pil = Image.open(self.image_path).convert("RGB")
+        iw, ih = self.pil.size
+        maxw, maxh = 900, 720
+        self.scale = min(maxw / iw, maxh / ih, 1.0)
+        self.cw, self.ch = max(1, int(iw * self.scale)), max(1, int(ih * self.scale))
+        self.win = tk.Toplevel(parent_gui.root)
+        self.win.title("クロップ (ドラッグで残す範囲を囲む)")
+        try:
+            sw = self.win.winfo_screenwidth()
+            self.win.geometry(f"{self.cw + 24}x{self.ch + 80}+{max(0, sw - self.cw - 60)}+60")
+        except Exception:
+            pass
+        self.canvas = tk.Canvas(self.win, width=self.cw, height=self.ch,
+                                bg="#222", highlightthickness=0)
+        self.canvas.pack(padx=10, pady=10)
+        disp = self.pil.resize((self.cw, self.ch), Image.LANCZOS)
+        self._photo = ImageTk.PhotoImage(disp)
+        self.canvas.create_image(0, 0, image=self._photo, anchor=tk.NW)
+        self.rect = None; self.x0 = self.y0 = 0
+        self.canvas.bind("<ButtonPress-1>", self._press)
+        self.canvas.bind("<B1-Motion>", self._drag)
+        btns = ttk.Frame(self.win); btns.pack(fill=tk.X, padx=10, pady=(0, 8))
+        ttk.Label(btns, text="ドラッグで残す範囲を囲む →").pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="❌ キャンセル", command=self.win.destroy,
+                   width=12).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(btns, text="✅ 確定 (クロップして入力に)",
+                   command=self._apply, width=24).pack(side=tk.RIGHT, padx=2)
+
+    def _press(self, e):
+        self.x0, self.y0 = e.x, e.y
+        if self.rect:
+            self.canvas.delete(self.rect)
+        self.rect = self.canvas.create_rectangle(e.x, e.y, e.x, e.y,
+                                                 outline="#0f0", width=2)
+
+    def _drag(self, e):
+        if self.rect:
+            self.canvas.coords(self.rect, self.x0, self.y0, e.x, e.y)
+
+    def _apply(self):
+        if not self.rect:
+            messagebox.showwarning("範囲未選択", "ドラッグで残す範囲を囲んでください。")
+            return
+        x1, y1, x2, y2 = self.canvas.coords(self.rect)
+        x1, x2 = sorted((x1, x2)); y1, y2 = sorted((y1, y2))
+        ix1 = int(max(0, x1) / self.scale); iy1 = int(max(0, y1) / self.scale)
+        ix2 = int(min(self.cw, x2) / self.scale); iy2 = int(min(self.ch, y2) / self.scale)
+        if ix2 - ix1 < 5 or iy2 - iy1 < 5:
+            messagebox.showwarning("範囲が小さい", "もっと大きく囲んでください。")
+            return
+        crop = self.pil.crop((ix1, iy1, ix2, iy2))
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = LOGS_DIR / f"cropped_{ts}.png"
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        crop.save(out)
+        self.parent.selected_sketch_path = out
+        self.parent.lbl_file_path.config(text=str(out), foreground="black")
+        try:
+            self.parent._show_preview_from_file(out)
+        except Exception:
+            pass
+        self.parent.log(f"クロップ → 入力に設定: {out} ({ix2 - ix1}x{iy2 - iy1})")
+        self.win.destroy()
 
 
 class BinarizeCalibWindow:
