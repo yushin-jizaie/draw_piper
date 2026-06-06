@@ -136,10 +136,14 @@ def run_vlm(objs, args):
         else:
             log("VLM predict_intent /scene")
             scene = vlm.describe_scene(crop) or "subject"
-            vision = vlm.design_instruction(crop, scene, mode=mode) or scene
-            # 短い literal 主語 (1-2語)。 IP-松本は長い顔記述だとモデルが顔だけに集中するので
-            # こちらを主語に使う (5/28 は "face"/"person" の短主語で放射状inkが出た)。
             literal = vlm.describe_literal(crop) or scene
+            if mode == "direct":
+                # direct: design指示を作らず短い主語のみ (preset/style文だけで仕上げる)。
+                # 当時の "direct" route の短いテンプレ prompt 再現用。
+                vision = literal
+            else:
+                # 短い literal 主語 (1-2語)。 IP-松本は長い顔記述だとモデルが顔だけに集中。
+                vision = vlm.design_instruction(crop, scene, mode=mode) or scene
         visions.append({"scene": scene, "vision": vision, "literal": literal})
         log(f"obj{i} vision:", vision)
     del vlm; import gc; gc.collect(); torch.cuda.empty_cache()

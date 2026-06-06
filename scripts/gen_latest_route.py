@@ -51,7 +51,7 @@ def main():
     # VLM design mode: decorate=元線維持+装飾 / complete=未来の完成形を積極デザイン /
     # finish=ラフを完成イラスト化。 FLUX/SDXLルートで効く (ip_matsumoto は describe_scene 使用で無関係)。
     ap.add_argument("--design-mode", type=str, default="decorate",
-                    choices=["decorate", "complete", "finish"])
+                    choices=["decorate", "complete", "finish", "direct"])
     # IP-松本 濃さ調整 (CN は無関係なルートなので別レバー)。
     ap.add_argument("--ip-scale", type=float, default=0.6)          # IP-Adapter style 転写の強さ
     ap.add_argument("--stage2-strength", type=float, default=0.45)  # stage2 img2img の振り幅

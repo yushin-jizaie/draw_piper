@@ -262,7 +262,7 @@ class PipelineTestGUI:
             ).pack(side=tk.LEFT, padx=2)
         ttk.Label(r1, text="design:").pack(side=tk.LEFT, padx=(10, 2))
         ttk.Combobox(r1, textvariable=self.var_design_mode, width=10,
-            state="readonly", values=["decorate", "complete", "finish"]
+            state="readonly", values=["decorate", "complete", "finish", "direct"]
             ).pack(side=tk.LEFT, padx=2)
         ttk.Label(r1, text="FLUXstyle:").pack(side=tk.LEFT, padx=(10, 2))
         ttk.Combobox(r1, textvariable=self.var_flux_style, width=9,

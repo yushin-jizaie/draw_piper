@@ -140,7 +140,7 @@
   "車2": {
     "route": "sdxl_routed (SDXL+ルート判定)",
     "ip_category": "object",
-    "design_mode": "complete",
+    "design_mode": "direct",
     "sdxl_steps": 28,
     "seed": "555",
     "vstretch": "1.00",
@@ -164,7 +164,7 @@
   "家": {
     "route": "sdxl_routed (SDXL+ルート判定)",
     "ip_category": "object",
-    "design_mode": "complete",
+    "design_mode": "direct",
     "sdxl_steps": 28,
     "seed": "123",
     "vstretch": "1.00",
