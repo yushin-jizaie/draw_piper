@@ -266,7 +266,7 @@ class PipelineTestGUI:
             ).pack(side=tk.LEFT, padx=2)
         ttk.Label(r1, text="FLUXstyle:").pack(side=tk.LEFT, padx=(10, 2))
         ttk.Combobox(r1, textvariable=self.var_flux_style, width=9,
-            state="readonly", values=["decorate", "simple"]).pack(side=tk.LEFT, padx=2)
+            state="readonly", values=["decorate", "simple", "detailed"]).pack(side=tk.LEFT, padx=2)
         ttk.Label(r1, text="LoRA:").pack(side=tk.LEFT, padx=(8, 2))
         tk.Spinbox(r1, from_=0.0, to=1.2, increment=0.05, width=5, format="%.2f",
             textvariable=self.var_lora_str).pack(side=tk.LEFT, padx=2)

@@ -27,7 +27,13 @@ STYLE = ("manga style, clean bold black ink lineart on white background, "
 SIMPLE_STYLE = ("bold simple cartoon line art, thick black outlines, one single large "
                 "subject centered and filling the frame, minimal detail, few clean lines, "
                 "white background, no fill, no shading, no background objects, no text")
-FLUX_STYLES = {"decorate": STYLE, "simple": SIMPLE_STYLE}
+# DETAILED: flux_new3(2026-06-02) の細密 style 文。 内部の細部線・パネルライン多め →
+# detail 重視 (フラワー等)。 flux_style="detailed" で選択。
+DETAILED_STYLE = ("highly detailed clean black line art, bold confident outlines with many "
+                  "fine interior detail lines, mechanical and structural detail, panel lines, "
+                  "intricate accurate linework, rich detailing throughout, one main subject "
+                  "filling the frame, white background, no fill, no shading, no color, no text")
+FLUX_STYLES = {"decorate": STYLE, "simple": SIMPLE_STYLE, "detailed": DETAILED_STYLE}
 
 
 def _cn_steps_from_config(args, default_cn):
