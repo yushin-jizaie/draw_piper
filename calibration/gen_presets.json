@@ -160,5 +160,29 @@
     "place_dy": "0",
     "sdxl_preset": "illustrious_v2_lineart_char",
     "sdxl_cn": 0.5
+  },
+  "家": {
+    "route": "sdxl_routed (SDXL+ルート判定)",
+    "ip_category": "object",
+    "design_mode": "complete",
+    "sdxl_steps": 28,
+    "seed": "123",
+    "vstretch": "1.00",
+    "literal_only": false,
+    "warp_correct": false,
+    "one_stroke": false,
+    "no_split": true,
+    "flux_style": "decorate",
+    "lora_str": "0.60",
+    "ip_scale": "0.60",
+    "ip_strength": "0.45",
+    "ip_diff": true,
+    "min_feature": "6.0",
+    "ip_frac": "0.38",
+    "place_scale": "1.00",
+    "place_dx": "0",
+    "place_dy": "0",
+    "sdxl_preset": "illustrious_v2_lineart_char",
+    "sdxl_cn": 0.5
   }
 }
