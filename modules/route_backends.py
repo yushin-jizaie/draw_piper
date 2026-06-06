@@ -108,10 +108,11 @@ class SdxlRoutedBackend:
     SDXL は negative_prompt も有効 (preset 既定を使う)。
     """
     name = "sdxl_routed"
-    route_label = "SDXL routed (preset+ControlNet+occupancy route)"
+    route_label = "SDXL routed (preset+ControlNet, square gen)"
     multi_object = True
     uses_vlm = True
     PRESET_OVERRIDE = None      # None = config の preset を使う
+    SQUARE_RES = 1024           # 正方形で生成 (元FLUXルートと同じ)。 strokes は place_fill でパネルへ
 
     def __init__(self, args):
         self.args = args
@@ -132,23 +133,19 @@ class SdxlRoutedBackend:
         return vision.get("vision") or vision.get("scene") or "a subject"
 
     def load(self):
-        log(f"SDXL/imagegen load (preset={self.preset})")
+        log(f"SDXL/imagegen load (preset={self.preset}, square {self.SQUARE_RES})")
         from modules.image_gen import ImageGenerator
-        self.gen = ImageGenerator.from_preset(self.preset, resolution=(CW, CH), verbose=False)
+        # 正方形で生成 (縦長パネルに合わせると横長被写体で上下に空白が出て、
+        # その空白にモデルが入力以外の要素を描いてしまう)。 strokes は place_fill でパネルへ。
+        self.gen = ImageGenerator.from_preset(
+            self.preset, resolution=(self.SQUARE_RES, self.SQUARE_RES), verbose=False)
         self.gen.load()
         log("SDXL ready")
 
     def generate_object_image(self, crop, prompt, seed):
-        from modules.input_router import decide_route
         from modules.input_prep import square_pad
-        try:
-            route = decide_route(crop).route
-        except Exception:
-            route = "stylize"
-        if route == "framed":
-            guide = square_pad(crop, CW)        # コンパクト被写体: 正方パッドで縦横比保持
-        else:
-            guide = crop.resize((CW, CH))       # stylize/companion: 全体リサイズ
+        # 入力を正方パッドして正方枠を満たす (元FLUXルートと同じ)。 縦横比は保持。
+        guide = square_pad(crop, self.SQUARE_RES)
         return self.gen.generate(
             prompt=prompt, guide_image=guide, seed=seed,
             controlnet_conditioning_scale=self.cn_scale, num_inference_steps=self.steps)
