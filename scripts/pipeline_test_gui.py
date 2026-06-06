@@ -115,6 +115,8 @@ class PipelineTestGUI:
         self.var_route = tk.StringVar(value=ROUTE_CHOICES[0])
         # IP-松本ルートの参照画風プール (character/object/other)。
         self.var_ip_category = tk.StringVar(value="character")
+        # 被写体 手動指定 (空=VLM自動)。 VLM誤読を回避し prompt 主語を固定。
+        self.var_subject = tk.StringVar(value="")
         # VLM design mode: decorate=元線維持+装飾 / complete=未来の完成形 / finish=ラフ完成化。
         # FLUX/SDXLルートで効く (ip_matsumoto は無関係)。
         self.var_design_mode = tk.StringVar(value="decorate")
@@ -270,6 +272,8 @@ class PipelineTestGUI:
         ttk.Label(r1, text="LoRA:").pack(side=tk.LEFT, padx=(8, 2))
         tk.Spinbox(r1, from_=0.0, to=1.2, increment=0.05, width=5, format="%.2f",
             textvariable=self.var_lora_str).pack(side=tk.LEFT, padx=2)
+        ttk.Label(r1, text="被写体(手動):").pack(side=tk.LEFT, padx=(10, 2))
+        tk.Entry(r1, textvariable=self.var_subject, width=12).pack(side=tk.LEFT, padx=2)
         # 行2: IP-松本 濃さレバー + 曲率制約のディテール下限 (CN無関係ルート用の別調整)
         ip_row = ttk.Frame(route_frame)
         ip_row.pack(fill=tk.X, pady=(4, 0))
@@ -719,7 +723,8 @@ class PipelineTestGUI:
         """プリセットに保存する var の {キー: tk変数}。"""
         return {
             "route": self.var_route, "ip_category": self.var_ip_category,
-            "design_mode": self.var_design_mode, "sdxl_steps": self.var_sdxl_steps,
+            "design_mode": self.var_design_mode, "subject": self.var_subject,
+            "sdxl_steps": self.var_sdxl_steps,
             "seed": self.var_seed, "vstretch": self.var_vstretch,
             "literal_only": self.var_literal_only, "warp_correct": self.var_warp_correct,
             "one_stroke": self.var_one_stroke, "no_split": self.var_no_split,
@@ -849,6 +854,7 @@ class PipelineTestGUI:
             "place_dy": self.var_place_dy.get(),
             "flux_style": self.var_flux_style.get(),
             "lora_str": self.var_lora_str.get(),
+            "subject": self.var_subject.get(),
         }
         seed_str = self.var_seed.get().strip()
         seed_arg = []
@@ -1015,6 +1021,8 @@ class PipelineTestGUI:
                 cmd += ["--flux-style", str(lv["flux_style"])]
             if lv.get("lora_str"):
                 cmd += ["--lora-str", str(lv["lora_str"])]
+            if (lv.get("subject") or "").strip():
+                cmd += ["--subject", str(lv["subject"]).strip()]
             if route_id == "ip_matsumoto":
                 cmd += ["--category", ip_category]
                 if lv.get("ip_scale"):

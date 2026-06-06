@@ -127,28 +127,38 @@ def run_vlm(objs, args):
     complete=未来の完成形を積極デザイン / finish=ラフを完成イラスト化)。 既定 decorate。
     """
     mode = getattr(args, "design_mode", "decorate") or "decorate"
-    log("VLM load (design_mode=%s)" % mode)
-    from modules.vlm import VLM
-    vlm = VLM(verbose=True); visions = []
+    subj = (getattr(args, "subject", "") or "").strip()    # 被写体手動指定 (VLM誤読の回避)
+    literal_only = bool(getattr(args, "literal_only", False))
+    # VLM が要るのは「主語の自動推定」か「design_instruction(decorate/complete/finish)」の時だけ。
+    # subject 手動指定 + direct/literal なら VLM は不要 (高速・誤読なし)。
+    need_vlm = (not subj) or (mode not in ("direct",) and not literal_only)
+    log("VLM load (design_mode=%s%s)" % (mode, (" subject=" + subj) if subj else ""))
+    vlm = None
+    if need_vlm:
+        from modules.vlm import VLM
+        vlm = VLM(verbose=True)
+    visions = []
     for i, (bbox, crop) in enumerate(objs):
-        if getattr(args, "literal_only", False):
-            sub = vlm.describe_literal(crop) or "subject"; vision = sub; scene = sub; literal = sub
+        if subj:
+            scene = literal = subj
+        elif literal_only:
+            literal = vlm.describe_literal(crop) or "subject"; scene = literal
         else:
             log("VLM predict_intent /scene")
             scene = vlm.describe_scene(crop) or "subject"
             literal = vlm.describe_literal(crop) or scene
-            if mode == "direct":
-                # direct: design指示を作らず、 当時の "direct" route と同じ
-                # 「{主語}, manga style, clean bold ink lineart, white background, appealing
-                # design, multiple」テンプレで仕上げる (短い主語+定型 style 文)。
-                vision = (f"{literal}, manga style, clean bold ink lineart, "
-                          "white background, appealing design, multiple")
-            else:
-                # 短い literal 主語 (1-2語)。 IP-松本は長い顔記述だとモデルが顔だけに集中。
-                vision = vlm.design_instruction(crop, scene, mode=mode) or scene
+        if mode == "direct":
+            # 当時の "direct" route と同じテンプレ (短い主語 + 定型 style 文)。
+            vision = (f"{literal}, manga style, clean bold ink lineart, "
+                      "white background, appealing design, multiple")
+        elif literal_only:
+            vision = literal
+        else:
+            vision = vlm.design_instruction(crop, scene, mode=mode) or scene
         visions.append({"scene": scene, "vision": vision, "literal": literal})
         log(f"obj{i} vision:", vision)
-    del vlm; import gc; gc.collect(); torch.cuda.empty_cache()
+    if vlm is not None:
+        del vlm; import gc; gc.collect(); torch.cuda.empty_cache()
     return visions
 
 

@@ -48,6 +48,8 @@ def main():
     ap.add_argument("--category", type=str, default="character",
                     choices=["character", "object", "other"])  # IP-松本の参照画風プール
     ap.add_argument("--style-ref", type=Path, default=None)     # IP-松本のスタイル参照(任意)
+    # 被写体 手動指定 (空=VLM自動)。 VLMの誤読を回避し prompt 主語を固定 ("house" 等)。
+    ap.add_argument("--subject", type=str, default="")
     # VLM design mode: decorate=元線維持+装飾 / complete=未来の完成形を積極デザイン /
     # finish=ラフを完成イラスト化。 FLUX/SDXLルートで効く (ip_matsumoto は describe_scene 使用で無関係)。
     ap.add_argument("--design-mode", type=str, default="decorate",

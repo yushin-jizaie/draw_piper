@@ -18,7 +18,8 @@
     "place_dx": "0",
     "place_dy": "0",
     "sdxl_preset": null,
-    "sdxl_cn": null
+    "sdxl_cn": null,
+    "subject": ""
   },
   "物体 詳細線画 (gacha object/M16)": {
     "route": "sdxl_routed (SDXL+ルート判定)",
@@ -39,7 +40,8 @@
     "place_dx": "0",
     "place_dy": "0",
     "sdxl_preset": "illustrious_v2_object",
-    "sdxl_cn": 0.65
+    "sdxl_cn": 0.65,
+    "subject": ""
   },
   "FLUX bold simple (cn_sweep/2026-06-02)": {
     "route": "flux_decorate (現行)",
@@ -63,7 +65,8 @@
     "place_dx": "0",
     "place_dy": "0",
     "sdxl_preset": null,
-    "sdxl_cn": 0.2
+    "sdxl_cn": 0.2,
+    "subject": ""
   },
   "Car_FLUX bold simple (cn_sweep/2026-06-02)": {
     "route": "flux_decorate (現行)",
@@ -87,7 +90,8 @@
     "place_dx": "0",
     "place_dy": "11",
     "sdxl_preset": "illustrious_v2_object",
-    "sdxl_cn": 0.0
+    "sdxl_cn": 0.0,
+    "subject": ""
   },
   "チェア": {
     "route": "flux_decorate (現行)",
@@ -111,7 +115,8 @@
     "place_dx": "0",
     "place_dy": "0",
     "sdxl_preset": null,
-    "sdxl_cn": 0.2
+    "sdxl_cn": 0.2,
+    "subject": "chair"
   },
   "フラワー": {
     "route": "flux_decorate (現行)",
@@ -135,7 +140,8 @@
     "place_dx": "0",
     "place_dy": "0",
     "sdxl_preset": null,
-    "sdxl_cn": 0.2
+    "sdxl_cn": 0.2,
+    "subject": "flower"
   },
   "車2": {
     "route": "sdxl_routed (SDXL+ルート判定)",
@@ -159,7 +165,8 @@
     "place_dx": "0",
     "place_dy": "0",
     "sdxl_preset": "illustrious_v2_lineart_char",
-    "sdxl_cn": 0.5
+    "sdxl_cn": 0.5,
+    "subject": "car"
   },
   "家": {
     "route": "sdxl_routed (SDXL+ルート判定)",
@@ -183,6 +190,7 @@
     "place_dx": "0",
     "place_dy": "0",
     "sdxl_preset": "illustrious_v2_lineart_char",
-    "sdxl_cn": 0.5
+    "sdxl_cn": 0.5,
+    "subject": "house"
   }
 }
