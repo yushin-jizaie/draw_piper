@@ -219,6 +219,10 @@ class PipelineTestGUI:
             text="透明ボード線抽出 (背景差分 + 特定色)", padding=6)
         self.lineext_frame.pack(fill=tk.X, pady=(6, 2))
         row1 = ttk.Frame(self.lineext_frame); row1.pack(fill=tk.X)
+        self.btn_bg_file = ttk.Button(row1,
+            text="背景ファイル選択",
+            command=self.on_select_background_file, width=15)
+        self.btn_bg_file.pack(side=tk.LEFT, padx=2)
         self.btn_bg_capture = ttk.Button(row1,
             text="背景キャプチャ (空ボード)",
             command=self.on_capture_background, width=24)
@@ -691,6 +695,29 @@ class PipelineTestGUI:
         self._refresh_input_buttons()
 
     # ---------- 透明ボード線抽出 (背景差分 + 特定色) ----------
+
+    def on_select_background_file(self):
+        """背景差分用の基準画像をファイルから選ぶ (カメラ撮影の代わり)。
+
+        過去に撮った空ボード画像 (logs/line_background_*.png 等) を選べる。
+        """
+        path = filedialog.askopenfilename(
+            title="背景 (空ボード) 画像を選択",
+            filetypes=[("画像ファイル", "*.jpg *.jpeg *.png *.bmp"), ("All", "*.*")],
+            initialdir=str(LOGS_DIR))
+        if not path:
+            return
+        if cv2 is None:
+            messagebox.showerror("OpenCV なし", "cv2 が必要です。")
+            return
+        bg = cv2.imread(path)
+        if bg is None:
+            messagebox.showerror("読込失敗", f"画像を読めません:\n{path}")
+            return
+        self.background_bgr = bg
+        name = Path(path).name
+        self.lbl_bg_status.config(text=f"背景: ファイル ({name})", foreground="#262")
+        self.log(f"背景ファイル選択: {path} {bg.shape[1]}x{bg.shape[0]}")
 
     def on_capture_background(self):
         """空ボードを 1 枚撮って背景差分の基準にする。"""
