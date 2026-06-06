@@ -1,0 +1,86 @@
+schema_version: 1
+space: canvas_local_mm
+instructions: auto-generated. command=grid, measured=inv(apply)@(grid-offset).
+metadata:
+  tip_targeting: true
+  tool_offset_mm:
+  - 0.0
+  - 0.0
+  - 90.0
+  canvas_calibration: /home/jizaiedev2026/draw_piper/calibration/canvas_calibration.yaml
+  center_yz_mm:
+  - -14.0
+  - 314.96
+  u_axis_yz:
+  - -0.999989
+  - 0.00465
+  v_axis_yz:
+  - 0.00465
+  - 0.999989
+  size_mm:
+  - 101.24
+  - 255.15
+points:
+- label: TL
+  command_local_mm:
+  - -40.496
+  - 102.06
+  measured_local_mm:
+  - -6.573
+  - 85.337
+- label: TC
+  command_local_mm:
+  - 0.0
+  - 102.06
+  measured_local_mm:
+  - 33.923
+  - 85.337
+- label: TR
+  command_local_mm:
+  - 40.496
+  - 102.06
+  measured_local_mm:
+  - 74.419
+  - 85.337
+- label: ML
+  command_local_mm:
+  - -40.496
+  - 0.0
+  measured_local_mm:
+  - -23.296
+  - 0.0
+- label: MC
+  command_local_mm:
+  - 0.0
+  - 0.0
+  measured_local_mm:
+  - 17.2
+  - 0.0
+- label: MR
+  command_local_mm:
+  - 40.496
+  - 0.0
+  measured_local_mm:
+  - 57.696
+  - 0.0
+- label: BL
+  command_local_mm:
+  - -40.496
+  - -102.06
+  measured_local_mm:
+  - -40.019
+  - -85.337
+- label: BC
+  command_local_mm:
+  - 0.0
+  - -102.06
+  measured_local_mm:
+  - 0.477
+  - -85.337
+- label: BR
+  command_local_mm:
+  - 40.496
+  - -102.06
+  measured_local_mm:
+  - 40.973
+  - -85.337
