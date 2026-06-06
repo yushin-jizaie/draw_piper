@@ -1571,6 +1571,7 @@ class BinarizeCalibWindow:
         self.var_min_pixels = tk.IntVar(value=cfg["min_pixels"])
         self.var_min_length = tk.IntVar(value=cfg["min_length"])
         self.var_epsilon = tk.DoubleVar(value=cfg["approx_epsilon"])
+        self.var_keep_largest = tk.BooleanVar(value=cfg.get("keep_largest", False))
         # Window
         self.win = tk.Toplevel(parent_gui.root)
         self.win.title("二値化キャリブ")
@@ -1669,6 +1670,9 @@ class BinarizeCalibWindow:
         tk.Scale(f_row, from_=0.5, to=5.0, orient=tk.HORIZONTAL,
             variable=self.var_epsilon, length=140, resolution=0.1
         ).pack(side=tk.LEFT, padx=4)
+        ttk.Checkbutton(f_row, text="最大成分のみ(ノイズ全消し/単一被写体用)",
+            variable=self.var_keep_largest,
+            command=self._update_preview).pack(side=tk.LEFT, padx=(12, 4))
 
         # 下段: 状態 + 保存ボタン
         st_row = ttk.Frame(self.win)
@@ -1740,6 +1744,14 @@ class BinarizeCalibWindow:
                 if stats[i, cv2.CC_STAT_AREA] >= min_pix:
                     keep[lab == i] = 255; n_kept += 1
             mask = keep
+        # 最大成分のみ (ノイズ全消し)
+        if self.var_keep_largest.get():
+            n, lab, stats, _ = cv2.connectedComponentsWithStats(
+                (mask > 0).astype(np.uint8), 8)
+            if n > 1:
+                best = max(range(1, n), key=lambda i: stats[i, cv2.CC_STAT_AREA])
+                mask = np.where(lab == best, np.uint8(255), np.uint8(0))
+                n_kept = 1
         # 白地黒線で表示 (mask は ink=255 なので反転)
         bin_disp = 255 - mask
         pil_bin = Image.fromarray(bin_disp)
@@ -1773,6 +1785,7 @@ class BinarizeCalibWindow:
         min_pix = int(self.var_min_pixels.get())
         min_len = int(self.var_min_length.get())
         eps = float(self.var_epsilon.get())
+        keep_largest = bool(self.var_keep_largest.get())
         try:
             saved_path = self._save_cfg(
                 method=method,
@@ -1781,7 +1794,8 @@ class BinarizeCalibWindow:
                 fixed_threshold=fixed,
                 min_pixels=min_pix,
                 min_length=min_len,
-                approx_epsilon=eps)
+                approx_epsilon=eps,
+                keep_largest=keep_largest)
         except Exception as e:
             messagebox.showerror("保存失敗", str(e))
             return

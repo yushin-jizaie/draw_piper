@@ -99,6 +99,7 @@ def load_binarize_config(path: Optional[Path] = None) -> dict:
         "approx_epsilon": DEFAULT_APPROX_EPSILON,
         "close_ksize": DEFAULT_CLOSE_KSIZE,
         "diff_dilate_ksize": DEFAULT_DIFF_DILATE_KSIZE,
+        "keep_largest": False,   # 最大連結成分のみ残す (単一被写体のノイズ全消し)
     }
     if not cfg_path.exists():
         return defaults
@@ -129,6 +130,8 @@ def load_binarize_config(path: Optional[Path] = None) -> dict:
         out["close_ksize"] = int(fl["close_ksize"])
     if "diff_dilate_ksize" in fl:
         out["diff_dilate_ksize"] = int(fl["diff_dilate_ksize"])
+    if "keep_largest" in fl:
+        out["keep_largest"] = bool(fl["keep_largest"])
     return out
 
 
@@ -142,6 +145,7 @@ def save_binarize_config(method: str,
                           approx_epsilon: Optional[float] = None,
                           close_ksize: Optional[int] = None,
                           diff_dilate_ksize: Optional[int] = None,
+                          keep_largest: Optional[bool] = None,
                           ) -> Path:
     """binarize + filter 設定を yaml に保存。
     filter 系 (min_pixels 等) は None のとき既存値を保持。
@@ -169,6 +173,8 @@ def save_binarize_config(method: str,
         new_filter["close_ksize"] = int(close_ksize)
     if diff_dilate_ksize is not None:
         new_filter["diff_dilate_ksize"] = int(diff_dilate_ksize)
+    if keep_largest is not None:
+        new_filter["keep_largest"] = bool(keep_largest)
     data = {
         "binarize": {
             "method": method,
@@ -350,6 +356,17 @@ def _filter_small_components(mask: np.ndarray, min_pixels: int) -> Tuple[np.ndar
             keep[labels == i] = 255
             kept_count += 1
     return keep, kept_count
+
+
+def _keep_largest_component(mask: np.ndarray) -> Tuple[np.ndarray, int]:
+    """最大連結成分のみ残す (単一被写体: 主役の1塊だけ残しノイズを全消し)。"""
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if num <= 1:
+        return mask, 0
+    best = max(range(1, num), key=lambda i: stats[i, cv2.CC_STAT_AREA])
+    keep = np.zeros_like(mask)
+    keep[labels == best] = 255
+    return keep, 1
 
 
 def _morphology_close(mask: np.ndarray, kernel_size: int) -> np.ndarray:
@@ -598,6 +615,7 @@ class Vectorizer:
         adaptive_c: int = 10,
         fixed_threshold: int = 128,
         gen_line_mode: str = "binarize",
+        keep_largest: bool = False,
         verbose: bool = False,
     ):
         # 生成画像の線抽出方式:
@@ -611,6 +629,7 @@ class Vectorizer:
         self.canny_thresh_high = canny_thresh_high
         self.diff_dilate_ksize = diff_dilate_ksize
         self.min_pixels = min_pixels
+        self.keep_largest = bool(keep_largest)
         self.close_ksize = close_ksize
         self.approx_epsilon = approx_epsilon
         self.min_length = min_length
@@ -750,6 +769,10 @@ class Vectorizer:
         current_mask, kept_components = _filter_small_components(
             current_mask, self.min_pixels
         )
+        if self.keep_largest:
+            current_mask, kept_components = _keep_largest_component(current_mask)
+            if self.verbose:
+                log.info("[vectorizer] stage3 keep_largest: 最大成分のみ残す")
         diagnostics["stage3_components_after_filter"] = kept_components
         if debug_path is not None:
             cv2.imwrite(

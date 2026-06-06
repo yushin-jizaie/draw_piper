@@ -138,9 +138,11 @@ def run_vlm(objs, args):
             scene = vlm.describe_scene(crop) or "subject"
             literal = vlm.describe_literal(crop) or scene
             if mode == "direct":
-                # direct: design指示を作らず短い主語のみ (preset/style文だけで仕上げる)。
-                # 当時の "direct" route の短いテンプレ prompt 再現用。
-                vision = literal
+                # direct: design指示を作らず、 当時の "direct" route と同じ
+                # 「{主語}, manga style, clean bold ink lineart, white background, appealing
+                # design, multiple」テンプレで仕上げる (短い主語+定型 style 文)。
+                vision = (f"{literal}, manga style, clean bold ink lineart, "
+                          "white background, appealing design, multiple")
             else:
                 # 短い literal 主語 (1-2語)。 IP-松本は長い顔記述だとモデルが顔だけに集中。
                 vision = vlm.design_instruction(crop, scene, mode=mode) or scene
