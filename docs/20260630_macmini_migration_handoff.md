@@ -4,14 +4,14 @@
 **次環境の Claude Code は、まずこのファイルを読むこと。**
 
 > ## ⚠️ 最初にブランチを切り替えること
-> **最新作業もこの申し送りも `main` には無い。** `git clone` 既定の main は大きく遅れている
-> (draw_piper は main より 266 / piper_test は 23 コミット先行)。clone 後に必ず:
+> **最新作業もこの申し送りも `main` には無い。** 両 repo に **`20260630Linux_final`**
+> (= Linux PC 初期化直前の確定スナップショット) を切ってある。**これが最新。** clone 後に必ず:
 > ```bash
-> cd draw_piper && git checkout claude/style-pool-rebalance-20260529
-> cd ../piper_test && git checkout claude/wall-warp-grid-editor-20260606
+> cd draw_piper && git checkout 20260630Linux_final
+> cd ../piper_test && git checkout 20260630Linux_final
 > ```
-> 作業ブランチは origin に push 済 = 安全。main へのマージは diverged (draw_piper の main に 1 件先行コミット有) ＆ 266 件と大きいので、
-> **初期化前に急いでやらない**。落ち着いてから Mac 側で実施可。
+> 派生元は draw_piper=`claude/style-pool-rebalance-20260529` / piper_test=`claude/wall-warp-grid-editor-20260606`。
+> 全て origin に push 済 = 安全。main へのマージは diverged ＆大差なので**初期化前に急がず**、Mac 側で落ち着いて実施可。
 
 ---
 
@@ -61,8 +61,8 @@ cd ~/piper_test && git add -A && git commit -m "WIP: 移行前退避" && git pus
 
 | repo | remote | 役割 | 現ブランチ |
 |---|---|---|---|
-| **draw_piper** | `github.com/yushin-jizaie/draw_piper` | 画像生成パイプライン本体・docs・calibration・`modules/robot.py` | `claude/style-pool-rebalance-20260529` |
-| **piper_test** | `github.com/yushin-jizaie/piper_test` | 壁面描画 GUI・IK (`wall_facing_ik.py`)・ドラッグ示教 | `claude/wall-warp-grid-editor-20260606` |
+| **draw_piper** | `github.com/yushin-jizaie/draw_piper` | 画像生成パイプライン本体・docs・calibration・`modules/robot.py` | **`20260630Linux_final`** (派生元 `claude/style-pool-rebalance-20260529`) |
+| **piper_test** | `github.com/yushin-jizaie/piper_test` | 壁面描画 GUI・IK (`wall_facing_ik.py`)・ドラッグ示教 | **`20260630Linux_final`** (派生元 `claude/wall-warp-grid-editor-20260606`) |
 | piper_ws | `github.com/yushin-jizaie/piper_ws` | ROS2 ワークスペース (現状は SDK 直叩きが主、ROS2 は補助) | - |
 | Piper_sdk_ui | `github.com/agilexrobotics/Piper_sdk_ui` (upstream) | AgileX 公式。Config Init の参照元。再 clone 可 | - |
 
@@ -70,9 +70,9 @@ cd ~/piper_test && git add -A && git commit -m "WIP: 移行前退避" && git pus
 cd ~  # Mac Mini
 git clone https://github.com/yushin-jizaie/draw_piper.git
 git clone https://github.com/yushin-jizaie/piper_test.git
-# ★clone 既定は main (遅れている)。必ず作業ブランチへ:
-cd draw_piper && git checkout claude/style-pool-rebalance-20260529 && cd ..
-cd piper_test && git checkout claude/wall-warp-grid-editor-20260606 && cd ..
+# ★clone 既定は main (遅れている)。必ず確定スナップショットへ:
+cd draw_piper && git checkout 20260630Linux_final && cd ..
+cd piper_test && git checkout 20260630Linux_final && cd ..
 # アームを使う Linux 機のみ:
 git clone https://github.com/agilexrobotics/Piper_sdk_ui.git
 ```
