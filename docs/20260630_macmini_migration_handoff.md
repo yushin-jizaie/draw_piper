@@ -3,6 +3,16 @@
 このPC (Linux, jizaiedev2026) を初期化し、Mac Mini に開発環境を移す際の引き継ぎ。
 **次環境の Claude Code は、まずこのファイルを読むこと。**
 
+> ## ⚠️ 最初にブランチを切り替えること
+> **最新作業もこの申し送りも `main` には無い。** `git clone` 既定の main は大きく遅れている
+> (draw_piper は main より 266 / piper_test は 23 コミット先行)。clone 後に必ず:
+> ```bash
+> cd draw_piper && git checkout claude/style-pool-rebalance-20260529
+> cd ../piper_test && git checkout claude/wall-warp-grid-editor-20260606
+> ```
+> 作業ブランチは origin に push 済 = 安全。main へのマージは diverged (draw_piper の main に 1 件先行コミット有) ＆ 266 件と大きいので、
+> **初期化前に急いでやらない**。落ち着いてから Mac 側で実施可。
+
 ---
 
 ## 0. ⚠️ 最優先: 初期化前に必ず退避するもの (git 管理外 = 消えたら復元不可)
@@ -60,6 +70,9 @@ cd ~/piper_test && git add -A && git commit -m "WIP: 移行前退避" && git pus
 cd ~  # Mac Mini
 git clone https://github.com/yushin-jizaie/draw_piper.git
 git clone https://github.com/yushin-jizaie/piper_test.git
+# ★clone 既定は main (遅れている)。必ず作業ブランチへ:
+cd draw_piper && git checkout claude/style-pool-rebalance-20260529 && cd ..
+cd piper_test && git checkout claude/wall-warp-grid-editor-20260606 && cd ..
 # アームを使う Linux 機のみ:
 git clone https://github.com/agilexrobotics/Piper_sdk_ui.git
 ```
