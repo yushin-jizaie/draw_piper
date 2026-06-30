@@ -228,6 +228,8 @@ def main() -> int:
     ap.add_argument("--n", type=int, default=3)
     ap.add_argument("--resolution", type=str, default="704x1472")
     ap.add_argument("--force-route", choices=["stylize", "framed", "companion"], default=None)
+    ap.add_argument("--cn", type=float, default=None,
+                    help="ControlNet 強度を全 route で上書き (未指定は route 既定)")
     args = ap.parse_args()
 
     import numpy as np
@@ -262,8 +264,11 @@ def main() -> int:
         if route in ("stylize", "framed"):
             if category is None:
                 category = vlm.classify_category(inp)
-            # 下書きを仕上げる指示文 (生成系ルートのみ。 scatter sprite には不要)。
-            design = vlm.design_instruction(inp, subject, mode="finish") or ""
+            # 今日のプロンプト方式 (2026-06-02): リッチな主題句 (describe_scene) を
+            # 取り、 入力 (途中の下書き) から「未来の完成形」 を積極補完して記述する
+            # design_instruction(mode="complete")。 旧 finish (主題1-2語/pose保持) から更新。
+            scene = vlm.describe_scene(inp) or subject
+            design = vlm.design_instruction(inp, scene, mode="complete") or ""
         if route == "companion" and args.scatter_mode == "assoc":
             assoc_subject = vlm.predict_companion_subject(inp) or subject
         del vlm  # VRAM 解放 (SDXL ロード前に)
@@ -277,6 +282,7 @@ def main() -> int:
     if design:
         print(f"[routed]   design: {design}")
     seeds = DEFAULT_SEEDS[:args.n]
+    cn_eff = args.cn if args.cn is not None else CN_SCALE  # CN 上書き (--cn)
 
     if route == "framed":
         # 正方形パディング → 768 正方形生成 → 入力の contain 領域に strokes 配置。
@@ -292,6 +298,8 @@ def main() -> int:
         # ハイブリッド配置 (目など主要特徴を入力位置に固定) 用の入力線。
         input_canvas = _input_canvas_strokes(inp, CW, CH, cfg)
         for suffix, preset, vcn, use_design in FRAMED_VARIANTS:
+            if args.cn is not None:
+                vcn = args.cn          # CN 上書き (--cn): clean/enriched 共通に適用
             vprompt = _framed_prompt(subject, design if use_design else "")
             print(f"[routed]   framed [{suffix}] preset={preset} cn={vcn} "
                   f"prompt: {vprompt}")
@@ -344,11 +352,11 @@ def main() -> int:
         vec = Vectorizer(gen_line_mode="canny_centerline", **cfg)
         for i, seed in enumerate(seeds):
             raster = gen.generate(prompt, guide,
-                                  controlnet_conditioning_scale=CN_SCALE, seed=seed)
+                                  controlnet_conditioning_scale=cn_eff, seed=seed)
             r = vec.vectorize(generated_image=raster, user_image=None)
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}"
             meta = {"sid": args.sid, "route": "stylize", "subject": subject,
-                    "category": category, "preset": PRESET, "cn": CN_SCALE,
+                    "category": category, "preset": PRESET, "cn": cn_eff,
                     "seed": seed, "prompt": prompt}
             _save_candidate(d, r.strokes, CW, CH, generated=raster, meta=meta)
             print(f"[routed]   stylize v{i+1} seed{seed}: {r.n_strokes} strokes -> {d}")
@@ -369,14 +377,14 @@ def main() -> int:
             jitter = 0.0
             pat = "grid"
             sheet = gen.generate(prompt, guide,
-                                 controlnet_conditioning_scale=CN_SCALE, seed=seed)
+                                 controlnet_conditioning_scale=cn_eff, seed=seed)
             combined, n_placed, n_found, n_cells = scatter_companions(
                 sheet, input_strokes, bbox, (CW, CH), seed=seed,
                 jitter=jitter, vectorizer=vec_canny)
             d = args.output_base / args.sid / f"v{i+1}_seed{seed}_{pat}"
             meta = {"sid": args.sid, "route": "scatter", "subject": scatter_subj,
                     "category": category, "scatter_mode": args.scatter_mode,
-                    "pattern": pat, "preset": PRESET, "cn": CN_SCALE,
+                    "pattern": pat, "preset": PRESET, "cn": cn_eff,
                     "seed": seed, "prompt": prompt}
             _save_candidate(d, combined, CW, CH, generated=sheet, meta=meta)
             # direct バリアント: scatter せず生成画像 (sheet) を全体ストローク化。

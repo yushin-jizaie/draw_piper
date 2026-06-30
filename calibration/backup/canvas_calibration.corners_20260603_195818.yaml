@@ -1,0 +1,79 @@
+schema_version: 3
+created_at: '2026-06-03T19:21:13+09:00'
+whiteboard_corners_mm:
+  tl:
+    pen_yz_mm:
+    - 80.2794
+    - 449.9628
+    joints_deg:
+    - 14.274
+    - 62.471
+    - -63.953
+    - 16.71
+    - 3.787
+    - 0.0
+    end_pose_mm_deg:
+    - 321.6693
+    - 80.2794
+    - 449.9628
+    - 80.1259
+    - 73.143
+    - 95.9052
+    source: position_control_record
+    timestamp: '2026-06-03T19:38:10.541+09:00'
+  tr:
+    pen_yz_mm:
+    - -80.1403
+    - 450.886
+    joints_deg:
+    - -13.087
+    - 63.804
+    - -66.684
+    - 2.112
+    - 7.72
+    - 0.0
+    end_pose_mm_deg:
+    - 327.0087
+    - -80.1403
+    - 450.886
+    - 85.5821
+    - 87.9019
+    - 72.7811
+    source: position_control_record
+    timestamp: '2026-06-03T19:39:45.396+09:00'
+traces:
+  perimeter: []
+  diagonal_tl_br: []
+  diagonal_tr_bl: []
+  surface: []
+whiteboard_computed:
+  center_mm:
+  - -20.0
+  - 340.8
+  center_corner_avg_mm:
+  - 3.32
+  - 331.78
+  width_mm: 108.55
+  height_mm: 259.44
+  center_adjustment_mm:
+  - -23.32
+  - 9.02
+  contact_x_offset_mm: 20.0
+plane_fit:
+  normal:
+  - -0.9888
+  - 0.0925
+  - -0.1169
+  centroid_mm:
+  - 208.49
+  - 3.32
+  - 331.78
+  rms_residual_mm: 1.363
+  n_points: 4
+  source_breakdown:
+    corners: 4
+    perimeter: 0
+    diagonal_tl_br: 0
+    diagonal_tr_bl: 0
+    surface: 0
+    center: 0

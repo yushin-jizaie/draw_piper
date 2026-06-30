@@ -1,42 +1,42 @@
 panel:
   calibrated: true
   origin_mm:
-  - 183.69
-  - 45.09
-  - 261.52
+  - 233.5
+  - 74.8
+  - 173.31
   u_axis:
-  - 0.0949
-  - -0.9715
-  - -0.2173
+  - 0.1283
+  - -0.9888
+  - 0.0756
   v_axis:
-  - -0.0618
-  - 0.0482
-  - 0.9969
+  - -0.0106
+  - -0.2737
+  - 0.9618
   normal:
-  - -0.9948
-  - -0.0842
-  - -0.0576
+  - -0.99
+  - -0.1322
+  - -0.0485
   pen_orientation_deg:
   - 180.0
   - 0.0
   - 0.0
   size_mm:
-  - 96.62
-  - 181.38
+  - 148.04
+  - 236.65
   w_contact_mm: 0.0
   w_clear_mm: 25.0
   ready_pose_deg:
-  - 1.446
-  - 0.079
-  - -18.262
-  - 5.576
-  - 3.182
-  - 4.669
+  - 0.127
+  - 0.929
+  - -14.253
+  - -1.769
+  - 15.355
+  - 7.638
   _diagnostics:
-    captured_width_mm: 96.62
-    captured_height_mm: 181.38
-    u_axis_dot_v_axis: -0.2693
-    non_perpendicular_err_deg: 15.62
+    captured_width_mm: 148.04
+    captured_height_mm: 236.65
+    u_axis_dot_v_axis: 0.3419
+    non_perpendicular_err_deg: 20.0
 phase_a_calibration:
   calibrated: true
   calibrated_at: '2026-05-23T20:47:54+09:00'

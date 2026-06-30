@@ -20,8 +20,8 @@
         "inpaint_strength": 1.0
       },
       "style_hint": "monochrome, greyscale, lineart, sketch, white_background, simple_background",
-      "elapsed_load_s": 6.0,
-      "elapsed_gen_s": 25.14,
+      "elapsed_load_s": 5.88,
+      "elapsed_gen_s": 13.88,
       "output_png": "illustrious_v2_inpaint.png",
       "status": "ok"
     }

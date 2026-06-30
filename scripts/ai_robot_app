@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# 画像生成AI + Piper ロボットアーム統合アプリ launcher
+cd /home/jizaiedev2026/draw_piper && exec /home/jizaiedev2026/draw_piper/venv/bin/python scripts/ai_robot_integrated_app.py "$@"

@@ -1,0 +1,10 @@
+binarize:
+  method: adaptive
+  adaptive_block_size: 59
+  adaptive_c: 3
+  fixed_threshold: 255
+filter:
+  min_pixels: 1000
+  min_length: 30
+  approx_epsilon: 0.5
+  keep_largest: false

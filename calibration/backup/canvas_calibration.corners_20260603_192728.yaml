@@ -1,0 +1,122 @@
+# Canvas calibration -- schema v3 (5-phase drag-teach).
+# B1 corners (TL/TR/BR/BL) + B2 perimeter + B3 diagonals +
+# B4 user-confirmed center + B5 optional surface trace.
+# Robot base_link coords (mm). See
+# docs/20260525_1447_canvas_calibration_v3_design.md
+schema_version: 3
+created_at: '2026-06-03T19:21:13+09:00'
+whiteboard_corners_mm:
+  tl:
+    pen_yz_mm:
+    - 150.2567
+    - 499.5597
+    joints_deg:
+    - 32.365
+    - 72.796
+    - -87.678
+    - -31.373
+    - 28.018
+    - -2.553
+    end_pose_mm_deg:
+    - 326.5859
+    - 150.2567
+    - 499.5597
+    - -98.3001
+    - 57.7659
+    - -78.869
+    source: position_control_record
+    timestamp: '2026-06-03T19:05:48.028+09:00'
+  tr:
+    pen_yz_mm:
+    - 150.2567
+    - 499.5597
+    joints_deg:
+    - 32.365
+    - 72.796
+    - -87.678
+    - -31.373
+    - 28.018
+    - -2.553
+    end_pose_mm_deg:
+    - 326.5859
+    - 150.2567
+    - 499.5597
+    - -98.3001
+    - 57.7659
+    - -78.869
+    source: position_control_record
+    timestamp: '2026-06-03T19:05:44.334+09:00'
+  br:
+    pen_yz_mm:
+    - -80.9
+    - 199.6
+    joints_deg:
+    - -16.506
+    - 79.037
+    - -15.281
+    - -8.609
+    - -65.081
+    - -6.017
+    end_pose_mm_deg:
+    - 217.040590694668
+    - -80.9
+    - 199.6
+    - -59.946530937334735
+    - 77.9202736862054
+    - -69.16034860447388
+    timestamp: '2026-06-03T17:57:28.087+09:00'
+  bl:
+    pen_yz_mm:
+    - 75.3
+    - 204.51
+    joints_deg:
+    - 1.481
+    - 82.852
+    - -18.253
+    - -29.195
+    - -64.012
+    - 3.425
+    end_pose_mm_deg:
+    - 229.68769881047712
+    - 75.3
+    - 204.51
+    - -84.21388685559592
+    - 79.07869382556864
+    - -56.826725823762864
+    timestamp: '2026-06-03T17:57:43.639+09:00'
+traces:
+  perimeter: []
+  diagonal_tl_br: []
+  diagonal_tr_bl: []
+  surface: []
+whiteboard_computed:
+  center_mm:
+  - 15.0
+  - 340.8
+  center_corner_avg_mm:
+  - 3.32
+  - 331.78
+  width_mm: 108.55
+  height_mm: 259.44
+  center_adjustment_mm:
+  - 11.68
+  - 9.02
+  contact_x_offset_mm: 37.0
+plane_fit:
+  normal:
+  - -0.9888
+  - 0.0925
+  - -0.1169
+  centroid_mm:
+  - 208.49
+  - 3.32
+  - 331.78
+  rms_residual_mm: 1.363
+  n_points: 4
+  source_breakdown:
+    corners: 4
+    perimeter: 0
+    diagonal_tl_br: 0
+    diagonal_tr_bl: 0
+    surface: 0
+    center: 0

@@ -1,11 +1,8 @@
 imagegen:
   preset: illustrious_v2_lineart_char
-  # ↓ FLUX schnell ルート(gen_latest_route)で効くのは下記2項目のみ。
-  #   num_inference_steps: schnell 既定 4 (多いほど遅い・微変化、 1-50 で clamp)。
-  #   controlnet_conditioning_scale: 入力線への追従度。 高=忠実/低=自由(飛躍)。 DECORATE は 0.55。
-  num_inference_steps: 4
-  guidance_scale: 6.5
-  controlnet_conditioning_scale: 0.55
+  num_inference_steps: 28
+  guidance_scale: 3.0
+  controlnet_conditioning_scale: 0.5
   negative_prompt: color, blue background, gradient, hatching, crosshatch, screentone,
     halftone, filled background, scribble, sketchy, shading, gray, fill, silhouette,
     brush stroke, dry brush, faded lines, watermark, signature, text, frame, border,

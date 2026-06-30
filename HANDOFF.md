@@ -1,60 +1,63 @@
-# HANDOFF — 2026-06-01 朝の再開用 (これだけ読めばOK)
+# HANDOFF — 2026-06-02 FLUX 移行期 (新スレッド用・これだけ読めばOK)
 
-夜間に 4 機能を実装・push 済み。 詳細設計は
-`docs/20260601_scatter_and_transparent_board.md`。
+このセッションは重くなったので新スレに移行。 まず下の「①最初にやること」を実行。
+過去の詳細レシピは **メモリ** (`MEMORY.md` の FLUX 系3件) に集約済み。
 
-## 🌙 夜間バッチ結果 (01:58 完了・push 済 ef8aec4)
-全11サンプル × 3パイプライン = **55候補を生成、 失敗ゼロ・空候補ゼロ**。
-- shift 11/11 ・ gacha 33/33 (×3 seed) ・ scatter 11/11
-- webapp に `overnight_{shift,gacha,scatter}_20260601_010657` 列が追加済
-- 確認: https://yushin-jizaie.github.io/draw_piper/selection/ (生成日 20260601 で絞り込み)
-- 再実行したい時: `bash scripts/overnight_batch.sh` (ログ logs/overnight_batch_*.log)
-- 朝やること: 候補を眺めて良い物を選定 → 実機描画へ
+## ① 最初にやること: 走っている LoRA 学習の確認
+**FLUX style LoRA を 16GB で学習中**（バックグラウンド、nohup）。新スレ開始時に状態確認:
 
-## 🔴 あなた(ユーザー)の判断待ち 4 件
-1. **線の色**: 透明ボードのマーカー色は? (黒/青/赤/他)
-   → 今は GUI で `dark/black/blue/red/green` 選択可、 既定 `dark`。 実色を教えてくれれば既定変更。
-2. **near/far の線**: 手前(自分)/奥(相手) の線、 AI 入力は「両方」 でOK?
-   → 単一カメラでは分離困難なため現状 **両方抽出**。 分離が要るなら要相談。
-3. **背景リファレンス**: 空ボードを1枚撮って基準にする方式でOK?
-   → GUI「背景キャプチャ」 ボタンで実装済。
-4. **webapp アップロード時の push**: GUI から都度「push する/しない」 を選ぶ形にした。 これでOK?
-
-## ✅ 実装済み (commit/push 済)
-| 機能 | 実体 | テスト方法 |
-|---|---|---|
-| scatter (キャラを撒く) 本番化 | `modules/stroke_scatter.py`, `scripts/scatter_companions.py` | `webapp の scatter 列` / 下記 cmd |
-| 透明ボード 線抽出 | `modules/line_extract.py` + GUI 統合 | `python modules/line_extract.py --smoke` (PASS済) / 実機カメラ |
-| webapp アップロード | `scripts/upload_to_webapp.py` + GUI ボタン | GUI 実行 or CLI |
-| ローカル webapp 起動 | `scripts/webapp_local` | `~/draw_piper/scripts/webapp_local` |
-
-## 動作確認コマンド
 ```bash
-# scatter 再生成 (GPU不要、 既存シート)
-./venv/bin/python -m scripts.scatter_companions \
-  --input sketch_variations/_inputs/scatter_input.png \
-  --sheet assets/scatter_sheet_lineart_char.png \
-  --output sketch_variations/disp_scatter_demo/scatter/v1_seed555 \
-  --seed 555 --resolution 704x1472
-
-# 線抽出 単体テスト
-./venv/bin/python modules/line_extract.py --smoke
-
-# GUI 起動 (カメラ + 線抽出 + アップロード)
-./venv/bin/python scripts/pipeline_test_gui.py
-
-# ローカル webapp
-~/draw_piper/scripts/webapp_local   # → http://localhost:8765/docs/selection/index.html
+cd /home/jizaiedev2026/draw_piper
+grep -oE "[0-9]+/1500 \[[0-9:]+<[0-9:]+[^]]*" logs/flux_train.log | tail -1   # 進捗
+grep -q TRAIN_DONE logs/flux_train.log && echo DONE || echo running
+ls models/flux_lora_winners/*.safetensors 2>/dev/null   # 完成LoRA (最終)
+ls -d models/flux_lora_winners/checkpoint-*             # 中間 (500/1000/1500)
 ```
+- **2026-06-02 16:35 時点**: 1072/1500 step (71%)、残り ~1h。checkpoint-500/1000 保存済、最終未。
+- 完了後の `pytorch_lora_weights.safetensors` が成果物。GPU 専有中はテスト不可（推論と排他）。
 
-## GUI の新 UI
-- 入力ソース欄: 「透明ボード線抽出」 = 背景キャプチャ / 色選択 / 差分閾値 / 「線抽出→入力に設定」
-- 結果ボタン行: 「⬆ webapp にアップロード」 (表示名入力 → local/push 選択)
+## ② 学習完了後にやること: LoRA を載せて検証→webapp
+学習が「過去の勝ちパターン全般」(168枚の線画) の画風を学べたか確認する。
+1. `scripts/gen_flux_big.py`（FLUX-CN 生成パイプライン）の pipe 構築後に
+   `pipe.load_lora_weights("models/flux_lora_winners")` を1行足したコピーを作る。
+2. 数枚（samp_IMG_4357 顔 / 4362 椅子 / 4363 犬 等）を生成 → LoRA 有無で比較。
+3. 良ければ webapp バッチに出して push（下記④の手順）。
+4. LoRA 強度は `pipe.set_adapters(["default"], [0.6~1.0])` で調整。
 
-## 実機で確認したいこと (明日)
-- 実カメラで 線抽出 → 色/閾値の最適値を詰める (現状は合成テストのみ)
-- アップロード → ローカル webapp で候補が見えるか
-- scatter の散らし方 (cols/rows/fill) の好み調整
+## 現在の生成パイプライン (FLUX、マーカー描画向け)
+- スクリプト: **`scripts/gen_flux_big.py`**（「大きくシンプルな単一被写体」全画像生成→webapp push）。
+- モデル: **ungated ミラー `chutesai/FLUX.1-schnell`** + ControlNet `Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro`(canny, control_mode=0)。nf4量子化+`enable_model_cpu_offload`で**15GB**, ~47s/枚。
+- レシピ要点（メモリ [flux_schnell_controlnet_setup] 参照）:
+  - schnell は `guidance_scale=0` で **negative無視** → 制約は positive に書く。
+  - FLUX の線は薄い → vectorize前に **hardboost(cut250)** で黒線化、**binarize**モードで単一線（二重線回避）。
+  - 配置は **fill-board**（canvas92%に拡大、入力小領域に合わせない）。**15px未満の細部は除去**（マーカー2-3mm対応）。
+- 直近バッチ: `sketch_variations/disp_2026-06-02-FLUX/`（7画像×3seed の big 版、webapp反映済）。
 
-## オンライン webapp
-https://yushin-jizaie.github.io/draw_piper/selection/  (scatter 列 = 一番下)
+## 物理制約（重要）
+- ホワイトボード描画域 **94×194mm**、`mm_per_px≈0.134`。マーカー **2-3mm = 15-22px**。
+- → 細かい文字/装飾は潰れる。**大きくシンプル**が正義。canvas は CW,CH=704,1472。
+
+## LoRA 学習レシピ（メモリ [flux_lora_training_16gb] 参照）
+- スクリプト: **`scripts/train_flux_lora_16gb.py`**（diffusers公式+nf4パッチ、全パッチに`# [PATCH]`）。
+- データ: `scripts/build_lora_dataset.py` が `sketch_variations/lora_winners_dataset/selections.json`
+  (=webapp選別JSON) から 168枚を内容クロップ→768正方化。出力 `sketch_variations/lora_winners_dataset/*.png`。
+- 起動: `/tmp/run_train.sh`（中身は下記コマンド）。`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`必須。
+  trigger語 `tklineart`、rank16/batch1/res768/8bit-adam/grad-ckpt/cache_latents、~8.5s/step、validation無し(nf4 .to不可)。
+
+## ④ webapp 反映の定型
+```bash
+./venv/bin/python -m scripts.build_selection_webapp     # disp_* 自動検出。変種dirは v*_seed* 命名必須
+git add sketch_variations/<batch> docs/selection/index.html
+git commit -q -m "..."; git push origin claude/style-pool-rebalance-20260529
+```
+RAW URL: `https://raw.githubusercontent.com/yushin-jizaie/draw_piper/claude/style-pool-rebalance-20260529/<path>`
+
+## 環境メモ
+- venv に **pip 無し**（パッケージ追加不可、既存で対応）。bitsandbytes/peft/diffusers0.38/accelerate あり。
+- GPU RTX 2000 Ada **16GB**。HFトークン無し→FLUXは ungated ミラー必須。
+- ブランチ `claude/style-pool-rebalance-20260529`。チャットに画像を出しても**ユーザーは見られない**(SendUserFile/markdown画像ともNG)→ webapp で確認してもらう。
+
+## これまでの経緯（要約）
+SDXL系(matsumoto/lineart/enriched/hybrid)を経て、品質不足で **FLUX+ControlNet に移行**。
+マーカー描画制約から「大きくシンプル」方針に。 最後に「勝ちパターン168枚で FLUX style LoRA学習」へ。
+未完: LoRA学習(進行中) → 検証 → 採否判断。
