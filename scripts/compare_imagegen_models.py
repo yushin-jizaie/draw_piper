@@ -42,6 +42,10 @@ from modules.image_gen import (   # noqa: E402
     MODEL_PRESETS,
     DEFAULT_NEGATIVE_PROMPT,
 )
+from modules.panel_geometry import (   # noqa: E402
+    parse_resolution,
+    panel_image_resolution,
+)
 
 
 def _load_guide_image(path: Optional[Path]):
@@ -105,7 +109,10 @@ def main() -> int:
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", type=Path, default=None,
                     help="Output dir. Default: logs/imagegen_comparison_<ts>")
-    ap.add_argument("--resolution", type=int, default=1024)
+    ap.add_argument("--resolution", type=str, default=None,
+                    help="生成解像度。 'N' (正方形) / 'WxH' (縦長等) いずれも可。 "
+                         "省略時は canvas_calibration の panel aspect から "
+                         "SDXL bucket を自動選択 (= ボードと同じ縦横比)。")
     ap.add_argument("--strength", type=float, default=None,
                     help="img2img strength を全 preset で上書き (0.5-0.9 推奨)")
     ap.add_argument("--lora-scale", type=float, default=None,
@@ -133,10 +140,14 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     print(f"[compare] output dir: {out_dir}")
 
+    # 解像度: 明示指定 (int/'WxH') が無ければ panel aspect から bucket 自動選択。
+    res_wh = parse_resolution(args.resolution) or panel_image_resolution()
+    print(f"[compare] resolution: {res_wh[0]}x{res_wh[1]}")
+
     guide = _load_guide_image(args.guide)
-    if guide.size != (args.resolution, args.resolution):
+    if guide.size != res_wh:
         from PIL import Image
-        guide = guide.resize((args.resolution, args.resolution), Image.LANCZOS)
+        guide = guide.resize(res_wh, Image.LANCZOS)
     guide.save(out_dir / "00_guide.png")
 
     results = {
@@ -163,7 +174,7 @@ def main() -> int:
 
         gen_overrides = {
             "negative_prompt": args.negative,
-            "resolution": args.resolution,
+            "resolution": res_wh,
             "verbose": True,
         }
         if args.strength is not None:

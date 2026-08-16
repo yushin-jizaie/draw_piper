@@ -1,0 +1,7 @@
+mode=scatter
+seed=555
+preset=illustrious_v2_lineart_char
+resolution=704x1472
+cols=3 rows=7 fill=0.8
+chars_found=0 chars_placed=0
+sheet_prompt=person, manga character, full body, confident dynamic standing pose, clean bold outline lineart, single black line on white background, no shading, no fill, no hatching, no speed lines

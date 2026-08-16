@@ -1,0 +1,10 @@
+{
+  "sid": "house",
+  "route": "stylize",
+  "subject": "house",
+  "category": "object",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 123,
+  "prompt": "stylish house, manga style illustration, appealing bold design, interesting angle, dynamic composition, clean bold ink lineart, white background"
+}

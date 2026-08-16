@@ -1,0 +1,10 @@
+{
+  "sid": "scatter",
+  "route": "stylize",
+  "subject": "smiley",
+  "category": "person",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 7,
+  "prompt": "smiley, manga character, dynamic confident pose, expressive face, clean bold ink lineart, white background, appealing character design"
+}

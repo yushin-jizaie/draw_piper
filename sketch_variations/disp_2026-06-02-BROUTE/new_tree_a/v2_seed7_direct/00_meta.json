@@ -1,0 +1,12 @@
+{
+  "sid": "new_tree_a",
+  "route": "direct",
+  "subject": "mushroom",
+  "category": "object",
+  "scatter_mode": "same",
+  "pattern": "direct",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 7,
+  "prompt": "mushroom, manga style, clean bold ink lineart, white background, appealing design, multiple"
+}

@@ -1,0 +1,7 @@
+placement=shift
+subject_ja=家
+location_ja=不明
+action_ja=不明
+confidence=0.900
+companion_subject=tree
+prompt=a detailed Matsumoto-style tree, manga style, expressive ink lines, single continuous black line on plain white background, clean smooth strokes, illustrative, no shading

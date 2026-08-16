@@ -1,0 +1,13 @@
+placement=shift
+mode=literal-only
+subject_ja=(literal-only)
+location_ja=
+action_ja=
+confidence=0.000
+companion_subject=circle
+companion_prompt_version=best
+companion_candidates:
+  literal: circle
+companion_judge_idx=0
+composition_refinement=
+prompt=a simple line drawing of a circle, large central subject, bold thick contours, single continuous black line on plain white background, clean smooth strokes, minimalist illustration, no shading

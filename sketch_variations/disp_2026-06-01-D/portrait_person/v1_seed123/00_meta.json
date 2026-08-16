@@ -1,0 +1,10 @@
+{
+  "sid": "portrait_person",
+  "route": "stylize",
+  "subject": "man",
+  "category": "person",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 123,
+  "prompt": "man, manga character, dynamic confident pose, expressive face, clean bold ink lineart, white background, appealing character design"
+}

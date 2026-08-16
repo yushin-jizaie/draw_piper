@@ -1,0 +1,7 @@
+placement=shift
+subject_ja=人
+location_ja=不明
+action_ja=不明
+confidence=0.700
+companion_subject=balloon
+prompt=a detailed Matsumoto-style balloon, manga style, expressive ink lines, single continuous black line on plain white background, clean smooth strokes, illustrative, no shading

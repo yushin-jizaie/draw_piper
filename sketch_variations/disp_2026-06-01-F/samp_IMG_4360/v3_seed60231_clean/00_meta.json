@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4360",
+  "route": "framed",
+  "variant": "clean",
+  "subject": "umbrella",
+  "additions": "",
+  "category": "object",
+  "preset": "animagine_xl_31_mistoline",
+  "cn": 0.5,
+  "seed": 60231,
+  "prompt": "a umbrella, monochrome clean digital lineart, bold even-weight black outlines, no fill, no shading, no brush texture, white background, single subject",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

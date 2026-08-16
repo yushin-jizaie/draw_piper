@@ -1,0 +1,101 @@
+"""ストローク描画順の最適化。
+
+ロボットアームは「キャンバス中心に近い位置を始点とした連続的な動き」でしか
+滑らかに描けない。 そこで合成後キャンバスの中心に最も近い点から描き始め、
+連続的に外側へ向かう順に並べ替える。 オブジェクト単位でまとめて描く
+(1 オブジェクトを描き切ってから次へ)。 2026-06-03 ユーザー要望。
+"""
+from __future__ import annotations
+
+
+def _d2(a, b):
+    return (a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2
+
+
+def order_strokes_center_out(object_stroke_lists, center):
+    """中心→外側・オブジェクト単位・連続化した描画順の flat strokes を返す。
+
+    object_stroke_lists: 各オブジェクトの strokes (list of [ (x,y), ... ]) のリスト。
+    center: (cx, cy) 合成キャンバスの中心。
+
+    - オブジェクトは「中心に最も近い点」が近い順に並べる (中心 → 外側)。
+    - 各オブジェクト内は貪欲最近傍でつなぎ、 各 stroke は直前ペン位置に近い端点から
+      始まる向きに必要なら反転 (= ペン移動を最小化し連続的に)。
+    - ペンを center から開始するので、 最初の始点は中心最寄りになる。
+    """
+    cx, cy = center
+
+    def stroke_min_center(st):
+        return min((x - cx) ** 2 + (y - cy) ** 2 for x, y in st)
+
+    objs = [[list(s) for s in strokes if len(s) >= 2]
+            for strokes in object_stroke_lists]
+    objs = [o for o in objs if o]
+    # オブジェクト順: 中心に最も近い点を持つ順 (中心 → 外側)
+    objs.sort(key=lambda o: min(stroke_min_center(s) for s in o))
+
+    out = []
+    pen = (cx, cy)
+    for strokes in objs:
+        remaining = list(strokes)
+        while remaining:
+            best_i = best_d = None
+            best_flip = False
+            for i, s in enumerate(remaining):
+                d0 = _d2(s[0], pen)
+                d1 = _d2(s[-1], pen)
+                d = d0 if d0 <= d1 else d1
+                if best_d is None or d < best_d:
+                    best_d, best_i, best_flip = d, i, (d1 < d0)
+            s = remaining.pop(best_i)
+            if best_flip:
+                s = s[::-1]
+            out.append(s)
+            pen = s[-1]
+    return out
+
+
+def order_strokes_one(object_stroke_lists, center):
+    """一筆書き化: 中心→外側・最近傍で並べた全ストロークを 1 本に連結して返す。
+
+    各ストロークの終点→次ストロークの始点は直線コネクタとして繋がる (ペンを上げず
+    連続描画)。 戻りは [single_stroke] (ストローク 1 本のリスト)。 コネクタが短くなる
+    よう order_strokes_center_out の最近傍順を流用する。
+    """
+    ordered = order_strokes_center_out(object_stroke_lists, center)
+    if not ordered:
+        return []
+    one = []
+    for st in ordered:
+        one.extend(st)
+    return [one]
+
+
+def order_strokes_tsp_joined(object_stroke_lists, center, max_connect=80.0):
+    """渡り最小(TSP)優先で並べ、 短い渡りだけ連結・長い渡りはペンアップ (ほぼ一筆書き)。
+
+    reorder_strokes_tsp(greedy NN→2-opt, 向き付き) で総渡り距離を最小化した順に並べ、
+    連続ストロークの間隙(渡り)が max_connect 以下なら 1 本に連結(描画される)、
+    超えたらそこでペンを上げて別ストロークにする (長い渡り線が描かれない)。
+    → 描画されるコネクタは短いものだけ。 返りは「ほぼ一筆書き」の数本のストローク。
+    max_connect: px (704x1472 フレーム想定)。 小さいほど一筆書き度が下がる(ペンアップ増)。
+    """
+    strokes = [list(s) for obj in object_stroke_lists for s in obj if len(s) >= 2]
+    if not strokes:
+        return []
+    try:
+        from modules.stroke_planner import reorder_strokes_tsp
+        ordered, _ = reorder_strokes_tsp(
+            strokes, start_point=center, two_opt=True, two_opt_max_iters=100)
+    except Exception:
+        ordered = order_strokes_center_out([strokes], center)
+    out = []
+    run = list(ordered[0])
+    for i in range(1, len(ordered)):
+        gx = run[-1][0] - ordered[i][0][0]; gy = run[-1][1] - ordered[i][0][1]
+        if (gx * gx + gy * gy) ** 0.5 <= max_connect:
+            run.extend(ordered[i])              # 短い渡り → 連結 (描画)
+        else:
+            out.append(run); run = list(ordered[i])   # 長い渡り → ペンアップ
+    out.append(run)
+    return out

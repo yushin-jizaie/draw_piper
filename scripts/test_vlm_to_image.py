@@ -135,6 +135,7 @@ def run_one_cycle(
     prompt_base_template: str = None,
     prompt_fallback_template: str = None,
     prompt_confidence_threshold: float = 0.3,
+    literal_only: bool = False,
 ) -> dict:
     cycle_dir.mkdir(parents=True, exist_ok=True)
     timing: dict = {"cycle_dir": str(cycle_dir), "snapshots": []}
@@ -154,11 +155,27 @@ def run_one_cycle(
     timing["vlm_load_s"] = time.time() - t0
     timing["snapshots"].append(gpu_mem_snapshot("after vlm load", log))
 
-    log.info("---- STAGE 2: VLM predict_intent ----")
-    t0 = time.time()
-    guess = vlm.predict_intent(in_copy)
-    timing["vlm_predict_s"] = time.time() - t0
-    timing["snapshots"].append(gpu_mem_snapshot("after vlm predict", log))
+    if literal_only:
+        # テスト用: カード推論をバイパスし、「何に見えるか」 のリテラル記述を
+        # そのまま生成 prompt の subject に使う (build_prompt が literal_en を
+        # fallback 経路で採用)。 適切なストロークが出るかの検証用。
+        log.info("---- STAGE 2: VLM describe_literal (--literal-only) ----")
+        t0 = time.time()
+        literal = vlm.describe_literal(in_copy)
+        guess = TopicGuess(
+            confidence=0.0,
+            literal_en=literal,
+            raw_text=f"(literal-only) {literal}",
+        )
+        timing["vlm_predict_s"] = time.time() - t0
+        log.info(f"  literal_en    : {literal!r} (card 推論スキップ)")
+        timing["snapshots"].append(gpu_mem_snapshot("after vlm literal", log))
+    else:
+        log.info("---- STAGE 2: VLM predict_intent ----")
+        t0 = time.time()
+        guess = vlm.predict_intent(in_copy)
+        timing["vlm_predict_s"] = time.time() - t0
+        timing["snapshots"].append(gpu_mem_snapshot("after vlm predict", log))
 
     log.info(f"  subject       : {guess.subject.ja} ({guess.subject.en})")
     log.info(f"  location      : {guess.location.ja} ({guess.location.en})")
@@ -232,9 +249,14 @@ def run_one_cycle(
 
     log.info("---- STAGE 9: Vectorizer (CPU, no GPU load) ----")
     t0 = time.time()
+    # --literal-only テストでは生成画像の「全ストローク」を抽出する
+    # (user_image=None)。 通常の diff (生成 − 入力) は、 生成が入力をそのまま
+    # 再現したとき (例: 円→円) に打ち消し合って 0 stroke になるため、
+    # 「適切なストロークが出るか」 の検証では full 抽出が適切。
+    vec_user_image = None if literal_only else in_copy
     vec_result = vectorizer.vectorize(
         generated_image=generated,
-        user_image=in_copy,
+        user_image=vec_user_image,
         debug_dir=cycle_dir / "vec_debug",
     )
     timing["vectorize_s"] = time.time() - t0
@@ -315,6 +337,19 @@ def main() -> int:
         "--camera-countdown", type=int, default=3,
         help="--use-camera 時、各サイクルのキャプチャ前カウントダウン秒数 (0 で無効)",
     )
+    parser.add_argument(
+        "--literal-only", action="store_true",
+        help="テスト用: カード推論 (predict_intent) をバイパスし、 VLM の "
+             "「何に見えるか」 リテラル記述 (describe_literal) をそのまま "
+             "生成 prompt の subject に使う。 適切なストロークが出るかの検証用。",
+    )
+    parser.add_argument(
+        "--no-warp", action="store_true",
+        help="--use-camera 時に PanelCropper の perspective warp を skip し、 "
+             "カメラ生フレーム (横長) をそのまま入力にする。 通常は warp で "
+             "縦長キャンバスを矩形補正クロップしてから生成に渡す (panel_frame.yaml "
+             "の phase_a_calibration が必要)。",
+    )
     args = parser.parse_args()
 
     log, log_file = setup_logging(args.log_dir)
@@ -366,6 +401,7 @@ def main() -> int:
     # --steps が指定されていれば yaml を上書き
     if args.steps is not None:
         ig_cfg["num_inference_steps"] = int(args.steps)
+    steps_eff = ig_cfg["num_inference_steps"]
     from modules.image_gen import build_image_generator_from_config
     image_gen = build_image_generator_from_config(ig_cfg, verbose=True)
     # vectorizer の binarize 設定を yaml から読み込み (パイプライン GUI の
@@ -391,6 +427,24 @@ def main() -> int:
             verbose=True,
         )
         camera.open()
+
+    # Camera → panel UV の perspective warp (縦長キャンバスを矩形補正クロップ)。
+    # phase_a_calibration が未設定/未キャリブなら warp 無しで生フレームを使う。
+    cropper = None
+    if args.use_camera and not args.no_warp:
+        try:
+            from modules.panel_crop import PanelCropper
+            cropper = PanelCropper(
+                ROOT / "calibration" / "panel_frame.yaml", verbose=True)
+            log.info("panel warp: %s", cropper.summary())
+            log.info("panel warp 出力サイズ = %dx%d (px)",
+                     cropper.panel_image_size[0], cropper.panel_image_size[1])
+        except Exception as e:  # noqa: BLE001
+            log.warning(
+                "PanelCropper を読めません (%s)。 warp を skip して生フレームを "
+                "使います。 scripts/calibrate_panel.py で phase_a_calibration を "
+                "作成してください。", e)
+            cropper = None
 
     run_root = args.log_dir / f"vlm_to_image_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     run_root.mkdir(parents=True, exist_ok=True)
@@ -436,6 +490,23 @@ def main() -> int:
                     captured_path, captured.shape, capture_elapsed,
                 )
                 sketch_path_for_cycle = captured_path
+
+                # perspective warp: カメラ生フレーム(横長) → 縦長キャンバスを
+                # 矩形補正クロップ。 これを生成パイプラインの入力にする。
+                if cropper is not None:
+                    try:
+                        warped = cropper.warp(captured)
+                        warped_path = cycle_dir / "warped.png"
+                        cv2.imwrite(str(warped_path), warped)
+                        log.info(
+                            "  warp -> %s shape=%s (panel UV %dx%d)",
+                            warped_path, warped.shape,
+                            cropper.panel_image_size[0],
+                            cropper.panel_image_size[1])
+                        sketch_path_for_cycle = warped_path
+                    except Exception as e:  # noqa: BLE001
+                        log.warning(
+                            "warp に失敗 (%s)。 生フレームを入力に使います。", e)
             else:
                 sketch_path_for_cycle = args.sketch
 
@@ -452,6 +523,7 @@ def main() -> int:
                 prompt_fallback_template=ig_cfg.get("fallback_template"),
                 prompt_confidence_threshold=float(
                     ig_cfg.get("confidence_threshold", 0.3)),
+                literal_only=args.literal_only,
             )
             if capture_elapsed is not None:
                 timing["camera_capture_s"] = capture_elapsed

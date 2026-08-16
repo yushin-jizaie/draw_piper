@@ -87,6 +87,10 @@ class TopicGuess:
     raw_text: str = ""
     infer_time_s: float = 0.0
     n_tokens: int = 0
+    # カード分類が "不明"/低 confidence のときの、 線画のリテラル記述 (英語 1-2 語、
+    # 例: "circle", "ball")。 predict_intent が必要時に describe_literal で埋める。
+    # build_prompt はこれがあれば 汎用フォールバックの代わりに subject として使う。
+    literal_en: str = ""
 
     def is_certain(self, threshold: float = 0.3) -> bool:
         return self.confidence >= threshold

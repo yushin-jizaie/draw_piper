@@ -1,0 +1,39 @@
+schema_version: 3
+created_at: '2026-06-03T19:21:13+09:00'
+whiteboard_corners_mm: {}
+traces:
+  perimeter: []
+  diagonal_tl_br: []
+  diagonal_tr_bl: []
+  surface: []
+whiteboard_computed:
+  center_mm:
+  - -20.0
+  - 340.8
+  center_corner_avg_mm:
+  - 3.32
+  - 331.78
+  width_mm: 108.55
+  height_mm: 259.44
+  center_adjustment_mm:
+  - -23.32
+  - 9.02
+  contact_x_offset_mm: 20.0
+plane_fit:
+  normal:
+  - -0.9888
+  - 0.0925
+  - -0.1169
+  centroid_mm:
+  - 208.49
+  - 3.32
+  - 331.78
+  rms_residual_mm: 1.363
+  n_points: 4
+  source_breakdown:
+    corners: 4
+    perimeter: 0
+    diagonal_tl_br: 0
+    diagonal_tr_bl: 0
+    surface: 0
+    center: 0

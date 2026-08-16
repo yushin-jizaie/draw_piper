@@ -25,7 +25,7 @@ import time
 from pathlib import Path
 
 import tkinter as tk
-from tkinter import filedialog, messagebox, scrolledtext, ttk
+from tkinter import filedialog, messagebox, scrolledtext, simpledialog, ttk
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -44,8 +44,41 @@ except Exception as e:
     ImageTk = None
 
 
-PIPELINE_SCRIPT = ROOT / "scripts" / "test_vlm_to_image.py"
+# 2026-06-03: 最新ルート(M19: FLUX+winners LoRA+VLM完成形+CN0.2+manga+OpenCV線抽出
+# +複数被写体 分割/合成+中心→外側描画順) のバックエンドに差し替え。
+# 旧 SDXL パイプラインに戻すなら scripts/test_vlm_to_image.py を指す。
+PIPELINE_SCRIPT = ROOT / "scripts" / "gen_latest_route.py"
 LOGS_DIR = ROOT / "logs"
+# 生成設定プリセット (ルート/レバー/配置をまとめて保存・呼び出し)
+PRESETS_FILE = ROOT / "calibration" / "gen_presets.json"
+
+# 生成ルート (バックボーン) の選択肢。 表示名 → gen_latest_route.py の --route ID。
+ROUTE_CHOICES = [
+    "flux_decorate (現行)",
+    "sdxl_routed (SDXL+ルート判定)",
+    "sdxl_text2img (SDXL prompt駆動)",
+    "ip_matsumoto (IP-Adapter 2段)",
+]
+ROUTE_NAME_TO_ID = {
+    "flux_decorate (現行)": "flux_decorate",
+    "sdxl_routed (SDXL+ルート判定)": "sdxl_routed",
+    "sdxl_text2img (SDXL prompt駆動)": "sdxl_text2img",
+    "ip_matsumoto (IP-Adapter 2段)": "ip_matsumoto",
+}
+
+# USBカメラを反時計回り90度で縦向きに搭載したので、 キャプチャ画像を回転して正立させる。
+# 向きが逆(上下/左右が想定と違う)なら "cw" に変える。 "ccw"=反時計90 / "cw"=時計90 / "180" / None=無回転。
+CAMERA_ROTATE = "ccw"
+
+
+def _rotate_cam(frame_bgr):
+    """カメラ搭載向きの補正: キャプチャ frame を CAMERA_ROTATE 方向に回転して正立させる。"""
+    if cv2 is None or CAMERA_ROTATE is None or frame_bgr is None:
+        return frame_bgr
+    code = {"ccw": cv2.ROTATE_90_COUNTERCLOCKWISE,
+            "cw": cv2.ROTATE_90_CLOCKWISE,
+            "180": cv2.ROTATE_180}.get(CAMERA_ROTATE)
+    return cv2.rotate(frame_bgr, code) if code is not None else frame_bgr
 
 
 class PipelineTestGUI:
@@ -65,6 +98,47 @@ class PipelineTestGUI:
         self.var_camera_device = tk.IntVar(value=0)
         self.var_sdxl_steps = tk.IntVar(value=4)
         self.var_seed = tk.StringVar(value="")  # 空 = 自動
+        # 縦伸ばし比率: ロボット側の縦潰れ/横伸びの応急補正。 生成画像を縦に
+        # この倍率で引き伸ばしてからストローク化する (1.0 = 補正なし)。
+        self.var_vstretch = tk.StringVar(value="1.0")
+        # ワープ補正(生成側): アーム側のワープ補正が効かないので、 生成後の
+        # ストロークに draw_warp_correction の affine を事前適用する。
+        self.var_warp_correct = tk.BooleanVar(value=False)
+        # 一筆書き: 全ストロークを 1 本に連結 (ペンを上げない連続描画)。
+        self.var_one_stroke = tk.BooleanVar(value=False)
+        # 一枚絵(分割なし): 複数被写体に分割せず入力全体を1枚絵として生成。
+        self.var_no_split = tk.BooleanVar(value=False)
+        # literal-only: カード推論をやめ「何に見えるか」 を生成 prompt に使い、
+        # vectorize も full 抽出 (diff しない) でテストする。
+        self.var_literal_only = tk.BooleanVar(value=False)
+        # 生成ルート (バックボーン)。 default は現行 FLUX-decorate。
+        self.var_route = tk.StringVar(value=ROUTE_CHOICES[0])
+        # IP-松本ルートの参照画風プール (character/object/other)。
+        self.var_ip_category = tk.StringVar(value="character")
+        # 被写体 手動指定 (空=VLM自動)。 VLM誤読を回避し prompt 主語を固定。
+        self.var_subject = tk.StringVar(value="")
+        # VLM design mode: decorate=元線維持+装飾 / complete=未来の完成形 / finish=ラフ完成化。
+        # FLUX/SDXLルートで効く (ip_matsumoto は無関係)。
+        self.var_design_mode = tk.StringVar(value="decorate")
+        # IP-松本 濃さレバー (CN無関係ルートの別調整) + 曲率制約のディテール下限。
+        self.var_ip_scale = tk.StringVar(value="0.60")        # IP-Adapter style 転写の強さ
+        self.var_ip_strength = tk.StringVar(value="0.45")     # stage2 img2img の振り幅
+        self.var_ip_diff = tk.BooleanVar(value=True)          # 加筆のみ(diff)。 OFFで全線描く
+        self.var_min_feature = tk.StringVar(value="8.0")      # 曲率制約ディテール下限(mm)
+        self.var_ip_frac = tk.StringVar(value="0.38")         # IP被写体サイズ率(小=余白大=放射状増)
+        # 配置微調整 (カメラ↔アームパネルのズレ補正、 全ルート共通)
+        self.var_place_scale = tk.StringVar(value="1.00")     # 拡大率
+        self.var_place_dx = tk.StringVar(value="0")           # 横ずらしmm(+右)
+        self.var_place_dy = tk.StringVar(value="0")           # 縦ずらしmm(+上)
+        self.var_preset_name = tk.StringVar(value="")         # 選択中プリセット名
+        # FLUX-decorate ルート: style文(decorate/simple) と LoRA強度
+        self.var_flux_style = tk.StringVar(value="decorate")
+        self.var_lora_str = tk.StringVar(value="0.6")
+        # 透明ボード線抽出 (背景差分 + 色フィルタ) 用の state
+        self.background_bgr = None          # 空ボード基準フレーム (np.ndarray BGR)
+        self.var_line_mode = tk.StringVar(value="dark")   # dark/black/blue/red/green
+        self.var_line_diff = tk.IntVar(value=30)          # 背景差分 閾値
+        self.var_line_dark_v = tk.IntVar(value=90)        # 暗い線の V 上限
 
         self._build_ui()
 
@@ -83,6 +157,9 @@ class PipelineTestGUI:
         ).pack(side=tk.RIGHT, padx=4)
         ttk.Button(status_bar, text="ログフォルダを開く",
             command=self.open_logs_folder, width=20
+        ).pack(side=tk.RIGHT, padx=4)
+        ttk.Button(status_bar, text="ログ窓を表示",
+            command=self._show_log_window, width=12
         ).pack(side=tk.RIGHT, padx=4)
 
         # ① 入力ソース選択
@@ -108,6 +185,10 @@ class PipelineTestGUI:
             text="ファイルを選択...",
             command=self.on_file_select, width=18)
         self.btn_file_select.pack(side=tk.LEFT, padx=2)
+        self.btn_crop = ttk.Button(self.file_frame,
+            text="✂ クロップ",
+            command=self.on_crop_input, width=12)
+        self.btn_crop.pack(side=tk.LEFT, padx=2)
         self.lbl_file_path = ttk.Label(self.file_frame,
             text="(未選択)", font=("Monaco", 9), foreground="#777")
         self.lbl_file_path.pack(side=tk.LEFT, padx=8, fill=tk.X, expand=True)
@@ -133,9 +214,117 @@ class PipelineTestGUI:
             command=self.on_camera_close, width=12)
         self.btn_cam_close.pack(side=tk.LEFT, padx=2)
 
+        # 透明ボード線抽出 (背景差分 + 特定色) — カメラモード時のみ意味あり
+        self.lineext_frame = ttk.LabelFrame(input_frame,
+            text="透明ボード線抽出 (背景差分 + 特定色)", padding=6)
+        self.lineext_frame.pack(fill=tk.X, pady=(6, 2))
+        row1 = ttk.Frame(self.lineext_frame); row1.pack(fill=tk.X)
+        self.btn_bg_file = ttk.Button(row1,
+            text="背景ファイル選択",
+            command=self.on_select_background_file, width=15)
+        self.btn_bg_file.pack(side=tk.LEFT, padx=2)
+        self.btn_bg_capture = ttk.Button(row1,
+            text="背景キャプチャ (空ボード)",
+            command=self.on_capture_background, width=24)
+        self.btn_bg_capture.pack(side=tk.LEFT, padx=2)
+        self.lbl_bg_status = ttk.Label(row1, text="背景: 未取得",
+            font=("Monaco", 9), foreground="#a33")
+        self.lbl_bg_status.pack(side=tk.LEFT, padx=8)
+        row2 = ttk.Frame(self.lineext_frame); row2.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(row2, text="線の色:").pack(side=tk.LEFT, padx=(0, 2))
+        ttk.Combobox(row2, textvariable=self.var_line_mode, width=7,
+            state="readonly",
+            values=["dark", "black", "blue", "red", "green"]
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(row2, text="差分閾値:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(row2, from_=5, to=120, width=4,
+            textvariable=self.var_line_diff).pack(side=tk.LEFT, padx=2)
+        ttk.Label(row2, text="暗線V上限:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(row2, from_=30, to=200, width=4,
+            textvariable=self.var_line_dark_v).pack(side=tk.LEFT, padx=2)
+        self.btn_extract_lines = ttk.Button(row2,
+            text="線抽出 → 入力に設定",
+            command=self.on_extract_lines, width=20)
+        self.btn_extract_lines.pack(side=tk.LEFT, padx=(10, 2))
+
         # ② パイプライン実行
+        # ルート選択 (生成バックボーン)
+        route_frame = ttk.LabelFrame(self.root,
+            text="② ルート選択 (生成バックボーン)", padding=6)
+        route_frame.pack(fill=tk.X, padx=6, pady=(4, 0))
+        # 行0: プリセット (ルート/レバー/配置をまとめて保存・呼び出し)
+        ps_row = ttk.Frame(route_frame); ps_row.pack(fill=tk.X, pady=(0, 4))
+        ttk.Label(ps_row, text="プリセット:").pack(side=tk.LEFT, padx=(2, 2))
+        self.cmb_preset = ttk.Combobox(ps_row, textvariable=self.var_preset_name,
+            width=28, state="readonly", values=self._preset_names())
+        self.cmb_preset.pack(side=tk.LEFT, padx=2)
+        self.cmb_preset.bind("<<ComboboxSelected>>", lambda e: self.on_load_preset())
+        ttk.Button(ps_row, text="読込", command=self.on_load_preset, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Button(ps_row, text="保存", command=self.on_save_preset, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Button(ps_row, text="削除", command=self.on_delete_preset, width=5).pack(side=tk.LEFT, padx=2)
+        ttk.Label(ps_row, text="← 現在の設定を名前を付けて保存 / 選んで読込",
+            foreground="#777").pack(side=tk.LEFT, padx=(8, 2))
+        # 行1: ルート / IP category / design (コンボボックス群)
+        r1 = ttk.Frame(route_frame); r1.pack(fill=tk.X)
+        ttk.Label(r1, text="ルート:").pack(side=tk.LEFT, padx=(2, 2))
+        ttk.Combobox(r1, textvariable=self.var_route, width=26,
+            state="readonly", values=ROUTE_CHOICES).pack(side=tk.LEFT, padx=2)
+        ttk.Label(r1, text="IP category:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Combobox(r1, textvariable=self.var_ip_category, width=10,
+            state="readonly", values=["character", "object", "other"]
+            ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(r1, text="design:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Combobox(r1, textvariable=self.var_design_mode, width=10,
+            state="readonly", values=["decorate", "complete", "finish", "direct"]
+            ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(r1, text="FLUXstyle:").pack(side=tk.LEFT, padx=(10, 2))
+        ttk.Combobox(r1, textvariable=self.var_flux_style, width=9,
+            state="readonly", values=["decorate", "simple", "detailed"]).pack(side=tk.LEFT, padx=2)
+        ttk.Label(r1, text="LoRA:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(r1, from_=0.0, to=1.2, increment=0.05, width=5, format="%.2f",
+            textvariable=self.var_lora_str).pack(side=tk.LEFT, padx=2)
+        ttk.Label(r1, text="被写体(手動):").pack(side=tk.LEFT, padx=(10, 2))
+        tk.Entry(r1, textvariable=self.var_subject, width=12).pack(side=tk.LEFT, padx=2)
+        # 行2: IP-松本 濃さレバー + 曲率制約のディテール下限 (CN無関係ルート用の別調整)
+        ip_row = ttk.Frame(route_frame)
+        ip_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(ip_row, text="IP ip_scale:").pack(side=tk.LEFT, padx=(2, 2))
+        tk.Spinbox(ip_row, from_=0.0, to=1.2, increment=0.05, width=5, format="%.2f",
+            textvariable=self.var_ip_scale).pack(side=tk.LEFT, padx=2)
+        ttk.Label(ip_row, text="stage2 強度:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(ip_row, from_=0.2, to=0.9, increment=0.05, width=5, format="%.2f",
+            textvariable=self.var_ip_strength).pack(side=tk.LEFT, padx=2)
+        ttk.Checkbutton(ip_row, text="加筆のみ(diff)", variable=self.var_ip_diff
+            ).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Label(ip_row, text="ディテール下限mm:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(ip_row, from_=0.0, to=20.0, increment=0.5, width=5, format="%.1f",
+            textvariable=self.var_min_feature).pack(side=tk.LEFT, padx=2)
+        ttk.Label(ip_row, text="IP被写体%:").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(ip_row, from_=0.20, to=0.60, increment=0.02, width=5, format="%.2f",
+            textvariable=self.var_ip_frac).pack(side=tk.LEFT, padx=2)
+        # 配置微調整行 (カメラ↔アームパネルのズレ補正、 全ルート共通)
+        pl_row = ttk.Frame(route_frame)
+        pl_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(pl_row, text="配置 拡大率:").pack(side=tk.LEFT, padx=(2, 2))
+        tk.Spinbox(pl_row, from_=0.5, to=1.3, increment=0.02, width=5, format="%.2f",
+            textvariable=self.var_place_scale).pack(side=tk.LEFT, padx=2)
+        ttk.Label(pl_row, text="横ずらしmm(+右):").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(pl_row, from_=-100, to=100, increment=1, width=5,
+            textvariable=self.var_place_dx).pack(side=tk.LEFT, padx=2)
+        ttk.Label(pl_row, text="縦ずらしmm(+上):").pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(pl_row, from_=-150, to=150, increment=1, width=5,
+            textvariable=self.var_place_dy).pack(side=tk.LEFT, padx=2)
+        ttk.Label(pl_row, text="← カメラとアームのサイズ/位置ズレ補正 (全ルート共通)",
+            foreground="#777").pack(side=tk.LEFT, padx=(8, 2))
+        # 行3: ヒント (折り返し)
+        ttk.Label(route_frame, justify=tk.LEFT, foreground="#777", wraplength=1100,
+            text="design: decorate=元線+装飾 / complete=完成形を設計 / finish=ラフ完成化 (FLUX/SDXLのみ)。  "
+                 "IP放射状を増やす: IP被写体%を下げる(余白↑=放射状↑)。 diff OFFで顔ごと全線。 "
+                 "ip_scale・stage2強度の上げすぎは厳禁(線が溶ける)。"
+            ).pack(fill=tk.X, padx=2, pady=(2, 0))
+
         run_frame = ttk.LabelFrame(self.root,
-            text="② パイプライン実行", padding=8)
+            text="③ パイプライン実行", padding=8)
         run_frame.pack(fill=tk.X, padx=6, pady=4)
         ttk.Label(run_frame, text="SDXL steps:").pack(side=tk.LEFT, padx=2)
         tk.Spinbox(run_frame, from_=1, to=30, width=4,
@@ -145,15 +334,40 @@ class PipelineTestGUI:
                   ).pack(side=tk.LEFT, padx=(8, 2))
         tk.Entry(run_frame, textvariable=self.var_seed, width=8
                  ).pack(side=tk.LEFT, padx=2)
+        ttk.Checkbutton(
+            run_frame, text="literal (カード推論なし)",
+            variable=self.var_literal_only,
+        ).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Label(run_frame, text="縦伸ばし比率:"
+                  ).pack(side=tk.LEFT, padx=(8, 2))
+        tk.Spinbox(run_frame, from_=0.5, to=2.5, increment=0.05, width=5,
+            format="%.2f", textvariable=self.var_vstretch
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Checkbutton(
+            run_frame, text="ワープ補正(生成側)",
+            variable=self.var_warp_correct,
+        ).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Checkbutton(
+            run_frame, text="一筆書き",
+            variable=self.var_one_stroke,
+        ).pack(side=tk.LEFT, padx=(8, 2))
+        ttk.Checkbutton(
+            run_frame, text="一枚絵(分割なし)",
+            variable=self.var_no_split,
+        ).pack(side=tk.LEFT, padx=(8, 2))
         self.btn_run = ttk.Button(run_frame,
             text="▶ 実行 (VLM → ImageGen → Vectorizer)",
             command=self.on_run_pipeline, width=40)
         self.btn_run.pack(side=tk.LEFT, padx=(12, 4))
         self.btn_abort = ttk.Button(run_frame,
-            text="中止",
-            command=self.on_abort_pipeline, width=8,
+            text="■ 生成キャンセル",
+            command=self.on_abort_pipeline, width=14,
             state=tk.DISABLED)
         self.btn_abort.pack(side=tk.LEFT, padx=2)
+        self.btn_revec = ttk.Button(run_frame,
+            text="✎ ストローク再生成",
+            command=self.on_revectorize, width=18)
+        self.btn_revec.pack(side=tk.LEFT, padx=2)
 
         # ③ 4 画像プレビュー (横並び、 コンパクト)
         preview_frame = ttk.LabelFrame(self.root,
@@ -257,6 +471,11 @@ class PipelineTestGUI:
             command=self.on_view_topic, width=18,
             state=tk.DISABLED)
         self.btn_view_topic.pack(side=tk.LEFT, padx=2)
+        self.btn_upload = ttk.Button(btn_row,
+            text="⬆ webapp にアップロード",
+            command=self.on_upload_webapp, width=22,
+            state=tk.DISABLED)
+        self.btn_upload.pack(side=tk.LEFT, padx=2)
         ttk.Button(btn_row,
             text="🔧 二値化キャリブ",
             command=self.on_binarize_calib, width=18
@@ -270,10 +489,21 @@ class PipelineTestGUI:
         # cycle dir 監視用
         self._stage_seen = set()
 
-        # ログ
-        log_frame = ttk.LabelFrame(self.root,
-            text="ログ", padding=4)
-        log_frame.pack(fill=tk.BOTH, expand=True, padx=6, pady=4)
+        # ログ (画面右の別ウィンドウに切り出し。 メイン窓と並べて見られる)
+        self.log_win = tk.Toplevel(self.root)
+        self.log_win.title("ログ")
+        try:
+            sw = self.root.winfo_screenwidth(); sh = self.root.winfo_screenheight()
+            self.log_win.geometry(f"500x{max(400, sh - 140)}+{max(0, sw - 520)}+40")
+        except Exception:
+            self.log_win.geometry("500x700")
+        # 閉じても破棄せず隠す (self.log_text を生かす)
+        self.log_win.protocol("WM_DELETE_WINDOW", self.log_win.withdraw)
+        log_frame = ttk.LabelFrame(self.log_win, text="ログ", padding=4)
+        log_frame.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+        ttk.Button(log_frame, text="クリア",
+            command=lambda: self.log_text.delete("1.0", tk.END), width=8
+            ).pack(anchor=tk.E, pady=(0, 2))
         self.log_text = scrolledtext.ScrolledText(log_frame,
             font=("Monaco", 9), wrap=tk.WORD, height=8)
         self.log_text.pack(fill=tk.BOTH, expand=True)
@@ -316,6 +546,25 @@ class PipelineTestGUI:
             text=str(self.selected_sketch_path), foreground="black")
         self._show_preview_from_file(self.selected_sketch_path)
         self.log(f"ファイル選択: {self.selected_sketch_path}")
+
+    def _show_log_window(self):
+        """ログ別窓を再表示 (閉じた/隠れた時用)。"""
+        try:
+            self.log_win.deiconify(); self.log_win.lift()
+        except Exception:
+            pass
+
+    def on_crop_input(self):
+        """入力画像を手作業でクロップ (二値化の残ノイズ領域を切り落とす)。"""
+        if self.selected_sketch_path is None or \
+                not Path(self.selected_sketch_path).exists():
+            messagebox.showerror("入力なし",
+                "先に入力画像 (ファイル選択 or カメラ撮影) を確定してください。")
+            return
+        if Image is None or ImageTk is None:
+            messagebox.showerror("PIL なし", "Pillow が必要です。")
+            return
+        CropWindow(self, Path(self.selected_sketch_path))
 
     def _show_preview_from_file(self, path: Path):
         if Image is None or ImageTk is None:
@@ -390,6 +639,7 @@ class PipelineTestGUI:
             return
         try:
             frame_bgr = self.camera._read_one()  # 1 frame だけ取り出し
+            frame_bgr = _rotate_cam(frame_bgr)    # カメラ搭載向き補正 (90度回転)
             if cv2 is not None:
                 rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
                 pil = Image.fromarray(rgb) if Image else None
@@ -416,6 +666,7 @@ class PipelineTestGUI:
         except Exception as e:
             self.log(f"撮影失敗: {e}")
             return
+        captured_bgr = _rotate_cam(captured_bgr)   # カメラ搭載向き補正 (90度回転)
         # 一時ファイル保存
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         capture_path = LOGS_DIR / f"camera_capture_{ts}.png"
@@ -443,7 +694,199 @@ class PipelineTestGUI:
         self.log("カメラ閉じました")
         self._refresh_input_buttons()
 
+    # ---------- 透明ボード線抽出 (背景差分 + 特定色) ----------
+
+    def on_select_background_file(self):
+        """背景差分用の基準画像をファイルから選ぶ (カメラ撮影の代わり)。
+
+        過去に撮った空ボード画像 (logs/line_background_*.png 等) を選べる。
+        """
+        path = filedialog.askopenfilename(
+            title="背景 (空ボード) 画像を選択",
+            filetypes=[("画像ファイル", "*.jpg *.jpeg *.png *.bmp"), ("All", "*.*")],
+            initialdir=str(LOGS_DIR))
+        if not path:
+            return
+        if cv2 is None:
+            messagebox.showerror("OpenCV なし", "cv2 が必要です。")
+            return
+        bg = cv2.imread(path)
+        if bg is None:
+            messagebox.showerror("読込失敗", f"画像を読めません:\n{path}")
+            return
+        self.background_bgr = bg
+        name = Path(path).name
+        self.lbl_bg_status.config(text=f"背景: ファイル ({name})", foreground="#262")
+        self.log(f"背景ファイル選択: {path} {bg.shape[1]}x{bg.shape[0]}")
+
+    def on_capture_background(self):
+        """空ボードを 1 枚撮って背景差分の基準にする。"""
+        if self.camera is None:
+            messagebox.showinfo("カメラ未起動",
+                "先に「カメラ起動」 してから、 線を消した空ボードを撮ってください。")
+            return
+        try:
+            self.background_bgr = self.camera.capture_single()
+        except Exception as e:
+            self.log(f"背景キャプチャ失敗: {e}")
+            messagebox.showerror("背景キャプチャ失敗", str(e))
+            return
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        bg_path = LOGS_DIR / f"line_background_{ts}.png"
+        cv2.imwrite(str(bg_path), self.background_bgr)
+        self.lbl_bg_status.config(text=f"背景: 取得済 ({ts})", foreground="#262")
+        self.log(f"背景キャプチャ → {bg_path}")
+
+    def on_extract_lines(self):
+        """現在の入力画像から線を抽出して selected_sketch_path に差し替える。
+
+        背景差分 (背景取得済なら) + 特定色フィルタ。 背景未取得でも色のみで動く。
+        """
+        if self.selected_sketch_path is None or \
+                not self.selected_sketch_path.exists():
+            messagebox.showinfo("入力なし",
+                "先にカメラ撮影 (またはファイル選択) で線入りの画像を確定してください。")
+            return
+        try:
+            from modules.line_extract import extract_lines_image
+        except Exception as e:
+            messagebox.showerror("line_extract import 失敗", str(e))
+            return
+        frame = cv2.imread(str(self.selected_sketch_path))
+        if frame is None:
+            messagebox.showerror("読み込み失敗",
+                f"画像を読めません:\n{self.selected_sketch_path}")
+            return
+        mode = self.var_line_mode.get()
+        try:
+            img = extract_lines_image(
+                frame, self.background_bgr, mode=mode,
+                dark_v_max=int(self.var_line_dark_v.get()),
+                diff_thresh=int(self.var_line_diff.get()))
+        except Exception as e:
+            self.log(f"線抽出失敗: {e}")
+            messagebox.showerror("線抽出失敗", str(e))
+            return
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_path = LOGS_DIR / f"line_extracted_{ts}.png"
+        img.save(out_path)
+        self.selected_sketch_path = out_path
+        bg_note = "背景差分+色" if self.background_bgr is not None else "色のみ(背景未取得)"
+        self.log(f"線抽出完了 ({mode}, {bg_note}) → {out_path}")
+        self.lbl_file_path.config(text=str(out_path), foreground="black")
+        if Image is not None:
+            self._show_preview_pil(img)
+
     # ---------- パイプライン実行 ----------
+
+    # ------------------------------------------------------------------
+    # 生成設定プリセット (ルート/レバー/配置を一括 保存・呼び出し)
+    # ------------------------------------------------------------------
+    def _preset_var_map(self):
+        """プリセットに保存する var の {キー: tk変数}。"""
+        return {
+            "route": self.var_route, "ip_category": self.var_ip_category,
+            "design_mode": self.var_design_mode, "subject": self.var_subject,
+            "sdxl_steps": self.var_sdxl_steps,
+            "seed": self.var_seed, "vstretch": self.var_vstretch,
+            "literal_only": self.var_literal_only, "warp_correct": self.var_warp_correct,
+            "one_stroke": self.var_one_stroke, "no_split": self.var_no_split,
+            "flux_style": self.var_flux_style, "lora_str": self.var_lora_str,
+            "ip_scale": self.var_ip_scale,
+            "ip_strength": self.var_ip_strength, "ip_diff": self.var_ip_diff,
+            "min_feature": self.var_min_feature, "ip_frac": self.var_ip_frac,
+            "place_scale": self.var_place_scale, "place_dx": self.var_place_dx,
+            "place_dy": self.var_place_dy,
+        }
+
+    def _load_presets_file(self) -> dict:
+        try:
+            return json.loads(PRESETS_FILE.read_text(encoding="utf-8")) or {}
+        except Exception:
+            return {}
+
+    _IMAGEGEN_CFG = ROOT / "calibration" / "imagegen_config.yaml"
+
+    def _read_sdxl_cfg(self):
+        """imagegen_config.yaml の SDXL preset / CN を読む (sdxl_routed が使う設定)。"""
+        try:
+            import yaml
+            ig = (yaml.safe_load(self._IMAGEGEN_CFG.read_text()) or {}).get("imagegen", {})
+            return ig.get("preset"), ig.get("controlnet_conditioning_scale")
+        except Exception:
+            return None, None
+
+    def _write_sdxl_cfg(self, preset, cn, steps=None):
+        """プリセット読込時に SDXL preset / CN / steps を imagegen_config.yaml へ反映。"""
+        try:
+            import yaml
+            d = yaml.safe_load(self._IMAGEGEN_CFG.read_text()) or {}
+            ig = d.setdefault("imagegen", {})
+            if preset is not None:
+                ig["preset"] = preset
+            if cn is not None:
+                ig["controlnet_conditioning_scale"] = cn
+            if steps is not None:
+                ig["num_inference_steps"] = int(steps)
+            self._IMAGEGEN_CFG.write_text(
+                yaml.safe_dump(d, allow_unicode=True, sort_keys=False), encoding="utf-8")
+        except Exception as e:
+            self.log(f"imagegen_config 書込失敗: {e}")
+
+    def _preset_names(self):
+        return sorted(self._load_presets_file().keys())
+
+    def _refresh_preset_dropdown(self):
+        if hasattr(self, "cmb_preset"):
+            self.cmb_preset.config(values=self._preset_names())
+
+    def on_save_preset(self):
+        name = simpledialog.askstring("プリセット保存",
+            "プリセット名を入力 (既存名で上書き):",
+            initialvalue=self.var_preset_name.get() or "")
+        if not name:
+            return
+        data = self._load_presets_file()
+        entry = {k: v.get() for k, v in self._preset_var_map().items()}
+        sp, scn = self._read_sdxl_cfg()        # SDXL preset/CN (sdxl_routed用) も保存
+        entry["sdxl_preset"] = sp; entry["sdxl_cn"] = scn
+        data[name] = entry
+        PRESETS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        PRESETS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.var_preset_name.set(name)
+        self._refresh_preset_dropdown()
+        self.log(f"プリセット保存: {name}")
+
+    def on_load_preset(self):
+        name = self.var_preset_name.get()
+        data = self._load_presets_file()
+        if name not in data:
+            return
+        d = data[name]
+        for k, v in self._preset_var_map().items():
+            if k in d:
+                try:
+                    v.set(d[k])
+                except Exception:
+                    pass
+        # SDXL preset/CN/steps は imagegen_config.yaml へ反映 (flux_decorate/sdxl_routed が読む)
+        if d.get("sdxl_preset") is not None or d.get("sdxl_cn") is not None:
+            self._write_sdxl_cfg(d.get("sdxl_preset"), d.get("sdxl_cn"), d.get("sdxl_steps"))
+        self.log(f"プリセット読込: {name} (SDXL preset={d.get('sdxl_preset')} CN={d.get('sdxl_cn')})")
+
+    def on_delete_preset(self):
+        name = self.var_preset_name.get()
+        data = self._load_presets_file()
+        if name not in data:
+            return
+        if not messagebox.askyesno("プリセット削除", f"「{name}」を削除しますか?"):
+            return
+        del data[name]
+        PRESETS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        self.var_preset_name.set("")
+        self._refresh_preset_dropdown()
+        self.log(f"プリセット削除: {name}")
 
     def on_run_pipeline(self):
         if self.selected_sketch_path is None:
@@ -460,6 +903,23 @@ class PipelineTestGUI:
                 "別のパイプラインが実行中です。")
             return
         steps = int(self.var_sdxl_steps.get())
+        # ルート/category は Tk var なのでメインスレッドで読む (worker へ値渡し)。
+        route_id = ROUTE_NAME_TO_ID.get(self.var_route.get(), "flux_decorate")
+        ip_category = self.var_ip_category.get()
+        design_mode = self.var_design_mode.get()
+        ip_levers = {
+            "ip_scale": self.var_ip_scale.get(),
+            "stage2_strength": self.var_ip_strength.get(),
+            "ip_diff": bool(self.var_ip_diff.get()),
+            "min_feature": self.var_min_feature.get(),
+            "ip_frac": self.var_ip_frac.get(),
+            "place_scale": self.var_place_scale.get(),
+            "place_dx": self.var_place_dx.get(),
+            "place_dy": self.var_place_dy.get(),
+            "flux_style": self.var_flux_style.get(),
+            "lora_str": self.var_lora_str.get(),
+            "subject": self.var_subject.get(),
+        }
         seed_str = self.var_seed.get().strip()
         seed_arg = []
         if seed_str:
@@ -473,6 +933,7 @@ class PipelineTestGUI:
         if not messagebox.askyesno("パイプライン実行確認",
                 f"以下の設定でパイプラインを実行しますか?\n\n"
                 f"  入力: {self.selected_sketch_path}\n"
+                f"  ルート: {route_id}\n"
                 f"  SDXL steps: {steps}\n"
                 f"  Seed: {seed_str or '自動'}\n\n"
                 "VLM → ImageGen → Vectorizer の順で実行 "
@@ -516,23 +977,136 @@ class PipelineTestGUI:
         self.btn_view_topic.config(state=tk.DISABLED)
         self.pipeline_thread = threading.Thread(
             target=self._do_run_pipeline,
-            args=(self.selected_sketch_path, steps, seed_arg),
+            args=(self.selected_sketch_path, steps, seed_arg, route_id,
+                  ip_category, design_mode, ip_levers),
             daemon=True)
         self.pipeline_thread.start()
         # cycle_dir 監視ループも起動
         self._stage_polling = True
         self.root.after(500, self._poll_stage_files)
 
+    def on_revectorize(self):
+        """生成はそのまま、 既存の生成画像から strokes だけ作り直す (現在の下限/配置設定で・即時)。"""
+        gen_png = None
+        if self.last_cycle_dir:
+            p = Path(self.last_cycle_dir) / "generated.png"
+            if p.exists():
+                gen_png = p
+        if gen_png is None:
+            cands = sorted(LOGS_DIR.glob("vlm_to_image_*/cycle_*/generated.png"),
+                           key=lambda p: p.stat().st_mtime)
+            if cands:
+                gen_png = cands[-1]
+        if gen_png is None or not gen_png.exists():
+            messagebox.showerror("生成画像なし",
+                "再ベクトル化する生成画像が見つかりません。 先に生成してください。")
+            return
+        if self.pipeline_thread is not None and self.pipeline_thread.is_alive():
+            messagebox.showerror("実行中", "別のパイプラインが実行中です。")
+            return
+        ip_levers = {
+            "min_feature": self.var_min_feature.get(),
+            "place_scale": self.var_place_scale.get(),
+            "place_dx": self.var_place_dx.get(),
+            "place_dy": self.var_place_dy.get(),
+        }
+        self.log(f"再ベクトル化 元画像: {gen_png}")
+        self.btn_run.config(state=tk.DISABLED)
+        self.btn_abort.config(state=tk.NORMAL)
+        self._set_status("再ベクトル化中 (生成スキップ)...", "blue")
+        self._stage_seen = set()
+        self._pre_run_cycles = set(
+            str(p) for p in LOGS_DIR.glob("vlm_to_image_*/cycle_*"))
+        self.last_cycle_dir = None
+        self.lbl_strokes_stat.config(text="(再ベクトル化 待機中...)", fg="#555")
+        for canvas in (self.canvas_strokes,):
+            canvas.delete("all")
+            cw = canvas.winfo_width() or 170; ch = canvas.winfo_height() or 170
+            canvas.create_text(cw // 2, ch // 2, text="(待機中...)",
+                fill="#888", font=("Monaco", 9))
+        self._img_strokes = None
+        self.pipeline_thread = threading.Thread(
+            target=self._do_run_pipeline,
+            args=(None, 4, [], "flux_decorate", "character", "decorate", ip_levers, gen_png),
+            daemon=True)
+        self.pipeline_thread.start()
+        self._stage_polling = True
+        self.root.after(500, self._poll_stage_files)
+
     def _do_run_pipeline(self, sketch_path: Path, steps: int,
-                         seed_arg: list[str]):
+                         seed_arg: list[str],
+                         route_id: str = "flux_decorate",
+                         ip_category: str = "character",
+                         design_mode: str = "decorate",
+                         ip_levers: dict | None = None,
+                         revectorize_src=None):
         python = sys.executable
-        cmd = [
-            python, str(PIPELINE_SCRIPT),
-            "--sketch", str(sketch_path),
-            "--steps", str(steps),
-            "--cycles", "1",
-            "--log-dir", str(LOGS_DIR),
-        ] + seed_arg
+        try:
+            vstretch = float(self.var_vstretch.get())
+        except Exception:
+            vstretch = 1.0
+        lv = ip_levers or {}
+        if revectorize_src is not None:
+            # 再ベクトル化モード: 既存生成画像から strokes だけ作り直す (生成スキップ・即時)
+            cmd = [python, str(PIPELINE_SCRIPT),
+                   "--revectorize", str(revectorize_src),
+                   "--log-dir", str(LOGS_DIR), "--vstretch", f"{vstretch:.3f}",
+                   "--preset-name", self.var_preset_name.get()]
+            if lv.get("min_feature"):
+                cmd += ["--min-feature", str(lv["min_feature"])]
+            if lv.get("place_scale"):
+                cmd += ["--place-scale", str(lv["place_scale"])]
+            if lv.get("place_dx"):
+                cmd += ["--place-dx-mm", str(lv["place_dx"])]
+            if lv.get("place_dy"):
+                cmd += ["--place-dy-mm", str(lv["place_dy"])]
+            if self.var_one_stroke.get():
+                cmd.append("--one-stroke")
+        else:
+            cmd = [
+                python, str(PIPELINE_SCRIPT),
+                "--sketch", str(sketch_path),
+                "--steps", str(steps),
+                "--cycles", "1",
+                "--log-dir", str(LOGS_DIR),
+                "--vstretch", f"{vstretch:.3f}",
+                "--route", route_id,
+                "--design-mode", design_mode,
+                "--preset-name", self.var_preset_name.get(),
+            ] + seed_arg
+            # ディテール下限・配置微調整は全ルート共通
+            if lv.get("min_feature"):
+                cmd += ["--min-feature", str(lv["min_feature"])]
+            if lv.get("place_scale"):
+                cmd += ["--place-scale", str(lv["place_scale"])]
+            if lv.get("place_dx"):
+                cmd += ["--place-dx-mm", str(lv["place_dx"])]
+            if lv.get("place_dy"):
+                cmd += ["--place-dy-mm", str(lv["place_dy"])]
+            if lv.get("flux_style"):
+                cmd += ["--flux-style", str(lv["flux_style"])]
+            if lv.get("lora_str"):
+                cmd += ["--lora-str", str(lv["lora_str"])]
+            if (lv.get("subject") or "").strip():
+                cmd += ["--subject", str(lv["subject"]).strip()]
+            if route_id == "ip_matsumoto":
+                cmd += ["--category", ip_category]
+                if lv.get("ip_scale"):
+                    cmd += ["--ip-scale", str(lv["ip_scale"])]
+                if lv.get("stage2_strength"):
+                    cmd += ["--stage2-strength", str(lv["stage2_strength"])]
+                if not lv.get("ip_diff", True):
+                    cmd.append("--ip-no-diff")
+                if lv.get("ip_frac"):
+                    cmd += ["--ip-frac", str(lv["ip_frac"])]
+            if self.var_warp_correct.get():
+                cmd.append("--warp-correct")
+            if self.var_one_stroke.get():
+                cmd.append("--one-stroke")
+            if self.var_no_split.get():
+                cmd.append("--no-split")
+            if self.var_literal_only.get():
+                cmd.append("--literal-only")
         self.log(f"subprocess 起動: {' '.join(cmd)}")
         t0 = time.time()
         try:
@@ -557,9 +1131,9 @@ class PipelineTestGUI:
                 elif "vlm predict" in low or "predict_intent" in low:
                     self.root.after(0, lambda:
                         self._set_status("VLM 推論中...", "blue"))
-                elif "imagegen" in low or "sdxl" in low:
+                elif "imagegen" in low or "sdxl" in low or "flux" in low:
                     self.root.after(0, lambda:
-                        self._set_status("画像生成中 (SDXL)...", "blue"))
+                        self._set_status("画像生成中 (FLUX 最新ルート)...", "blue"))
                 elif "vector" in low:
                     self.root.after(0, lambda:
                         self._set_status("ベクトル化中...", "blue"))
@@ -589,6 +1163,8 @@ class PipelineTestGUI:
                 self.btn_view_strokes.config(state=tk.NORMAL))
             self.root.after(0, lambda:
                 self.btn_view_topic.config(state=tk.NORMAL))
+            self.root.after(0, lambda:
+                self.btn_upload.config(state=tk.NORMAL))
         if rc == 0:
             self.root.after(0, lambda:
                 self._set_status(
@@ -773,13 +1349,24 @@ class PipelineTestGUI:
         self.btn_view_strokes.config(state=tk.NORMAL)
 
     def on_abort_pipeline(self):
-        if self.pipeline_proc is None:
+        proc = self.pipeline_proc
+        if proc is None:
             return
         try:
-            self.pipeline_proc.terminate()
-            self.log("⛔ パイプライン中止リクエスト")
+            proc.terminate()
+            self.log("⛔ 生成キャンセル要求 (terminate)")
+            self.btn_abort.config(state=tk.DISABLED)
+            # FLUX 生成中は terminate で即死しないことがある → 2 秒後に強制 kill。
+            def _force_kill():
+                try:
+                    if proc.poll() is None:
+                        proc.kill()
+                        self.log("⛔ 強制終了 (kill)")
+                except Exception:
+                    pass
+            self.root.after(2000, _force_kill)
         except Exception as e:
-            self.log(f"中止失敗: {e}")
+            self.log(f"キャンセル失敗: {e}")
 
     def _find_latest_cycle(self) -> Path | None:
         candidates = sorted(LOGS_DIR.glob("vlm_to_image_*/cycle_*"))
@@ -824,6 +1411,65 @@ class PipelineTestGUI:
         st.pack(fill=tk.BOTH, expand=True)
         st.insert("1.0", text)
         st.config(state=tk.DISABLED)
+
+    def on_upload_webapp(self):
+        """直近の cycle_dir を選定 webapp の候補としてアップロード。
+
+        ローカル再ビルド (push なし) が既定。 確認ダイアログで push も選べる。
+        upload_to_webapp.py を subprocess で実行 (重い import を別プロセス化)。
+        """
+        if not self.last_cycle_dir or not self.last_cycle_dir.exists():
+            messagebox.showinfo("結果なし",
+                "先にパイプラインを実行して結果を生成してください。")
+            return
+        if not (self.last_cycle_dir / "strokes.json").exists():
+            messagebox.showerror("strokes なし",
+                f"strokes.json が見つかりません:\n{self.last_cycle_dir}")
+            return
+        label = simpledialog.askstring("webapp アップロード",
+            "候補の表示名 (sketch_id) を入力:", initialvalue="camera",
+            parent=self.root)
+        if not label:
+            return
+        do_push = messagebox.askyesno("公開設定",
+            "GitHub に push してオンライン (GitHub Pages) でも見られるように "
+            "しますか?\n\n"
+            "「はい」 = push (リモートでも見える、 反映まで ~1 分)\n"
+            "「いいえ」 = ローカルのみ (scripts/webapp_local で確認)")
+        mode_arg = "--push" if do_push else "--local"
+        cmd = [sys.executable, "-m", "scripts.upload_to_webapp",
+               "--cycle", str(self.last_cycle_dir),
+               "--label", label, mode_arg]
+        if self.selected_sketch_path and self.selected_sketch_path.exists():
+            cmd += ["--input", str(self.selected_sketch_path)]
+        self.log(f"webapp アップロード中... ({'push' if do_push else 'local'})")
+        self._set_status("webapp アップロード中...", "blue")
+
+        def _worker():
+            try:
+                r = subprocess.run(cmd, cwd=str(ROOT), capture_output=True,
+                                   text=True, timeout=300)
+            except Exception as e:
+                self.root.after(0, lambda: self._upload_done(False, str(e)))
+                return
+            ok = (r.returncode == 0)
+            msg = (r.stdout or "") + (r.stderr or "")
+            self.root.after(0, lambda: self._upload_done(ok, msg[-800:]))
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _upload_done(self, ok: bool, msg: str):
+        if ok:
+            self._set_status("webapp アップロード完了", "green")
+            self.log("webapp アップロード完了")
+            messagebox.showinfo("完了",
+                "webapp に候補を追加しました。\n\n"
+                "ローカル確認: scripts/webapp_local を起動\n"
+                "(push した場合) オンライン: GitHub Pages に ~1 分で反映")
+        else:
+            self._set_status("webapp アップロード失敗", "red")
+            self.log(f"webapp アップロード失敗:\n{msg}")
+            messagebox.showerror("アップロード失敗", msg or "不明なエラー")
 
     def _show_image_popup(self, path: Path, title: str):
         if Image is None or ImageTk is None:
@@ -963,6 +1609,77 @@ class PipelineTestGUI:
             print(line, end="")
 
 
+class CropWindow:
+    """入力画像をドラッグで矩形選択してクロップ → 入力に再設定 (残ノイズ除去用)。"""
+
+    def __init__(self, parent_gui, image_path):
+        self.parent = parent_gui
+        self.image_path = Path(image_path)
+        self.pil = Image.open(self.image_path).convert("RGB")
+        iw, ih = self.pil.size
+        maxw, maxh = 900, 720
+        self.scale = min(maxw / iw, maxh / ih, 1.0)
+        self.cw, self.ch = max(1, int(iw * self.scale)), max(1, int(ih * self.scale))
+        self.win = tk.Toplevel(parent_gui.root)
+        self.win.title("クロップ (ドラッグで残す範囲を囲む)")
+        try:
+            sw = self.win.winfo_screenwidth()
+            self.win.geometry(f"{self.cw + 24}x{self.ch + 80}+{max(0, sw - self.cw - 60)}+60")
+        except Exception:
+            pass
+        self.canvas = tk.Canvas(self.win, width=self.cw, height=self.ch,
+                                bg="#222", highlightthickness=0)
+        self.canvas.pack(padx=10, pady=10)
+        disp = self.pil.resize((self.cw, self.ch), Image.LANCZOS)
+        self._photo = ImageTk.PhotoImage(disp)
+        self.canvas.create_image(0, 0, image=self._photo, anchor=tk.NW)
+        self.rect = None; self.x0 = self.y0 = 0
+        self.canvas.bind("<ButtonPress-1>", self._press)
+        self.canvas.bind("<B1-Motion>", self._drag)
+        btns = ttk.Frame(self.win); btns.pack(fill=tk.X, padx=10, pady=(0, 8))
+        ttk.Label(btns, text="ドラッグで残す範囲を囲む →").pack(side=tk.LEFT, padx=2)
+        ttk.Button(btns, text="❌ キャンセル", command=self.win.destroy,
+                   width=12).pack(side=tk.RIGHT, padx=2)
+        ttk.Button(btns, text="✅ 確定 (クロップして入力に)",
+                   command=self._apply, width=24).pack(side=tk.RIGHT, padx=2)
+
+    def _press(self, e):
+        self.x0, self.y0 = e.x, e.y
+        if self.rect:
+            self.canvas.delete(self.rect)
+        self.rect = self.canvas.create_rectangle(e.x, e.y, e.x, e.y,
+                                                 outline="#0f0", width=2)
+
+    def _drag(self, e):
+        if self.rect:
+            self.canvas.coords(self.rect, self.x0, self.y0, e.x, e.y)
+
+    def _apply(self):
+        if not self.rect:
+            messagebox.showwarning("範囲未選択", "ドラッグで残す範囲を囲んでください。")
+            return
+        x1, y1, x2, y2 = self.canvas.coords(self.rect)
+        x1, x2 = sorted((x1, x2)); y1, y2 = sorted((y1, y2))
+        ix1 = int(max(0, x1) / self.scale); iy1 = int(max(0, y1) / self.scale)
+        ix2 = int(min(self.cw, x2) / self.scale); iy2 = int(min(self.ch, y2) / self.scale)
+        if ix2 - ix1 < 5 or iy2 - iy1 < 5:
+            messagebox.showwarning("範囲が小さい", "もっと大きく囲んでください。")
+            return
+        crop = self.pil.crop((ix1, iy1, ix2, iy2))
+        ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        out = LOGS_DIR / f"cropped_{ts}.png"
+        LOGS_DIR.mkdir(parents=True, exist_ok=True)
+        crop.save(out)
+        self.parent.selected_sketch_path = out
+        self.parent.lbl_file_path.config(text=str(out), foreground="black")
+        try:
+            self.parent._show_preview_from_file(out)
+        except Exception:
+            pass
+        self.parent.log(f"クロップ → 入力に設定: {out} ({ix2 - ix1}x{iy2 - iy1})")
+        self.win.destroy()
+
+
 class BinarizeCalibWindow:
     """二値化パラメータをライブプレビューしながらキャリブする Toplevel。
 
@@ -999,10 +1716,16 @@ class BinarizeCalibWindow:
         self.var_min_pixels = tk.IntVar(value=cfg["min_pixels"])
         self.var_min_length = tk.IntVar(value=cfg["min_length"])
         self.var_epsilon = tk.DoubleVar(value=cfg["approx_epsilon"])
+        self.var_keep_largest = tk.BooleanVar(value=cfg.get("keep_largest", False))
         # Window
         self.win = tk.Toplevel(parent_gui.root)
         self.win.title("二値化キャリブ")
-        self.win.geometry("1100x600")
+        # 画面右側に配置 (メインGUIと並べて見られるように)
+        try:
+            sw = self.win.winfo_screenwidth()
+            self.win.geometry(f"1100x600+{max(0, sw - 1130)}+60")
+        except Exception:
+            self.win.geometry("1100x600")
         self._build_ui()
         self._update_preview()
 
@@ -1078,8 +1801,9 @@ class BinarizeCalibWindow:
         f_row.pack(fill=tk.X, pady=(2, 0))
         ttk.Label(f_row, text="min_pixels (連結成分 最小 px):"
                   ).pack(side=tk.LEFT, padx=4)
-        tk.Scale(f_row, from_=5, to=100, orient=tk.HORIZONTAL,
-            variable=self.var_min_pixels, length=160
+        tk.Scale(f_row, from_=5, to=1000, orient=tk.HORIZONTAL,
+            variable=self.var_min_pixels, length=160,
+            command=lambda _v: self._update_preview()
         ).pack(side=tk.LEFT, padx=4)
         ttk.Label(f_row, text="  min_length (ポリライン 最短 点数):"
                   ).pack(side=tk.LEFT, padx=(8, 4))
@@ -1091,6 +1815,9 @@ class BinarizeCalibWindow:
         tk.Scale(f_row, from_=0.5, to=5.0, orient=tk.HORIZONTAL,
             variable=self.var_epsilon, length=140, resolution=0.1
         ).pack(side=tk.LEFT, padx=4)
+        ttk.Checkbutton(f_row, text="最大成分のみ(ノイズ全消し/単一被写体用)",
+            variable=self.var_keep_largest,
+            command=self._update_preview).pack(side=tk.LEFT, padx=(12, 4))
 
         # 下段: 状態 + 保存ボタン
         st_row = ttk.Frame(self.win)
@@ -1132,6 +1859,7 @@ class BinarizeCalibWindow:
     def _update_preview(self):
         if Image is None or ImageTk is None:
             return
+        import numpy as np      # メソッドローカル (np は __init__ ローカルで scope 外のため)
         # 元画像
         pil_orig = Image.fromarray(self.gray)
         self._tk_orig = self._fit_canvas_image(pil_orig, self.canvas_orig)
@@ -1149,15 +1877,36 @@ class BinarizeCalibWindow:
             self.lbl_state.config(text=f"binarize 失敗: {e}",
                                    foreground="red")
             return
+        # min_pixels 連結成分フィルタをプレビューにも反映 (小さい成分=反射ノイズを除去して表示)。
+        min_pix = int(self.var_min_pixels.get())
+        n_total = n_kept = 0
+        if min_pix > 0:
+            n, lab, stats, _ = cv2.connectedComponentsWithStats(
+                (mask > 0).astype(np.uint8), 8)
+            n_total = max(0, n - 1)
+            keep = np.zeros_like(mask)
+            for i in range(1, n):
+                if stats[i, cv2.CC_STAT_AREA] >= min_pix:
+                    keep[lab == i] = 255; n_kept += 1
+            mask = keep
+        # 最大成分のみ (ノイズ全消し)
+        if self.var_keep_largest.get():
+            n, lab, stats, _ = cv2.connectedComponentsWithStats(
+                (mask > 0).astype(np.uint8), 8)
+            if n > 1:
+                best = max(range(1, n), key=lambda i: stats[i, cv2.CC_STAT_AREA])
+                mask = np.where(lab == best, np.uint8(255), np.uint8(0))
+                n_kept = 1
         # 白地黒線で表示 (mask は ink=255 なので反転)
         bin_disp = 255 - mask
         pil_bin = Image.fromarray(bin_disp)
         self._tk_bin = self._fit_canvas_image(pil_bin, self.canvas_bin)
-        # 状態 (ink ピクセル率)
+        # 状態 (ink ピクセル率 + min_pixels で残した連結成分数)
         ink_ratio = float((mask == 255).mean())
         self.lbl_state.config(
             text=(f"method={method}  block={block}  c={c}  fixed={fixed}"
-                   f"  ink 率={ink_ratio:.1%}  画像={self.image_path.name}"),
+                   f"  min_pixels={min_pix}(成分 {n_kept}/{n_total}残)"
+                   f"  ink率={ink_ratio:.1%}  画像={self.image_path.name}"),
             foreground="black")
 
     def _fit_canvas_image(self, pil_img, canvas):
@@ -1181,6 +1930,7 @@ class BinarizeCalibWindow:
         min_pix = int(self.var_min_pixels.get())
         min_len = int(self.var_min_length.get())
         eps = float(self.var_epsilon.get())
+        keep_largest = bool(self.var_keep_largest.get())
         try:
             saved_path = self._save_cfg(
                 method=method,
@@ -1189,7 +1939,8 @@ class BinarizeCalibWindow:
                 fixed_threshold=fixed,
                 min_pixels=min_pix,
                 min_length=min_len,
-                approx_epsilon=eps)
+                approx_epsilon=eps,
+                keep_largest=keep_largest)
         except Exception as e:
             messagebox.showerror("保存失敗", str(e))
             return
@@ -1231,6 +1982,19 @@ class ImageGenCalibWindow:
         self.var_cn = tk.DoubleVar(
             value=cfg["controlnet_conditioning_scale"])
         self.var_conf = tk.DoubleVar(value=cfg["confidence_threshold"])
+        # 解像度 (auto_from_panel ON / OFF + 手動指定)
+        self.var_auto_panel = tk.BooleanVar(
+            value=bool(cfg.get("auto_from_panel", False)))
+        res = cfg.get("resolution")
+        if isinstance(res, (list, tuple)) and len(res) == 2:
+            self.var_res_w = tk.IntVar(value=int(res[0]))
+            self.var_res_h = tk.IntVar(value=int(res[1]))
+        elif isinstance(res, (int, float)):
+            self.var_res_w = tk.IntVar(value=int(res))
+            self.var_res_h = tk.IntVar(value=int(res))
+        else:
+            self.var_res_w = tk.IntVar(value=1024)
+            self.var_res_h = tk.IntVar(value=1024)
         # 組込み defaults (リセット用)
         self._builtin_base = _BASE_TEMPLATE
         self._builtin_fallback = _FALLBACK_TEMPLATE
@@ -1238,8 +2002,11 @@ class ImageGenCalibWindow:
         # Window
         self.win = tk.Toplevel(parent_gui.root)
         self.win.title("SDXL / プロンプト 設定")
-        self.win.geometry("820x780")
+        self.win.geometry("840x880")
         self._build_ui(base, fallback, str(cfg["negative_prompt"]))
+        # panel readout + 初期 enable/disable は build 後に呼び出し
+        self._refresh_panel_readout()
+        self._on_auto_panel_toggle()
 
     def _build_ui(self, base, fallback, neg):
         # モデル preset (base + controlnet + LoRA を一括切替)
@@ -1303,6 +2070,51 @@ class ImageGenCalibWindow:
             , font=("Monaco", 9), foreground="#777"
         ).pack(side=tk.LEFT, padx=4)
 
+        # Panel 寸法 → 生成解像度 (SDXL bucket)
+        panel_box = ttk.LabelFrame(self.win,
+            text="Panel 寸法 → 生成解像度  "
+                 "(canvas_calibration ↔ 画像生成 の整合)",
+            padding=8)
+        panel_box.pack(fill=tk.X, padx=8, pady=(8, 4))
+        # readout (canvas mm + SDXL bucket)
+        self.lbl_panel_readout = ttk.Label(panel_box,
+            text="(panel 計測値読込中…)", font=("Monaco", 9),
+            foreground="#555", justify=tk.LEFT,
+            wraplength=820)
+        self.lbl_panel_readout.pack(fill=tk.X, padx=4, pady=(0, 6),
+                                      anchor=tk.W)
+        # auto toggle + manual override row
+        pr_row = ttk.Frame(panel_box)
+        pr_row.pack(fill=tk.X)
+        ttk.Checkbutton(pr_row,
+            text="auto_from_panel  (canvas 計測の aspect から SDXL bucket 自動選択)",
+            variable=self.var_auto_panel,
+            command=self._on_auto_panel_toggle,
+        ).pack(side=tk.LEFT, padx=4)
+        # manual W / H
+        mr_row = ttk.Frame(panel_box)
+        mr_row.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(mr_row, text="手動 (W × H):"
+                  ).pack(side=tk.LEFT, padx=4)
+        self.spin_res_w = tk.Spinbox(mr_row, from_=512, to=2048,
+            increment=64, width=6, textvariable=self.var_res_w)
+        self.spin_res_w.pack(side=tk.LEFT, padx=2)
+        ttk.Label(mr_row, text="×").pack(side=tk.LEFT, padx=2)
+        self.spin_res_h = tk.Spinbox(mr_row, from_=512, to=2048,
+            increment=64, width=6, textvariable=self.var_res_h)
+        self.spin_res_h.pack(side=tk.LEFT, padx=2)
+        ttk.Button(mr_row, text="🔄 再計測値で更新",
+            command=self._refresh_panel_readout, width=18,
+        ).pack(side=tk.LEFT, padx=8)
+        ttk.Button(mr_row, text="📐 bucket を手動欄に反映",
+            command=self._apply_bucket_to_manual, width=20,
+        ).pack(side=tk.LEFT, padx=2)
+        ttk.Label(panel_box,
+            text="(auto ON 時、 手動欄は保存対象から除外。 OFF 時のみ "
+                 "resolution=[W, H] が yaml に書かれる)",
+            font=("Monaco", 9), foreground="#777",
+        ).pack(anchor=tk.W, padx=4, pady=(2, 0))
+
         # プロンプト
         pr_box = ttk.LabelFrame(self.win,
             text="プロンプトテンプレート (英語、 "
@@ -1352,6 +2164,52 @@ class ImageGenCalibWindow:
         ttk.Button(b_row, text="💾 yaml に保存",
             command=self._save, width=18
         ).pack(side=tk.RIGHT, padx=2)
+
+    def _refresh_panel_readout(self):
+        """canvas_calibration.yaml を再読込し、 panel 寸法 + 推奨 SDXL bucket
+        を readout に表示。 物理 panel を計測し直した直後にこのボタンで反映。"""
+        try:
+            from modules.panel_geometry import load_panel_geometry
+            geom = load_panel_geometry()
+            mu, mv = geom.mm_per_px
+            self._last_bucket = geom.panel_image_size
+            txt = (
+                f"📏 panel: {geom.panel_size_mm[0]:.2f} × "
+                f"{geom.panel_size_mm[1]:.2f} mm  "
+                f"(aspect {geom.aspect:.3f}, source={geom.source})\n"
+                f"🪣 推奨 SDXL bucket: {geom.panel_image_size[0]} × "
+                f"{geom.panel_image_size[1]} px  "
+                f"(aspect err {geom.bucket_aspect_err * 100:.2f}%)\n"
+                f"📐 mm/px = ({mu:.4f}, {mv:.4f})  "
+                f"← 縦横で等しければ panel に貼った時に歪まない"
+            )
+            self.lbl_panel_readout.config(text=txt, foreground="#080")
+        except Exception as e:
+            self._last_bucket = None
+            self.lbl_panel_readout.config(
+                text=f"⚠ panel readout 読込失敗: {e}",
+                foreground="#a00")
+
+    def _on_auto_panel_toggle(self):
+        """auto_from_panel ON で 手動 W/H 欄を disable、 OFF で enable。"""
+        state = "disabled" if self.var_auto_panel.get() else "normal"
+        try:
+            self.spin_res_w.config(state=state)
+            self.spin_res_h.config(state=state)
+        except tk.TclError:
+            pass
+
+    def _apply_bucket_to_manual(self):
+        """推奨 bucket を 手動 W/H 欄に流し込む (auto OFF にして編集を引き継ぐ)。"""
+        if not getattr(self, "_last_bucket", None):
+            messagebox.showwarning("bucket 未取得",
+                "panel readout が未取得です。 先に「再計測値で更新」 を押下。")
+            return
+        w, h = self._last_bucket
+        self.var_res_w.set(int(w))
+        self.var_res_h.set(int(h))
+        self.var_auto_panel.set(False)
+        self._on_auto_panel_toggle()
 
     def _reset_to_builtin(self):
         if not messagebox.askyesno("既定値リセット",
@@ -1414,6 +2272,14 @@ class ImageGenCalibWindow:
         fb_for_yaml = None if fallback == self._builtin_fallback.strip() \
                       else fallback
         preset = self.var_preset.get().strip() or None
+        # 解像度: auto_from_panel ON のとき resolution は None で yaml に書かない、
+        # OFF のとき手動 W/H を [W, H] で書き出す。
+        auto_panel = bool(self.var_auto_panel.get())
+        if auto_panel:
+            resolution_to_save = None
+        else:
+            resolution_to_save = (int(self.var_res_w.get()),
+                                   int(self.var_res_h.get()))
         try:
             saved_path = self._save_cfg(
                 num_inference_steps=int(self.var_steps.get()),
@@ -1423,7 +2289,9 @@ class ImageGenCalibWindow:
                 base_template=base_for_yaml,
                 fallback_template=fb_for_yaml,
                 confidence_threshold=float(self.var_conf.get()),
-                preset=preset)
+                preset=preset,
+                resolution=resolution_to_save,
+                auto_from_panel=auto_panel)
         except Exception as e:
             messagebox.showerror("保存失敗", str(e))
             return

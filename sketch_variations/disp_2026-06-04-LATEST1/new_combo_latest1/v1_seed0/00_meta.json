@@ -1,0 +1,22 @@
+{
+  "subject": {
+    "ja": "two palm trees with one car below them",
+    "en": "two palm trees with one car below them"
+  },
+  "location": {
+    "ja": ""
+  },
+  "action": {
+    "ja": ""
+  },
+  "confidence": 1.0,
+  "n_objects": 1,
+  "vstretch": 1.0,
+  "route": "M19_latest (FLUX+winnersLoRA+complete+manga+opencv+center-out)",
+  "visions": [
+    {
+      "scene": "two palm trees with one car below them",
+      "vision": "The finished illustration showcases two majestic palm trees standing tall and proud, their trunks robust and their fronds reaching towards the sky, each adorned with intricate leaf patterns. Below them, a sleek, modern car glides smoothly along a winding road, its shiny exterior reflecting the sunlight. The car's wheels are detailed with realistic tread patterns, and a small, vibrant flower blooms near the front tire, adding a touch of nature to the scene. The background."
+    }
+  ]
+}

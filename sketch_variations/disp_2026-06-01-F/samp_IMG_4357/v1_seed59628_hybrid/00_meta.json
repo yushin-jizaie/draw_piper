@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4357",
+  "route": "framed",
+  "variant": "hybrid",
+  "subject": "face",
+  "design": "This is a rough draft of a face. Finish it as a joyful, bald individual with large, expressive eyes, a wide, toothy grin, and a pair of round, floppy ears.",
+  "category": "person",
+  "preset": "illustrious_v2_object",
+  "cn": 0.4,
+  "seed": 59628,
+  "prompt": "This is a rough draft of a face. Finish it as a joyful, bald individual with large, expressive eyes, a wide, toothy grin, and a pair of round, floppy ears.",
+  "placed_at": "feature_anchor",
+  "input_fit": "contain"
+}

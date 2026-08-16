@@ -27,6 +27,7 @@ See:
 from __future__ import annotations
 
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -55,10 +56,19 @@ DEFAULT_DIFF_DILATE_KSIZE = 21
 # 2026-05-27: 細部 (顔の目・口・鼻 等) が大量に削除される問題への対処。
 # min_pixels 50 → 20、 min_length 10 → 5、 approx_epsilon 2.0 → 1.0
 # で短い曲線を保持しやすく。 旧値は vectorizer_config.yaml で上書き可。
-DEFAULT_MIN_PIXELS = 20
+# 2026-05-30 (robot 描画向け再調整): 細かいストローク量産を抑制。
+# DEFAULT_MIN_PIXELS 20 → 40 (小さい連結成分のゴミ除外を強化)
+# DEFAULT_MIN_LENGTH 5 → 15 (短い stroke を除外、 robot 描画時間短縮)
+# DEFAULT_APPROX_EPSILON 1.0 → 2.0 (polyline 簡略化を強める、 細かい曲がりを直線化)
+DEFAULT_MIN_PIXELS = 40
 DEFAULT_CLOSE_KSIZE = 3
-DEFAULT_APPROX_EPSILON = 1.0
-DEFAULT_MIN_LENGTH = 5
+DEFAULT_APPROX_EPSILON = 2.0
+DEFAULT_MIN_LENGTH = 15
+# 中心線 skeleton の断片を端点でつなぐ最大ギャップ (px)。 0 で無効。
+# 断片化 (極短 stroke 過多 / stroke 数過多) を緩和し Frida 適合度を上げる。
+# 20: 木(104→75本)など過剰検出を warn0 にしつつ、 顔の近接特徴は誤結合せず保持
+# (実測でバランス確認)。
+DEFAULT_MERGE_GAP = 20
 
 
 log = logging.getLogger(__name__)
@@ -89,6 +99,7 @@ def load_binarize_config(path: Optional[Path] = None) -> dict:
         "approx_epsilon": DEFAULT_APPROX_EPSILON,
         "close_ksize": DEFAULT_CLOSE_KSIZE,
         "diff_dilate_ksize": DEFAULT_DIFF_DILATE_KSIZE,
+        "keep_largest": False,   # 最大連結成分のみ残す (単一被写体のノイズ全消し)
     }
     if not cfg_path.exists():
         return defaults
@@ -119,6 +130,8 @@ def load_binarize_config(path: Optional[Path] = None) -> dict:
         out["close_ksize"] = int(fl["close_ksize"])
     if "diff_dilate_ksize" in fl:
         out["diff_dilate_ksize"] = int(fl["diff_dilate_ksize"])
+    if "keep_largest" in fl:
+        out["keep_largest"] = bool(fl["keep_largest"])
     return out
 
 
@@ -132,6 +145,7 @@ def save_binarize_config(method: str,
                           approx_epsilon: Optional[float] = None,
                           close_ksize: Optional[int] = None,
                           diff_dilate_ksize: Optional[int] = None,
+                          keep_largest: Optional[bool] = None,
                           ) -> Path:
     """binarize + filter 設定を yaml に保存。
     filter 系 (min_pixels 等) は None のとき既存値を保持。
@@ -159,6 +173,8 @@ def save_binarize_config(method: str,
         new_filter["close_ksize"] = int(close_ksize)
     if diff_dilate_ksize is not None:
         new_filter["diff_dilate_ksize"] = int(diff_dilate_ksize)
+    if keep_largest is not None:
+        new_filter["keep_largest"] = bool(keep_largest)
     data = {
         "binarize": {
             "method": method,
@@ -255,6 +271,26 @@ def _canny_strong_blur(
     return edges
 
 
+def _binarize_gen_centerline(
+    img_gray: np.ndarray,
+    blur_ksize: int = 3,
+    blur_sigma: float = 1.0,
+) -> np.ndarray:
+    """SDXL 生成画像の「線そのもの」を塗りつぶした mask を返す (線=255, 背景=0)。
+
+    Canny (_canny_strong_blur) は線の **輪郭 (内側/外側エッジ)** を返すため、
+    太い線が二重線 (アウトライン) になり、 skeletonize しても中心線にならない。
+    こちらは暗い画素 (= インク) を Otsu 二値化で塗るので、 太い線も後段の
+    skeletonize で **中心線 1 本** に細線化される。 「手前 (抽出の最初)」 で
+    中心線化する方式。
+    """
+    blurred = cv2.GaussianBlur(img_gray, (blur_ksize, blur_ksize), blur_sigma)
+    # 暗い画素 = 線。 白/淡色背景と黒線を Otsu で分離して塗りつぶす。
+    _, mask = cv2.threshold(
+        blurred, 0, 255, cv2.THRESH_BINARY_INV | cv2.THRESH_OTSU)
+    return mask.astype(np.uint8)
+
+
 def _binarize_user(user_gray: np.ndarray,
                     method: str = "adaptive",
                     adaptive_block_size: int = 51,
@@ -322,6 +358,17 @@ def _filter_small_components(mask: np.ndarray, min_pixels: int) -> Tuple[np.ndar
     return keep, kept_count
 
 
+def _keep_largest_component(mask: np.ndarray) -> Tuple[np.ndarray, int]:
+    """最大連結成分のみ残す (単一被写体: 主役の1塊だけ残しノイズを全消し)。"""
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(mask, connectivity=8)
+    if num <= 1:
+        return mask, 0
+    best = max(range(1, num), key=lambda i: stats[i, cv2.CC_STAT_AREA])
+    keep = np.zeros_like(mask)
+    keep[labels == best] = 255
+    return keep, 1
+
+
 def _morphology_close(mask: np.ndarray, kernel_size: int) -> np.ndarray:
     """モルフォロジー CLOSE で線の切れ目を埋める。"""
     if kernel_size <= 1:
@@ -346,20 +393,176 @@ def _skeletonize(mask: np.ndarray) -> np.ndarray:
     return (skel * 255).astype(np.uint8)
 
 
-def _vectorize_polylines(
-    mask: np.ndarray, epsilon: float, min_length: int
+def _trace_skeleton(mask: np.ndarray) -> List[np.ndarray]:
+    """1px-wide skeleton mask を 中央線 polyline の列に変換 (graph trace)。
+
+    cv2.findContours は 1px 線の 「境界」 を返してしまい forward+backward
+    の racetrack が出力されるので、 skeleton 自体を 8-connectivity の
+    graph として 端点 → 端点 (or 端点 → 分岐点) で trace する。
+
+    閉ループ (端点なし) は任意のピクセルから 1 周 trace。
+
+    Returns
+    -------
+    list of (N, 2) int ndarray、 各要素は [(x, y), ...] 順。
+    """
+    if mask.size == 0:
+        return []
+    binary = (mask > 0).astype(np.uint8)
+    h, w = binary.shape
+
+    # 各 pixel の 8-neighbor count
+    nb = np.zeros_like(binary, dtype=np.int32)
+    for dy in (-1, 0, 1):
+        for dx in (-1, 0, 1):
+            if dy == 0 and dx == 0:
+                continue
+            # 境界処理しつつ shift
+            ys0, ys1 = max(0, dy), min(h, h + dy)
+            xs0, xs1 = max(0, dx), min(w, w + dx)
+            yt0, yt1 = max(0, -dy), min(h, h - dy)
+            xt0, xt1 = max(0, -dx), min(w, w - dx)
+            nb[yt0:yt1, xt0:xt1] += binary[ys0:ys1, xs0:xs1]
+    nb *= binary  # 非 skeleton pixel は count 0
+
+    visited = np.zeros_like(binary, dtype=bool)
+    polylines: List[np.ndarray] = []
+
+    def _walk_from(sy, sx):
+        """sy/sx から trace。 分岐点 / 既訪問 / 範囲外で停止。"""
+        poly = [(int(sx), int(sy))]
+        visited[sy, sx] = True
+        cy, cx = sy, sx
+        while True:
+            best = None
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    if dy == 0 and dx == 0:
+                        continue
+                    ny, nx = cy + dy, cx + dx
+                    if not (0 <= ny < h and 0 <= nx < w):
+                        continue
+                    if binary[ny, nx] == 0 or visited[ny, nx]:
+                        continue
+                    # 分岐点 (count >= 3) は cell 1 個分だけ含めて停止
+                    best = (ny, nx, nb[ny, nx] >= 3)
+                    if not best[2]:
+                        break
+                if best is not None and not best[2]:
+                    break
+            if best is None:
+                break
+            ny, nx, is_junction = best
+            poly.append((int(nx), int(ny)))
+            visited[ny, nx] = True
+            if is_junction:
+                break
+            cy, cx = ny, nx
+        return poly
+
+    # 1. 端点 (count == 1) から trace
+    endpoints = np.argwhere((binary == 1) & (nb == 1))
+    for y, x in endpoints:
+        if not visited[y, x]:
+            poly = _walk_from(int(y), int(x))
+            if len(poly) >= 2:
+                polylines.append(
+                    np.array(poly, dtype=np.int32))
+
+    # 2. 残った pixel (= 端点無し閉ループ or 分岐点) を消化
+    while True:
+        unvisited = np.argwhere((binary == 1) & (~visited))
+        if len(unvisited) == 0:
+            break
+        y, x = unvisited[0]
+        poly = _walk_from(int(y), int(x))
+        if len(poly) >= 2:
+            polylines.append(np.array(poly, dtype=np.int32))
+
+    return polylines
+
+
+def _merge_polylines(
+    polylines: List[np.ndarray], max_gap: float
 ) -> List[np.ndarray]:
-    """findContours → approxPolyDP でポリラインに変換し、点数 < min_length を捨てる。
+    """端点が max_gap px 以内の polyline 同士を貪欲に連結して 1 本にまとめる。
+
+    中心線 skeleton は途切れやすく、 細かい断片が大量に出る。 それを端点で
+    つなぎ直すと、 stroke 数が減り 1 本あたりの点数が増えて Frida 観点
+    (極短 stroke 過多 / 平均点数不足 / stroke 数過多) が改善する。
+    各 polyline は両端どちらでも接続でき、 必要なら反転する。
+    """
+    if max_gap <= 0 or len(polylines) <= 1:
+        return polylines
+
+    def _d(a, b) -> float:
+        return math.hypot(float(a[0]) - float(b[0]), float(a[1]) - float(b[1]))
+
+    polys = [p for p in polylines if len(p) > 0]
+    used = [False] * len(polys)
+    out: List[np.ndarray] = []
+    for i in range(len(polys)):
+        if used[i]:
+            continue
+        used[i] = True
+        chain = [tuple(pt) for pt in polys[i]]
+        extended = True
+        while extended:
+            extended = False
+            head, tail = chain[0], chain[-1]
+            best = None  # (j, position, segment_points, dist)
+            for j in range(len(polys)):
+                if used[j]:
+                    continue
+                seg = [tuple(pt) for pt in polys[j]]
+                s, e = seg[0], seg[-1]
+                # tail に append (s 近い=順, e 近い=逆)
+                for d, where, sg in (
+                    (_d(tail, s), "tail", seg),
+                    (_d(tail, e), "tail", seg[::-1]),
+                    (_d(head, e), "head", seg),
+                    (_d(head, s), "head", seg[::-1]),
+                ):
+                    if d <= max_gap and (best is None or d < best[3]):
+                        best = (j, where, sg, d)
+            if best is not None:
+                j, where, sg, _dd = best
+                chain = chain + sg if where == "tail" else sg + chain
+                used[j] = True
+                extended = True
+        out.append(np.array(chain, dtype=np.int32))
+    return out
+
+
+def _vectorize_polylines(
+    mask: np.ndarray, epsilon: float, min_length: int, merge_gap: float = 0.0
+) -> List[np.ndarray]:
+    """skeleton trace → approxPolyDP でポリラインに変換し、長さ < min_length を捨てる。
 
     返り値は (N, 2) の int 座標 ndarray のリスト ((x, y) 順、画像座標)。
+    2026-05-31 修正: 旧版は cv2.findContours で skeleton の境界 (racetrack)
+    を取ってしまい forward+backward の二度書き polyline を出していた。
+    skeleton を graph として trace する _trace_skeleton に置換。
+    2026-05-31 修正(2): min_length フィルタを approxPolyDP の「前」、生トレース
+    点数 (≒弧長 px) に対して適用する。 approxPolyDP 後の頂点数で足切りすると、
+    滑らかな曲線が少数頂点 (<15) に簡略化されて全部 drop され 0 strokes になる
+    回帰があった (skeleton trace 化で頂点が正しく減ったため顕在化)。
     """
-    contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)
+    raw_polylines = _trace_skeleton(mask)
+    # 断片を端点で連結 (Frida 観点: 極短 stroke 過多 / stroke 数過多を緩和)。
+    # min_length / approxPolyDP の前に行うことで、 連結後の長い弧は点数も増える。
+    if merge_gap and merge_gap > 0:
+        raw_polylines = _merge_polylines(raw_polylines, merge_gap)
     polylines: List[np.ndarray] = []
-    for cnt in contours:
-        if len(cnt) < 2:
+    for poly in raw_polylines:
+        # 生トレース点数 = 1px skeleton をたどった点数 ≒ 弧長(px)。
+        # ここで長さフィルタをかける (簡略化後の頂点数ではない)。
+        if len(poly) < max(2, min_length):
             continue
-        approx = cv2.approxPolyDP(cnt, epsilon, closed=False)
-        if len(approx) < min_length:
+        approx = cv2.approxPolyDP(
+            poly.reshape(-1, 1, 2).astype(np.int32),
+            epsilon, closed=False)
+        if len(approx) < 2:
             continue
         polylines.append(approx.reshape(-1, 2))
     return polylines
@@ -406,21 +609,31 @@ class Vectorizer:
         close_ksize: int = DEFAULT_CLOSE_KSIZE,
         approx_epsilon: float = DEFAULT_APPROX_EPSILON,
         min_length: int = DEFAULT_MIN_LENGTH,
+        merge_gap: float = DEFAULT_MERGE_GAP,
         binarize_method: str = "adaptive",
         adaptive_block_size: int = 51,
         adaptive_c: int = 10,
         fixed_threshold: int = 128,
+        gen_line_mode: str = "binarize",
+        keep_largest: bool = False,
         verbose: bool = False,
     ):
+        # 生成画像の線抽出方式:
+        #   "binarize" (既定) = 線そのものを塗る → skeletonize で中心線 1 本。
+        #                       太い線が二重 (アウトライン) にならない。
+        #   "canny"           = 旧来のエッジ検出 (輪郭 2 本)。 後方互換用。
+        self.gen_line_mode = str(gen_line_mode)
         self.canny_blur_ksize = canny_blur_ksize
         self.canny_blur_sigma = canny_blur_sigma
         self.canny_thresh_low = canny_thresh_low
         self.canny_thresh_high = canny_thresh_high
         self.diff_dilate_ksize = diff_dilate_ksize
         self.min_pixels = min_pixels
+        self.keep_largest = bool(keep_largest)
         self.close_ksize = close_ksize
         self.approx_epsilon = approx_epsilon
         self.min_length = min_length
+        self.merge_gap = merge_gap
         self.binarize_method = binarize_method
         self.adaptive_block_size = adaptive_block_size
         self.adaptive_c = adaptive_c
@@ -477,14 +690,35 @@ class Vectorizer:
             if debug_path is not None:
                 cv2.imwrite(str(debug_path / "00_user_input.png"), user_gray)
 
-        # ステップ 1: 生成画像を Canny strong_blur で線画化
-        gen_mask = _canny_strong_blur(
-            gen_gray,
-            self.canny_blur_ksize,
-            self.canny_blur_sigma,
-            self.canny_thresh_low,
-            self.canny_thresh_high,
-        )
+        # ステップ 1: 生成画像を線画化。
+        #   binarize (既定): 線そのものを塗る → 後段 skeletonize で中心線 1 本。
+        #   canny          : エッジ検出 (輪郭 2 本、 太線は二重線になる)。
+        if self.gen_line_mode == "canny":
+            gen_mask = _canny_strong_blur(
+                gen_gray,
+                self.canny_blur_ksize,
+                self.canny_blur_sigma,
+                self.canny_thresh_low,
+                self.canny_thresh_high,
+            )
+            stage1_label = "Canny"
+        elif self.gen_line_mode == "canny_centerline":
+            # canny で全線を拾い (淡い線も)、 dilate で二重エッジを 1 つに結合 →
+            # 後段 skeletonize で中心線 1 本に。 binarize より細部を保ちつつ単一線。
+            edges = _canny_strong_blur(
+                gen_gray, self.canny_blur_ksize, self.canny_blur_sigma,
+                self.canny_thresh_low, self.canny_thresh_high)
+            # dilate(5) で太線の二重エッジ (5-6px 間隔) も確実に 1 つに結合 →
+            # skeletonize で単一中心線に (dilate3 では太線に二重線が残った)。
+            gen_mask = cv2.dilate(edges, np.ones((5, 5), np.uint8))
+            stage1_label = "Canny→centerline"
+        else:
+            gen_mask = _binarize_gen_centerline(
+                gen_gray,
+                self.canny_blur_ksize,
+                self.canny_blur_sigma,
+            )
+            stage1_label = "binarize(centerline)"
         diagnostics["stage1_canny_pixels"] = int(gen_mask.sum() // 255)
         if debug_path is not None:
             cv2.imwrite(
@@ -492,10 +726,10 @@ class Vectorizer:
                 _to_white_bg_black_lines(gen_mask),
             )
         if self.verbose:
+            px = diagnostics["stage1_canny_pixels"]
             log.info(
-                "[vectorizer] stage1 Canny: line_px=%d (%.2f%%)",
-                diagnostics["stage1_canny_pixels"],
-                diagnostics["stage1_canny_pixels"] / (h * w) * 100,
+                "[vectorizer] stage1 %s: line_px=%d (%.2f%%)",
+                stage1_label, px, px / (h * w) * 100,
             )
 
         # ステップ 2: 差分検出 (user_image があるとき)
@@ -535,6 +769,10 @@ class Vectorizer:
         current_mask, kept_components = _filter_small_components(
             current_mask, self.min_pixels
         )
+        if self.keep_largest:
+            current_mask, kept_components = _keep_largest_component(current_mask)
+            if self.verbose:
+                log.info("[vectorizer] stage3 keep_largest: 最大成分のみ残す")
         diagnostics["stage3_components_after_filter"] = kept_components
         if debug_path is not None:
             cv2.imwrite(
@@ -570,9 +808,9 @@ class Vectorizer:
                 diagnostics["stage5_skeleton_pixels"],
             )
 
-        # ステップ 6: approxPolyDP ポリライン化 + 長さフィルタ
+        # ステップ 6: 断片連結 + approxPolyDP ポリライン化 + 長さフィルタ
         polylines_np = _vectorize_polylines(
-            skel, self.approx_epsilon, self.min_length
+            skel, self.approx_epsilon, self.min_length, self.merge_gap
         )
         strokes = _polylines_to_strokes(polylines_np)
 

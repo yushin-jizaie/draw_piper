@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4361",
+  "route": "framed",
+  "variant": "enriched",
+  "subject": "sun",
+  "additions": "rays clouds stars smile halo",
+  "category": "object",
+  "preset": "illustrious_v2_object",
+  "cn": 0.35,
+  "seed": 19093,
+  "prompt": "a sun, rays clouds stars smile halo, monochrome clean digital lineart, bold even-weight black outlines, no fill, no shading, no brush texture, white background, single subject",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

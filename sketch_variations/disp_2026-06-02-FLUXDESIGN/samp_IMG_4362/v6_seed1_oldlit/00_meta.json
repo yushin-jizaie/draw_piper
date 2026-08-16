@@ -1,0 +1,21 @@
+{
+  "sid": "samp_IMG_4362",
+  "route": "flux_design_compare",
+  "variant": "oldlit",
+  "prompt_mode": "oldlit",
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.8,
+  "cn": 0.4,
+  "preset": "chutesai/FLUX.1-schnell",
+  "controlnet": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+  "seed": 1,
+  "prompt": "tklineart, a chair, bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "literal": "chair",
+  "scene": "chair with rounded backrest and three legs",
+  "vision": "The finished illustration depicts a charming, mid-century modern chair with a rounded backrest and three slender legs. The seat is slightly cushioned, and a small, round, dark spot adorns the center, suggesting a subtle texture. The chair's legs are elegantly curved, supporting a sleek, minimalist design. A small, delicate plant.",
+  "placed_at": "fill_board",
+  "input_fit": "contain",
+  "vectorize": "binarize+hardboost250",
+  "min_feature_px": 15,
+  "note": "prompt方式比較 oldlit(主題1-2語) vs design(VLM完成形補完) @CN0.4 LoRA0.8"
+}

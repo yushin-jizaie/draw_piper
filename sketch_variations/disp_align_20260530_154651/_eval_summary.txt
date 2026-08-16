@@ -1,0 +1,3 @@
+tree/v3_seed59628                                          14    466   33.3  🟢 clean (robot ◎)
+
+[summary] 24 variants  |  🟢 clean: 12  |  🟡 ok: 5  |  🔴 too fine: 0  |  ❌ failed: 7

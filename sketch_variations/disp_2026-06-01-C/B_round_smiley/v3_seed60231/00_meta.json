@@ -1,0 +1,12 @@
+{
+  "sid": "B_round_smiley",
+  "route": "framed",
+  "subject": "face",
+  "category": "person",
+  "preset": "illustrious_v2_inpaint_mt",
+  "cn": null,
+  "seed": 60231,
+  "prompt": "a detailed Matsumoto-style face, mt_taiyo_style, manga style, dynamic pose, ink lineart, single continuous black line on plain white background, clean smooth strokes, no shading, mt_taiyo_style, monochrome, greyscale, lineart, white_background, simple_background",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

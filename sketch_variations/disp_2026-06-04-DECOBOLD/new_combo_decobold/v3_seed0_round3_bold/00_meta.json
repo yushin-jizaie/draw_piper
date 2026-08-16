@@ -1,0 +1,9 @@
+{
+  "sid": "new_combo_decobold",
+  "route": "decobold",
+  "variant": "round3_bold",
+  "round": 3,
+  "source": "v5_seed0_round3_full",
+  "line_extract": "extract_lines_bold(太い線・塗りなし)",
+  "note": "DECOACCUM生成画像を極性反転+塗り輪郭化+太線化してから線化"
+}

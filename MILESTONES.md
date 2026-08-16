@@ -3,7 +3,7 @@
 > **目的**: 詰まった時に「正常な地点」へ素早く戻るための地図。
 > Git は履歴の倉庫、このファイルは *どこが正常か / どこで詰まったか* を一目で見る索引。
 >
-> 最終更新: 2026-05-25 15:17
+> 最終更新: 2026-06-03 (M20 壁面描画: 向き固定IKで経路非依存の再現性達成 を追記)
 
 ---
 
@@ -11,12 +11,13 @@
 
 | 項目 | 値 |
 |------|-----|
-| マイルストーン | **M12 — canvas_calibration yaml schema v3 (5-phase 設計) IO + GUI 配線完了・dry-run 検証 PASS・実機未検証** |
-| コミット | `c24438c` |
-| 戻り方 | `git checkout c24438c`(または最新 `main`) |
-| 正常の確認 | `~/draw_piper/venv/bin/python ~/piper_test/test_canvas_calibration_io.py` で 50 checks PASS、`~/draw_piper/venv/bin/python ~/piper_test/test_step2_v3_save.py` で 33 checks PASS。GUI 起動 → `_load_calib_defaults` が disk 上 v1 yaml (M10) を読んで center_y/z + contact_x を反映。M11 同等の操作フロー(B1 4 corners + B2 plane extras + Save)で **v3 形式 yaml を書き出す**(traces.surface に legacy extras を入れる Step 2 transitional 仕様)。実機 drag-teach は M11 同様未検証(Step 4 で B2 自動サンプリングが入った後にまとめて検証予定) |
+| マイルストーン (壁面描画) | **M20 — 向き固定IKで経路非依存の再現性を達成・オフライン検証 PASS・実機 小円のみ確認** |
+| コミット | `piper_test: cd66642` |
+| 戻り方 | `cd ~/piper_test && git checkout cd66642`(または最新 `main`) |
+| 正常の確認 | GUI 起動 (`~/draw_piper/scripts/wall_gui`) → ③位置調整「向き固定」ON → 各隅へ goto が**経路に依らず同じ位置**に来る。オフライン: 同一目標へ3経路から関節差0.0°(再現性)。実機: 小円 dYZ<2mm で正確描画確認済。横大円/楕円の実機再描画 + 四隅深さ(X)再記録は次ステップ。 |
+| マイルストーン (画像生成) | **M19 — multi-object 分割→個別生成→元レイアウト合成** (`522d010`) ★★ 現在地 ★★ |
 
-> 注: M9 は並走中の **VLM/画像生成スレッド**の正常地点。壁面描画スレッドは M10 → M11 と進行。両スレッドは独立で戻り先はどちらも `main` で OK。
+> 注: 2 スレッド並走。**画像生成スレッド** = M19 (`draw_piper`)、**壁面描画スレッド** = M20 (`piper_test`)。両者独立で戻り先は各 repo の `main`。
 
 ---
 
@@ -117,7 +118,7 @@
               │        1-phase drag-teach + 描画は実機検証済、2-phase drag-teach は
               │        コード完成・実機検証は次セッション。
               │
-05-25 15:17   ● M12 canvas キャリブ v3 IO + GUI 配線 ★★ 現在地 ★★  [c24438c]
+05-25 15:17   ● M12 canvas キャリブ v3 IO + GUI 配線  [c24438c]
                      └ ~/piper_test/canvas_calibration_io.py 新規(280 行)。
                        v1 (M10 raw) / v2 (M11 GUI) / v3 (5-phase 設計) yaml 全対応の
                        reader + v3 専用 writer。50 checks PASS。
@@ -133,6 +134,174 @@
                        実機 drag-teach は Step 4 で B2 自動サンプリングが入った後に検証予定。
                        設計: docs/20260525_1447_canvas_calibration_v3_design.md
                        進捗: docs/20260525_{1457,1517}_canvas_calibration_v3_step{1,2}_*.md
+              │
+              ├──►  ✗ N5  デバッグ用 image push で orphan branch + git clean -fd し、
+              │           training/ (raw 36 + LoRA + dataset)、 venv/ (torch 等)、
+              │           calibration/*.yaml の local uncommitted 修正、 logs 出力、
+              │           その他 untracked ファイル群を一括 wipe
+              │           原因: orphan branch で .gitignore も untracked になり、 clean が
+              │             全消し (gitignored 含む)
+              │           対処: ① Trash 内 training.zip (708M, 16:54 時点) から
+              │                    raw/ + v0 LoRA + dataset を rsync 復元
+              │                 ② venv は pip install で再構築 (torch 2.5.1+cu121,
+              │                    diffusers 0.38.0, transformers 5.9.0)
+              │                 ③ git fsck --unreachable で dangling blobs 発見
+              │                    panel_frame.yaml と canvas_calibration.yaml の
+              │                    最新版 (uncommitted だった) を recovered_yaml/ に
+              │                    退避 → 採用
+              │           教訓: orphan branch + clean -fd 禁止、 git worktree で隔離
+              │           ┗━ 復旧先 ▶ M13
+              │
+05-28 00:14   ● M13 Plan E (Illustrious + MistoLine + inpaint) で純線画達成  [ce0eefc]
+              │      └ Animagine 3.1 + 自前 LoRA (v0/v1/v2/v3) は全失敗
+              │        (黒テクスチャ + 文字暴走)。 ユーザ提案 「漫画モデルを使えばいい」
+              │        を反映し、 base を Illustrious XL early-release-v0 (Danbooru
+              │        訓練、 monochrome/lineart tag 対応) に乗換、 LoRA off。
+              │        新 preset illustrious_v2_inpaint で 顔保持 + 体描き足し +
+              │        ハッチング/塗り無しの 線画 達成。 ロボット描画適合な strokes 取得。
+              │
+05-28 01:50   ● M14 Vectorizer + Robot 結合 動作確認 (mock + real CAN)  [82cb13b]
+              │      └ Phase 3 生成画像 → Vectorizer.vectorize_to_panel()
+              │        → strokes_mm 107 strokes (panel 107.05 x 197.07 mm)
+              │      Robot(mock=True).draw_stroke_panel 全 stroke で
+              │        travel→descend→trace→pen-up が log で確認可。
+              │      Robot(mock=False).connect/disconnect: 実機電源 OFF で
+              │        CAN 送信 → ERROR-PASSIVE (ACK 無しのため、 正常)。
+              │
+05-28 08:38   ● M15 IP-Adapter two-stage で 松本大洋画風 + 顔保持 同時達成  [c32c2c1]
+              │      └ 自前 LoRA v0-v3 すべて失敗 (dataset 黒/文字暴走) を IP-Adapter
+              │        (h94/IP-Adapter sdxl_models/ip-adapter_sdxl) で迂回。
+              │        1 段で IP-Adapter 使うと style ref の構図 (顔=頭) と 元 sketch
+              │        (中央 face oval) が競合 → 顔が胴体中央に。
+              │        Two-stage で解決:
+              │          Stage 1: illustrious_v2_inpaint @ 1024res で 構図確定
+              │          Stage 2: img2img + IP-Adapter (strength 0.45, ip_scale 0.6,
+              │                   768res) で style 転写、 構図維持
+              │        Vectorizer 後で 114 strokes / 2542 pts。 松本タッチ
+              │        (spiky 髪、 rough/expressive lines、 dynamic body) + 純線画 +
+              │        顔保持 を同時に達成。 ロボット描画 ready。
+              │        script: scripts/test_ip_adapter_two_stage.py
+              │        demo: github phase-e-results-20260528/matsumoto_v2_two_stage/
+              │
+05-28 10:33   ● M16 multi-mode (character / object / other) + gacha UX + object 詳細化  [27de6b4]
+                     └ M15 (character mode 完成) の後、 ユーザ指摘で:
+                       1. 「同じ pose しか出ない」 → seed ランダム化 (gacha) で 解決
+                       2. 「人間以外も描く」 → 3 mode 設計 (character/object/other) で 対応
+                       3. 「object mode は sketch 複製のみ」 → text2img + CN soft hint で
+                          detailed 線画 を生成するよう preset 再設計
+                       新 preset:
+                         character: illustrious_v2_inpaint + IP-Adapter ON (M15 と同じ)
+                         object:    illustrious_v2_object (text2img, CN 0.65 soft hint)
+                                    → prompt で detail 指示、 sketch は構造ヒント
+                         other:     fallback
+                       検証 (object v2): house 37 / tree 89 / cat 34 / car 111 strokes
+                       script:
+                         scripts/test_ip_adapter_two_stage.py (--category)
+                         scripts/generate_gacha.py (N variants + grid)
+                         scripts/gen_test_sketches{,_objects}.py
+                       demo: github phase-e-results-20260528/{multi_mode_v3,v4_object,v5_object_detailed}/
+              │
+05-28 ??:??   ○ M17 (下書き) Panel geometry alignment (canvas → SDXL bucket 共有)  [021979c]
+                     └ カメラ warp / 画像生成 / ロボット認識平面 の 3 つを
+                       同じ panel 物理寸法で合わせ込む single source of truth。
+                       modules/panel_geometry.py 新規:
+                         canvas_calibration.whiteboard_computed を真値、
+                         panel aspect から SDXL bucket (64 倍数, area≈1024²)
+                         を自動選択。 PanelGeometry(panel_size_mm,
+                         panel_image_size, mm_per_px, source)。
+                       image_gen.py 拡張:
+                         resolution を int | (W, H) に (後方互換)、
+                         generate() の pipe_kwargs に height/width 明示、
+                         imagegen_config.yaml の auto_from_panel: true で
+                         build_image_generator_from_config が panel_geometry
+                         に降りて bucket を解決。
+                       imagegen_config.yaml: auto_from_panel: true をデフォルト。
+                       scripts/check_panel_geometry.py 新規 (CLI 整合 diff、
+                         --sync で panel_frame.panel.size_mm を canvas に揃える)。
+                       pipeline_test_gui.py ImageGenCalibWindow:
+                         Panel readout (現 panel mm + 推奨 bucket + mm/px) +
+                         auto_from_panel トグル + 手動 W×H spinbox +
+                         「🔄 再計測値で更新」 + 「📐 bucket を手動欄に反映」。
+                     └ mock 検証 (実機なし):
+                         canvas 92.93×193.52 mm (aspect 0.480)
+                           → bucket 704×1472 px (aspect err 0.4%)
+                           → mm/px=(0.1320, 0.1315) で等方
+                         旧 1024×1024 強制だと (0.0908, 0.1890) と異方 (2.1x 縦伸び)
+                     └ 残課題:
+                         phase_a_calibration.panel_size_mm (230×300) は
+                         カメラ 4 点クリック時の仮値。 実物 (canvas 由来) に
+                         合わせるには scripts/calibrate_panel.py 再実行が必要
+                         (check_panel_geometry が警告で誘導)。
+                     └ 実機検証 (生成 → vectorize → robot 描画で panel に
+                       歪み無し確認) PASS で ● 確定 + ★ 現在地 更新。
+                     └ ブランチ: claude/smooth-curve-rendering-e88Vb
+              │
+06-02         ● M18 デザイン×アライン 2生成→特徴ワープ後合成(方式③) 成立  [88bc21f]
+                     └ M17 後 SDXL系 → FLUX.1-schnell + ControlNet(Union canny)
+                       + style LoRA(勝ち168枚, 16GB学習) に移行。 生成 prompt は
+                       VLM の「未来の完成形」 ビジョン (design_instruction mode=complete)。
+                     └ 方式③: design(低CN0.2 完成形) を生成 → アライン芯 = 入力生線
+                       (高CN生成を芯にする初版は簡素入力で芯スカスカ 0-6本 と判明し変更)
+                       → DIS optical flow で design→入力 の変位場を作り design
+                       ストロークをワープ → デザイン性を保ったまま入力位置へ寄せる。
+                     └ scripts/gen_flux_warp_compose.py。 出力 disp_2026-06-02-WARP529
+                       に各入力 align_input/design/warp の 3 層。 ※warp の絵的品質は
+                       ユーザー目視判定が次ステップ (構造は成立、 寄せ量 flow 5-27px)。
+              │
+06-03         ● M19 multi-object 入力 → 分割 → 個別生成 → 元レイアウト合成 が完成 ★★ 現在地 ★★  [522d010]
+                     └ ユーザー評価「かなりいい」。 1 枚に複数被写体を描いた手描き入力を、
+                       connected components で分割 → 各被写体を個別生成 → 元 IMG の各
+                       下書き位置(bbox)へ contain 配置して 1 枚に再合成。
+                     └ 生成ルート(6/3 確定): FLUX.1-schnell + ControlNet(Union canny, CN0.2)
+                       + winners style LoRA@0.6 + VLM完成形ビジョン(design_instruction
+                       complete) + OpenCV線抽出(背景色/トーン除去) + デフォルト style 文
+                       = 「manga style, clean bold ink lineart, white background,
+                       appealing design, multiple」。
+                     └ 合成は 704x1472 パネルフレームに contain (webapp が candidate を
+                       stretch / input を contain で描くため、 縦伸び/位置ズレ回避にこの
+                       写像が必須)。 ※CN追従型なので prompt の "multiple" は効かない
+                       (複数クラスタが欲しい時は B の scatter/direct ルート)。
+                     └ scripts: split_new3.py → gen_new3.py → recombine_new3.py
+                       (`<SUF> <combo_sid> 1` 引数で合成+push)、 modules/gen_line_extract.py。
+                       出力 disp_2026-06-02-NEW3M / new_combo_m (webapp で確認)。
+
+─ 壁面描画スレッド (full_dev GUI、 M10→M12 の続き) ──────────────────
+06-01〜02      ● 壁面描画 full_dev GUI 多数改善 (StrokePicker / 進捗プレビュー /
+              │   Frida depth傾き補正(実機改善確認) / 四隅微調整ウィザード /
+              │   3Dプレビュー / 末端負荷ボタン 等)  [piper_test: 9d7e18a]
+              │
+              ├──►  ✗ N6  円/螺旋/生成画像が全モードで歪む (数セッション難航)
+              │           症状: 横伸び+せん断+片当たり。 描画コード・座標変換・
+              │           TCP・リーチを疑うも全部空振り (FK/IK は正しい。
+              │           deg/rad 取り違えで自己誤診もした)
+              │           真因: **示教中のアーム重力保持が効かなくなる回帰** →
+              │           drag-teach/微調整中に arm がサグ → 四隅が下・内側に
+              │           ズレ記録 (伸びた上側ほど顕著) → キャリブ台形化 →
+              │           全描画が歪む。 入力データ(キャリブ)汚染が真因
+              │           対処: ① 壊れた canvas_calibration.yaml を committed
+              │                 版に git checkout で復元 (破損版は /tmp に backup)
+              │                 ② GUI 再起動 (center/contact は startup のみ
+              │                    読むので in-memory 古い値が残る)
+              │                 ③ 末端負荷(0xAE)で保持回復後に再キャリブ
+              │           ┗━ 復旧先 ▶ committed calibration + 再起動 + end-load
+              │              (描画コードは概ね無罪。 depth補正のみ実機改善確認)
+              │
+06-03         ● M20 向き固定IKで経路非依存の再現性を達成 (壁面描画スレッド)  [piper_test: cd66642]
+                     └ ユーザー観察「位置決めしても通る経路で行き先が変わる。螺旋は中心
+                       から連続だから上手くいく」が真因の手がかり。コード調査で確定:
+                       solve_ik は link6位置+ペン軸方向しか拘束せず roll 自由、かつ
+                       desired_z=R_cur[:,2](=直前の向き)で目標向きが経路依存。tip=link6
+                       +90mmなので向きの僅差が先端で cm 級にズレ、IK が毎回別姿勢へ収束。
+                     └ 対処: ① desired_z を固定の壁正対向き(板法線)に + 常に正対seedを候補に
+                       (fixed_orientation, _fixed_pen_z, _canonical_seed)。オフライン検証で
+                       同一目標へ3経路から関節差0.0°=完全再現。② 四隅は tip 実位置を位置制御
+                       で記録(現在位置を隅として記録/四隅リセット/X調整/Enter即反映)。
+                       ③ 中央保存 raw直書き化。④ 大円 _canvas_fit_radii の座標系不一致
+                       (3D vs YZ)を全YZ一貫に修正、描画は端リーチ誤差で中断しない best-effort。
+                     └ 検証状況: オフライン再現性 PASS / 実機は小円が dYZ<2mm で正確に描画
+                       確認済。横大円・楕円の実機再描画と四隅深さ(X)再記録は次ステップ。
+                     └ ★注意: 現 canvas_calibration の四隅は X(深さ)が上320 vs 下245 と
+                       74mm バラつく記録エラーあり (再記録要)。横円テスト(YZのみ)には無影響。
 ```
 
 ---
@@ -156,6 +325,14 @@
 | M10 | 2026-05-23 18:12 | drag-teach キャンバスキャリブ実機成功(壁面描画スレッド) | `221f0fb` | `calibration/canvas_calibration.yaml` が存在、`canvas.n_points=31`、`plane_fit.rms_residual_mm=3.82`、centroid (204.3, -2.8, 299.7), 法線 ≈ -X 方向 |
 | M11 | 2026-05-23 21:00 | 壁面描画 GUI 統合(Tkinter wrapper、2-phase drag-teach 実装、speed 分離、Restart GUI、pkexec CAN up) | `f43e8e4` | `~/piper_test/wall_drawing_gui.py` 起動 → GUI 表示 + CAN status 反映、`Connect → Recover → Tune Contact → Draw Square` で四角描画(M10 キャリブのまま)。2-phase drag-teach は実装済・実機未検証(次セッション) |
 | M12 | 2026-05-25 15:17 | canvas_calibration yaml schema v3 (5-phase 設計) IO モジュール + GUI 配線(read/write_v3、_load_calib_defaults、_capture_point、_fit_and_save) | `c24438c` | `~/draw_piper/venv/bin/python ~/piper_test/test_canvas_calibration_io.py` で 50 checks PASS、`~/draw_piper/venv/bin/python ~/piper_test/test_step2_v3_save.py` で 33 checks PASS。GUI 起動時 `_load_calib_defaults` が v1/v2/v3 を自動検出してロード。実機 drag-teach は M11 同様未検証で Step 4 (B2 自動サンプリング実装後) にまとめて検証予定 |
+| M13 | 2026-05-28 00:14 | Plan E (Illustrious XL early-release-v0 + MistoLine + inpaint) で 純線画 + 顔保持 + 体描き足し 達成。 Animagine + 自前 LoRA 路線 (v0-v3 全失敗) を base 乗換で迂回 | `ce0eefc` | `venv/bin/python -m scripts.compare_imagegen_models --guide scripts/test_sketch.jpg --prompt "1boy, solo, young boy with full body, messy hair, surprised expression, simple t-shirt, standing" --presets illustrious_v2_inpaint --seed 42` で 顔保持 + 体描き足し の純線画。 demo: branch phase-e-results-20260528/phase_e_demo/ |
+| M14 | 2026-05-28 01:50 | Vectorizer (strokes_mm 化) + Robot.draw_stroke_panel mock/real CAN 双方で動作確認 | `82cb13b` | `Vectorizer.vectorize_to_panel(panel=PanelFrame)` で 107 strokes_mm 取得 (panel 107.05 x 197.07 mm)。`Robot(mock=True).draw_stroke_panel(strokes_uv)` 完走 + `Robot(mock=False).connect/disconnect` 実 CAN (実機電源 OFF) で OK (ERROR-PASSIVE = ACK 無し正常) |
+| M15 | 2026-05-28 08:38 | IP-Adapter two-stage で 松本大洋画風 + 顔保持 + ロボット適合 同時達成 | `c32c2c1` | `venv/bin/python -m scripts.test_ip_adapter_two_stage --user-sketch scripts/test_sketch.jpg --style-ref training/matsumoto_taiyo/raw/IMG_4311.JPG --output logs/ip_2stage_<ts> --stage1-resolution 1024 --resolution 768 --stage2-strength 0.45 --ip-scale 0.6 --seed 42` で `30_vectorized_strokes.png` に 114 strokes / 2542 pts の松本タッチ純線画。 demo: branch phase-e-results-20260528/matsumoto_v2_two_stage/ |
+| M16 | 2026-05-28 10:33 | multi-mode (character/object/other) + gacha UX + object 詳細化 (text2img + CN soft hint で sketch を hint だけにし prompt 駆動で detailed lineart 生成) | `27de6b4` | `venv/bin/python -m scripts.generate_gacha --user-sketch <sketch> --category {character\|object} --output logs/gacha_<ts> --n 3` で各 sketch から 3 variants の detailed 線画。 cat 34 / house 37 / tree 89 / car 111 strokes。 demo: branch phase-e-results-20260528/multi_mode_v5_object_detailed/ |
+| **M17 (下書き)** | 2026-05-28 | Panel geometry alignment ― canvas_calibration を真値に SDXL bucket 自動選択 + image_gen non-square 対応 + 整合 diff CLI + GUI readout/トグル | `021979c` | `python3 scripts/check_panel_geometry.py` で `推奨 PanelGeometry` が canvas 由来 (panel 92.93×193.52 mm → bucket 704×1472 px, aspect err 0.4%, mm/px=(0.132, 0.132) で等方) を表示。 `imagegen_config.yaml` の `auto_from_panel: true` で build_image_generator_from_config が bucket 自動解決。 実機検証 (生成 → vectorize → robot 描画で panel に歪み無し) PASS で ● 確定 + ★ 現在地 更新。 ブランチ: `claude/smooth-curve-rendering-e88Vb` |
+| **M18** | 2026-06-02 | デザイン性×アライン性の「2生成→特徴ワープ後合成」(方式③) が構造的に成立。FLUX.1-schnell + ControlNet(Union canny) + style LoRA(勝ち168枚, 16GB 学習) へ移行し、生成 prompt は VLM 完成形ビジョン (`design_instruction(mode="complete")`)。design(低CN0.2) を生成 → アライン芯=**入力生線** (高CN生成を芯にする初版は簡素入力で芯 0-6本=スカスカと判明し変更) → **DIS optical flow** で design→入力 の変位場を作り design ストロークをワープし、デザイン性を保ったまま入力位置へ寄せる。 | `88bc21f` | `venv/bin/python scripts/gen_flux_warp_compose.py` → `sketch_variations/disp_2026-06-02-WARP529/<sid>/v*_{align_input,design,warp}` が生成され、各 meta に `flow_mean_px` 記録 (5/29入力8枚で 5-27px)。webapp で warp が design を入力位置へ寄せているか目視。※warp の**絵的品質判定はユーザー目視が次ステップ**(構造・座標整合は成立)。 関連: [[flux_schnell_controlnet_setup]] [[flux_lora_training_16gb]] |
+| **M20** | 2026-06-03 | **壁面描画: 向き固定IKで経路非依存の再現性を達成**。`solve_ik` が roll 自由 + `desired_z=R_cur[:,2]`(直前の向き)で目標姿勢が経路依存 → tip=link6+90mm で向きの僅差が先端で cm 級ズレ、毎回別姿勢へ収束していた真因を特定。固定の壁正対向き(板法線)+正対seed常設で同一目標→同一姿勢(オフライン3経路で関節差0.0°)。四隅は tip 実位置の位置制御記録に置換、大円サイズの座標系不一致(3D vs YZ)修正、描画 best-effort 化。 | `piper_test: cd66642` | GUI 起動 → ③位置調整「向き固定」ON → 各隅へ goto が経路に依らず同じ位置。実機は小円 dYZ<2mm で正確描画確認済。横大円/楕円の実機再描画 + 四隅深さ(X=上320/下245で74mmズレ)の再記録が次ステップ。 関連: [[calibration_center_size_redesign]] [[drawing_distortion_diagnostic]] |
+| **M19** | 2026-06-03 | **multi-object 入力 → 分割 → 個別生成 → 元レイアウト合成** が完成 (ユーザー評価「かなりいい」)。生成ルート確定: FLUX.1-schnell + ControlNet(Union canny, **CN0.2**) + winners style LoRA@0.6 + VLM完成形ビジョン(`design_instruction(mode="complete")`) + **OpenCV線抽出**(背景色/トーン除去+適応二値化, `modules/gen_line_extract.py`) + デフォルト style 文「manga style, clean bold ink lineart, white background, appealing design, multiple」。 合成は **704×1472 パネルフレームに contain** 配置 (webapp が candidate を stretch / input を contain で描くため縦伸び回避にこの写像が必須)。 ※CN追従型ゆえ "multiple" は効かない (複数クラスタは B の scatter/direct ルート)。 | `522d010` | `split_new3.py`(分割) → `gen_new3.py`(個別生成) → `recombine_new3.py NEW3M new_combo_m 1`(合成+push)。webapp 2026-06-02 → `new_combo_m` に象/花/トラックが元配置で 1 枚に合成 (3 seed)、縦伸び無し。 関連: [[design_align_warp_compose]] [[robot_draws_only_additions]] |
 
 ---
 
@@ -167,6 +344,8 @@
 | N2 | 2026-05-22 13:00–17:00 | JointCtrl 指令で実機が動かない（音はする） | ① master mode 残留で外部指令を拒否 ② Config Init 未送信 | `MasterSlaveConfig(0xFC,0,0,0)` + 電源完全リセット（AC+USB 抜いて 30 秒）+ Config Init（`ArmParamEnquiryAndConfig(0x01,0x02,0,0,0x02)`） | `docs/20260522_1700_piper_jointctrl_solved.md` |
 | N3 | 再発性 | CAN TX がサイレント失敗、コマンドが届かない | USB-CAN 物理層の不調 | `ip -details -statistics link show can0` でエラーカウンタを確認 → USB-CAN アダプタを抜き差し | `docs/20260522_1700_piper_jointctrl_solved.md`（教訓 5） |
 | N4 | 2026-05-23 17:00 | master mode 中、SDK の `GetArmJointMsgs` / `GetArmJointCtrl` が 0/stale。in-process の `python-can` Bus も同様に starve | 同一プロセス内の socketcan ソケットが master mode 中に受信不能化(原因不明だが再現性あり)。加えて 0x155-0x157 はアームが動いている時だけ broadcast される | `candump -ta can0` を subprocess 起動 → stdout を parse して 0x155-7 を decode。`MasterSlaveConfig(0xFC)` 後は電源リセット必須 | `docs/20260523_1820_master_mode_drag_teach_calibration.md` |
+| N5 | 2026-05-28 00:40 | orphan branch + git clean -fd で untracked file 一括 wipe (training/ raw 36+LoRA+dataset、 venv/ Python パッケージ、 calibration/*.yaml local mods) | orphan branch では .gitignore も untracked となり、 git clean -fd が gitignored 含めて全消去 | ① Trash の training.zip (708M, 16:54 時点) から raw/ + v0 LoRA + dataset を rsync 復元 ② venv は pip install で再構築 (torch 2.5.1+cu121 等) ③ `git fsck --unreachable` で dangling blobs から panel_frame.yaml / canvas_calibration.yaml の uncommitted 最新版を発見、 `recovered_yaml/` に保存後 採用 (M15 への復旧経路) | `docs/20260528_matsumoto_pursuit_plan.md`、 branch `recovered-yaml-20260528` |
+| N6 | 2026-06-01〜02 | 円/螺旋/生成画像が全モードで歪む (横伸び+せん断+片当たり) | **示教中のアーム重力保持(励磁)が効かなくなる回帰** → drag-teach/微調整中に arm がサグ → 四隅が下・内側にズレ記録 (伸びた上側ほど顕著) → キャリブが台形化 → 全描画が歪む。 描画コード/座標変換/TCP/リーチ/FK・IK は無罪 (deg/rad 取り違えで自己誤診あり) | ① 壊れた `calibration/canvas_calibration.yaml` を committed 版に `git checkout` 復元 (破損版は `/tmp/*_broken_*.yaml` に backup) ② GUI 完全再起動 (center/contact/xoff は startup のみ yaml 読込 = in-memory 古い値が残る。 起動ログ `Loaded defaults` で確認) ③ 末端負荷 effective=0xAE で保持回復後に再キャリブ | memory: [[piper_end_load_gravity_comp]] / [[drawing_distortion_diagnostic]]。 fix commit `9d7e18a` (p_travel)、 depth補正 `b4230be` |
 
 ---
 

@@ -1,0 +1,14 @@
+placement=shift
+subject_ja=人
+location_ja=不明
+action_ja=不明
+confidence=0.900
+companion_subject=bird
+companion_prompt_version=best
+companion_candidates:
+  v1: umbrella
+  v2: bird
+  v3: umbrella
+companion_judge_idx=1
+composition_refinement=dynamic pose mid-stride
+prompt=a detailed Matsumoto-style bird, dynamic pose mid-stride, manga style, expressive ink lines, single continuous black line on plain white background, clean smooth strokes, illustrative, no shading

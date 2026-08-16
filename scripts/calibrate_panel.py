@@ -59,6 +59,31 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from modules.camera import Camera, VALID_ROTATION_DEGS  # noqa: E402
+from modules.panel_geometry import (   # noqa: E402
+    parse_resolution,
+    select_sdxl_bucket,
+)
+
+
+def _resolve_panel_image_size(
+    arg: str | None, panel_w_mm: float, panel_h_mm: float,
+) -> tuple[int, int]:
+    """warp 出力サイズ (W, H) を決める。
+
+    - None / "auto" : panel 実寸の aspect (w_mm/h_mm) に最も近い SDXL bucket。
+      これで warp 出力が物理キャンバスと同じ縦横比になり (= 歪み無し)、
+      かつ画像生成 (auto_from_panel) と同一サイズなので resize/stretch ゼロ。
+    - "WxH"         : 明示指定 (縦長等)。
+    - "N"           : 正方形 (N, N) (後方互換)。
+    """
+    if arg is None or str(arg).strip().lower() in ("", "auto"):
+        (w, h), _ = select_sdxl_bucket(panel_w_mm / panel_h_mm)
+        return (int(w), int(h))
+    wh = parse_resolution(arg)
+    if wh is None:
+        (w, h), _ = select_sdxl_bucket(panel_w_mm / panel_h_mm)
+        return (int(w), int(h))
+    return wh
 
 log = logging.getLogger(__name__)
 
@@ -299,9 +324,14 @@ def _build_warp_preview(
     correspondences: list[dict],
     panel_w_mm: float,
     panel_h_mm: float,
-    panel_image_size: int,
+    panel_image_size: tuple[int, int],
 ) -> tuple[np.ndarray, dict]:
-    """Preview として warp 結果と reprojection 誤差を計算。"""
+    """Preview として warp 結果と reprojection 誤差を計算。
+
+    panel_image_size = (W_px, H_px)。 縦長キャンバスなら (704, 1472) 等の
+    非正方形が渡る。
+    """
+    pw_px, ph_px = panel_image_size
     src = np.array(
         [c["camera_px"] for c in correspondences], dtype=np.float32,
     )
@@ -310,12 +340,12 @@ def _build_warp_preview(
     )
     # panel mm → uv (TL 原点 + v 反転)
     dst_uv = np.empty_like(dst_mm)
-    dst_uv[:, 0] = dst_mm[:, 0] / panel_w_mm * panel_image_size
-    dst_uv[:, 1] = (panel_h_mm - dst_mm[:, 1]) / panel_h_mm * panel_image_size
+    dst_uv[:, 0] = dst_mm[:, 0] / panel_w_mm * pw_px
+    dst_uv[:, 1] = (panel_h_mm - dst_mm[:, 1]) / panel_h_mm * ph_px
 
     H = cv2.getPerspectiveTransform(src, dst_uv)
     warped = cv2.warpPerspective(
-        image_bgr, H, (panel_image_size, panel_image_size),
+        image_bgr, H, (pw_px, ph_px),
         flags=cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_CONSTANT,
         borderValue=(255, 255, 255),
@@ -390,7 +420,7 @@ def save_calibration(
     correspondences: list[dict],
     panel_w_mm: float,
     panel_h_mm: float,
-    panel_image_size: int,
+    panel_image_size: tuple[int, int],
     camera_image_size: tuple[int, int],
     camera_rotation_deg: int,
     reproj_info: dict,
@@ -413,7 +443,7 @@ def save_calibration(
         # camera_px 座標もこの (回転後の) 画像系の値。
         "camera_rotation_deg": int(camera_rotation_deg),
         "camera_image_size": list(camera_image_size),
-        "panel_image_size": [panel_image_size, panel_image_size],
+        "panel_image_size": [int(panel_image_size[0]), int(panel_image_size[1])],
         "panel_size_mm": [float(panel_w_mm), float(panel_h_mm)],
         "correspondences": correspondences,
         "reproj_error_px": {
@@ -441,8 +471,10 @@ def main() -> int:
                     help="ホワイトボードの横サイズ (mm)")
     ap.add_argument("--panel-height-mm", type=float, default=300.0,
                     help="ホワイトボードの縦サイズ (mm)")
-    ap.add_argument("--panel-image-size", type=int, default=1024,
-                    help="warp 後の出力サイズ (px, 正方形)")
+    ap.add_argument("--panel-image-size", type=str, default=None,
+                    help="warp 後の出力サイズ。 省略/'auto' で panel 実寸 aspect の "
+                         "SDXL bucket (= 物理キャンバスと同じ縦横比、 画像生成と同一 "
+                         "サイズ)。 'WxH' で明示、 'N' で正方形 (後方互換)。")
     # camera args (camera.py と揃える)
     ap.add_argument("--camera-device", type=int, default=0)
     ap.add_argument("--camera-width", type=int, default=1280)
@@ -465,6 +497,17 @@ def main() -> int:
     args = ap.parse_args()
 
     yaml_path = Path(args.panel_yaml)
+
+    # warp 出力サイズ (W, H) を解決。 省略時は panel 実寸 aspect の SDXL bucket。
+    panel_image_size_wh = _resolve_panel_image_size(
+        args.panel_image_size, args.panel_width_mm, args.panel_height_mm,
+    )
+    log.info(
+        "panel_image_size (warp 出力) = %dx%d  (panel %.1fx%.1f mm, aspect %.3f)",
+        panel_image_size_wh[0], panel_image_size_wh[1],
+        args.panel_width_mm, args.panel_height_mm,
+        args.panel_width_mm / args.panel_height_mm,
+    )
 
     # --- 1. 画像取得 (回転は後段でかける) ---
     if args.input_image:
@@ -554,7 +597,7 @@ def main() -> int:
                 rotated_image, correspondences,
                 panel_w_mm=args.panel_width_mm,
                 panel_h_mm=args.panel_height_mm,
-                panel_image_size=args.panel_image_size,
+                panel_image_size=panel_image_size_wh,
             )
             log.info(
                 "reprojection err: mean=%.2f max=%.2f px",
@@ -568,7 +611,7 @@ def main() -> int:
                     correspondences=correspondences,
                     panel_w_mm=args.panel_width_mm,
                     panel_h_mm=args.panel_height_mm,
-                    panel_image_size=args.panel_image_size,
+                    panel_image_size=panel_image_size_wh,
                     camera_image_size=camera_image_size,
                     camera_rotation_deg=current_rotation,
                     reproj_info=info,

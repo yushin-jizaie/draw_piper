@@ -24,7 +24,7 @@ Usage from another Tk GUI (e.g. wall_drawing_gui.py):
 Standalone test:
     python3 -m modules.stroke_picker
 
-Scans:  <project_root>/logs/vlm_to_image_*/cycle_*/
+Scans:  <project_root>/logs/**/strokes*.json (vlm_to_image_*/cycle_*/ も含む)
 Each card shows:
   - generated.png         (left thumbnail)
   - vec_debug/06_strokes.png (right thumbnail)
@@ -52,11 +52,38 @@ except ImportError:
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_LOGS_DIR = PROJECT_ROOT / "logs"
+SKETCH_VARIATIONS_DIR = PROJECT_ROOT / "sketch_variations"
+
+# 各 cycle dir 内で 「生成画像」 / 「ストローク画像」 として使えるファイル名の
+# 優先候補。 logs/ と sketch_variations/ で命名が違うので両対応にする。
+_GENERATED_IMAGE_NAMES = (
+    "generated.png",
+    "20_final_no_ip_adapter.png",
+    "20_stage2_str0.45_ip0.60.png",
+    "illustrious_v2_inpaint.png",
+    "illustrious_v2_object.png",
+    "30_vectorized_strokes.png",
+)
+_STROKES_IMAGE_RELPATHS = (
+    "vec_debug/06_strokes.png",
+    "30_vectorized_strokes.png",
+    "06_strokes.png",
+)
+
+
+def _first_existing(cycle: Path, names) -> Optional[Path]:
+    for name in names:
+        cand = cycle / name
+        if cand.exists():
+            return cand
+    return None
 
 THUMB_W = 220       # 1 card 内のサムネ 1 枚あたり幅
 THUMB_H = 220
 CARD_PAD = 8
 GRID_COLS = 3
+MAX_CARDS = 60      # 一度に描画する最大カード数 (超過はフィルタで絞る)。
+                    # 全件 (数百) 一括描画は サムネ読込で UI フリーズの原因
 
 
 class StrokePicker(tk.Toplevel):
@@ -79,13 +106,32 @@ class StrokePicker(tk.Toplevel):
 
         # state
         self._entries: list[dict] = []
-        self._cards: dict[str, ttk.Frame] = {}      # key = cycle_dir name
+        self._cards: dict[str, ttk.Frame] = {}      # key = str(cycle_dir) (一意)
         self._photo_cache: dict[Path, "ImageTk.PhotoImage"] = {}
         self._selected_key: Optional[str] = None
+        # サムネは描画後に非同期で 1 枚ずつ読み込む (同期だと 60 枚×2 で
+        # UI が数秒固まる)。 _render でキューを作り after() で消化する。
+        self._thumb_queue: list = []
+        self._thumb_job = None
+        self._render_job = None
+
+        # 参照元 (logs/ と sketch_variations/<folder>) の label -> Path マップ
+        self._sources = self._build_source_map()
 
         # tk vars
         self.var_filter = tk.StringVar()
         self.var_sort = tk.StringVar(value="newest")
+        # 起動時 logs_dir に一致する source label を初期選択。
+        # 注意: ttk.Combobox を 「値入りの textvariable」 で生成すると、
+        # 絵文字を含むラベルの文字幅計測で Tk が segfault する。 そのため
+        # var_source は空で作り、 Combobox 生成 *後* に値を set する
+        # (_build_ui 末尾参照)。
+        init_label = next((lbl for lbl, p in self._sources.items()
+                           if p == self.logs_dir), None)
+        if init_label is None and self._sources:
+            init_label = next(iter(self._sources))
+        self._init_source_label = init_label or ""
+        self.var_source = tk.StringVar()
 
         self._build_ui()
         self._refresh()
@@ -106,18 +152,80 @@ class StrokePicker(tk.Toplevel):
         return picker.result
 
     # ------------------------------------------------------------------
+    # source roots (プルダウン)
+    # ------------------------------------------------------------------
+    def _build_source_map(self) -> "dict[str, Path]":
+        """参照元の label -> Path マップを構築。
+
+        - "🗂 logs/ (生成ログ)"           -> <root>/logs
+        - "📁 sketch_variations/ (全体)"  -> <root>/sketch_variations 全走査
+        - "📁 <folder>"                   -> sketch_variations 配下の各フォルダ
+        起動時に渡された logs_dir がどれにも一致しなければ先頭に追加する。
+        """
+        # NOTE: ラベルに絵文字を入れない。 Tk(Xft) のカラー絵文字レイアウトで
+        # ttk ウィジェット生成時に segfault するため (実機で確認)。
+        srcs: "dict[str, Path]" = {}
+        srcs["logs/ (生成ログ)"] = DEFAULT_LOGS_DIR
+        if SKETCH_VARIATIONS_DIR.is_dir():
+            srcs["sketch_variations/ (全体)"] = SKETCH_VARIATIONS_DIR
+            subdirs = [d for d in SKETCH_VARIATIONS_DIR.iterdir()
+                       if d.is_dir() and not d.name.startswith("_")]
+            for d in sorted(subdirs, key=lambda p: p.stat().st_mtime,
+                            reverse=True):
+                srcs[f"sv/ {d.name}"] = d
+        # 明示指定された logs_dir がマップに無ければ先頭に積む
+        if self.logs_dir not in srcs.values():
+            srcs = {f"dir/ {self.logs_dir.name}": self.logs_dir, **srcs}
+        return srcs
+
+    def _on_source_change(self, *_):
+        label = self.var_source.get()
+        path = self._sources.get(label)
+        if path is None:
+            return
+        self.logs_dir = Path(path)
+        if hasattr(self, "lbl_src_path"):
+            self.lbl_src_path.config(text=f"{self.logs_dir}")
+        self._refresh()
+
+    @staticmethod
+    def _key_for(cycle: Path) -> str:
+        """カード一意キー。 sketch_variations では同名 dir (car/tree…) が
+        複数 set に跨るため、 dir 名ではなく絶対パスをキーにする。"""
+        return str(cycle)
+
+    # ------------------------------------------------------------------
     # UI construction
     # ------------------------------------------------------------------
     def _build_ui(self) -> None:
+        # source 選択行 (プルダウン)
+        src_row = ttk.Frame(self, padding=(8, 8, 8, 0))
+        src_row.pack(fill=tk.X)
+        ttk.Label(src_row, text="参照元:",
+                  font=("Monaco", 10, "bold")).pack(side=tk.LEFT, padx=(0, 4))
+        self.cb_source = ttk.Combobox(
+            src_row, textvariable=self.var_source,
+            values=list(self._sources.keys()), state="readonly", width=42)
+        self.cb_source.pack(side=tk.LEFT)
+        self.cb_source.bind("<<ComboboxSelected>>", self._on_source_change)
+        # 値の設定は生成 *後* に行う (上記 segfault 回避)。 プログラム的な
+        # set は <<ComboboxSelected>> を発火しないので _refresh は走らない。
+        if self._init_source_label:
+            self.var_source.set(self._init_source_label)
+        self.lbl_src_path = ttk.Label(src_row, text=f"{self.logs_dir}",
+                                      foreground="#888")
+        self.lbl_src_path.pack(side=tk.LEFT, padx=(10, 0))
+
         # toolbar
         tb = ttk.Frame(self, padding=8)
         tb.pack(fill=tk.X)
-        ttk.Label(tb, text=f"📁 {self.logs_dir}",
-                  foreground="#555").pack(side=tk.LEFT, padx=(0, 12))
-        ttk.Label(tb, text="🔍 フィルタ:").pack(side=tk.LEFT)
+        ttk.Label(tb, text="フィルタ:").pack(side=tk.LEFT)
         ttk.Entry(tb, textvariable=self.var_filter, width=24
                   ).pack(side=tk.LEFT, padx=4)
-        self.var_filter.trace_add("write", lambda *_: self._render())
+        # フィルタは 1 文字毎に _render() を呼ぶと 60枚×2サムネ(≈1.7s) が
+        # キー毎に走り UI が固まる。 入力停止 300ms 後に 1 回だけ再描画する
+        # (デバウンス)。
+        self.var_filter.trace_add("write", lambda *_: self._schedule_render())
         ttk.Label(tb, text="  並び:").pack(side=tk.LEFT, padx=(12, 0))
         ttk.Radiobutton(tb, text="新しい順", variable=self.var_sort,
                          value="newest", command=self._render
@@ -125,7 +233,7 @@ class StrokePicker(tk.Toplevel):
         ttk.Radiobutton(tb, text="古い順", variable=self.var_sort,
                          value="oldest", command=self._render
                          ).pack(side=tk.LEFT)
-        ttk.Button(tb, text="🔄 更新", command=self._refresh, width=8
+        ttk.Button(tb, text="更新", command=self._refresh, width=8
                    ).pack(side=tk.RIGHT)
 
         # scrollable card grid
@@ -144,12 +252,16 @@ class StrokePicker(tk.Toplevel):
         self.inner.bind("<Configure>", lambda _e: self.canvas.configure(
             scrollregion=self.canvas.bbox("all")))
         self.canvas.bind("<Configure>", self._on_canvas_resize)
-        # mousewheel
-        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)       # win/mac
-        self.canvas.bind_all("<Button-4>",
-                              lambda _e: self.canvas.yview_scroll(-3, "units"))
-        self.canvas.bind_all("<Button-5>",
-                              lambda _e: self.canvas.yview_scroll(3, "units"))
+        # mousewheel — bind to THIS Toplevel only (not bind_all). The picker
+        # window is in every child's bindtags, so wheel events over any card
+        # still reach us, while staying scoped to the dialog: when the picker
+        # is destroyed these bindings die with it, instead of leaving a global
+        # handler pointing at a destroyed canvas (→ "invalid command name").
+        self.bind("<MouseWheel>", self._on_mousewheel)                  # win/mac
+        self.bind("<Button-4>",
+                  lambda _e: self.canvas.yview_scroll(-3, "units"))     # x11 up
+        self.bind("<Button-5>",
+                  lambda _e: self.canvas.yview_scroll(3, "units"))      # x11 down
 
         # bottom bar
         bot = ttk.Frame(self, padding=8)
@@ -177,32 +289,56 @@ class StrokePicker(tk.Toplevel):
     # log scanning
     # ------------------------------------------------------------------
     def _scan_logs(self) -> list[dict]:
+        """logs/ 配下から strokes 系 JSON を一括スキャン。
+
+        対象:
+          - vlm_to_image_*/cycle_*/strokes.json       (パイプライン GUI 出力)
+          - **/cycle_*/strokes.json                   (他系列の cycle_ 出力)
+          - **/strokes*.json                          (robot_strokes_demo 等 直配置)
+        """
         if not self.logs_dir.exists():
             return []
+        # 候補ディレクトリ収集 (重複排除): strokes*.json を含む dir すべて
+        cycle_dirs: set = set()
+        for js in self.logs_dir.rglob("strokes*.json"):
+            if js.is_file():
+                cycle_dirs.add(js.parent)
         entries: list[dict] = []
-        for cycle in self.logs_dir.glob("vlm_to_image_*/cycle_*"):
+        for cycle in cycle_dirs:
             if not cycle.is_dir():
                 continue
-            gen = cycle / "generated.png"
-            strokes_png = cycle / "vec_debug" / "06_strokes.png"
-            strokes_json = cycle / "strokes.json"
+            # strokes.json or strokes_mm.json 等を一つ拾う (優先順)
+            strokes_json = None
+            for name in ("strokes.json", "strokes_mm.json"):
+                cand = cycle / name
+                if cand.exists():
+                    strokes_json = cand
+                    break
+            if strokes_json is None:
+                # その他 strokes*.json は 1 個目を拾う
+                cand_list = sorted(cycle.glob("strokes*.json"))
+                if cand_list:
+                    strokes_json = cand_list[0]
+            gen = _first_existing(cycle, _GENERATED_IMAGE_NAMES)
+            strokes_png = _first_existing(cycle, _STROKES_IMAGE_RELPATHS)
             input_sketch = cycle / "input_sketch.jpg"
-            # at least one of the two images must exist
-            if not gen.exists() and not strokes_png.exists():
-                continue
             meta: dict = {
                 "cycle_dir": cycle,
-                "generated_image": gen if gen.exists() else None,
-                "strokes_png": strokes_png if strokes_png.exists() else None,
-                "strokes_json": strokes_json if strokes_json.exists() else None,
+                "generated_image": gen,
+                "strokes_png": strokes_png,
+                "strokes_json": strokes_json,
                 "input_sketch": input_sketch if input_sketch.exists() else None,
                 "subject": "",
                 "n_strokes": None,
             }
-            # extract timestamp from parent dir name
-            m = re.search(r"vlm_to_image_(\d{8}_\d{6})", str(cycle.parent.name))
+            # timestamp 抽出: 親 dir 名 / 自 dir 名 から YYYYMMDD_HHMMSS を拾う
+            m = re.search(r"(\d{8}_\d{6})", str(cycle.parent.name))
+            if not m:
+                m = re.search(r"(\d{8}_\d{6})", str(cycle.name))
+            if not m:
+                m = re.search(r"(\d{8})", str(cycle.parent.name))
             meta["timestamp"] = m.group(1) if m else ""
-            # topic_guess.json -> subject
+            # topic_guess.json -> subject (パイプライン GUI のみ)
             tg = cycle / "topic_guess.json"
             if tg.exists():
                 try:
@@ -214,13 +350,9 @@ class StrokePicker(tk.Toplevel):
                         meta["subject"] = subj
                 except Exception:
                     pass
-            # strokes.json -> n_strokes (for label)
-            if strokes_json.exists():
-                try:
-                    sd = json.loads(strokes_json.read_text(encoding="utf-8"))
-                    meta["n_strokes"] = sd.get("n_strokes")
-                except Exception:
-                    pass
+            # n_strokes は重い (strokes.json 全体パース)。 ここでは読まず、
+            # 実際に表示するカード (≤MAX_CARDS) で遅延読込する → 数百件
+            # スキャンでも UI が固まらない。 (_build_card 参照)
             # mtime for sort
             meta["mtime"] = cycle.stat().st_mtime
             entries.append(meta)
@@ -247,7 +379,27 @@ class StrokePicker(tk.Toplevel):
     # ------------------------------------------------------------------
     # rendering
     # ------------------------------------------------------------------
+    def _schedule_render(self, delay_ms: int = 300) -> None:
+        """フィルタ入力のデバウンス: 連続入力中は再描画を後ろ倒しし、
+        入力が止まってから 1 回だけ _render する。"""
+        job = getattr(self, "_render_job", None)
+        if job is not None:
+            try:
+                self.after_cancel(job)
+            except Exception:
+                pass
+        self._render_job = self.after(delay_ms, self._render)
+
     def _render(self) -> None:
+        self._render_job = None
+        # 前回の未処理サムネ読込をキャンセル (古い cell を触らない)
+        if self._thumb_job is not None:
+            try:
+                self.after_cancel(self._thumb_job)
+            except Exception:
+                pass
+            self._thumb_job = None
+        self._thumb_queue.clear()
         # clear existing cards
         for w in self.inner.winfo_children():
             w.destroy()
@@ -259,27 +411,46 @@ class StrokePicker(tk.Toplevel):
         items = self._filtered_entries()
         if not items:
             ttk.Label(self.inner,
-                       text=(f"❎ {self.logs_dir} 配下に "
-                             f"vlm_to_image_*/cycle_*/ が見つかりません" if not self._entries
-                             else "❎ フィルタに一致するエントリなし"),
+                       text=(f"{self.logs_dir} 配下に "
+                             f"strokes*.json が見つかりません" if not self._entries
+                             else "フィルタに一致するエントリなし"),
                        foreground="#888", padding=20
                        ).pack(pady=40)
             return
 
+        # カード描画上限。 全件 (数百) を一括描画すると サムネ読込で UI が
+        # フリーズするため、 新しい順で MAX_CARDS 件に制限。 続きはフィルタで。
+        total = len(items)
+        shown = items[:MAX_CARDS]
+        if total > MAX_CARDS:
+            ttk.Label(self.inner,
+                       text=(f"{total} 件中 新しい {MAX_CARDS} 件を表示中。 "
+                             f"🔍 フィルタ (題材/日時/dir名) で絞り込んでください。"),
+                       foreground="#a60", padding=(4, 6)
+                       ).grid(row=0, column=0, columnspan=GRID_COLS, sticky="w")
+        row_off = 1 if total > MAX_CARDS else 0
         # 3 columns by default, 1 column if width < ~700px (responsive optional)
-        for i, entry in enumerate(items):
+        for i, entry in enumerate(shown):
             row, col = divmod(i, GRID_COLS)
             card = self._build_card(self.inner, entry)
-            card.grid(row=row, column=col, padx=CARD_PAD, pady=CARD_PAD,
-                       sticky="nsew")
-            self._cards[entry["cycle_dir"].name] = card
+            card.grid(row=row + row_off, column=col, padx=CARD_PAD,
+                       pady=CARD_PAD, sticky="nsew")
+            self._cards[self._key_for(entry["cycle_dir"])] = card
         # configure column weights
         for c in range(GRID_COLS):
             self.inner.grid_columnconfigure(c, weight=1)
+        # カードは即表示済。 サムネは非同期で 1 枚ずつ埋める (UI 無凍結)。
+        self._start_thumb_loading()
 
     def _build_card(self, parent, entry: dict) -> ttk.Frame:
         # outer frame -> click selects
-        key = entry["cycle_dir"].name
+        cycle = entry["cycle_dir"]
+        key = self._key_for(cycle)
+        # 表示名: source root からの相対パス (set 内の dir 構造が分かるように)
+        try:
+            disp = str(cycle.relative_to(self.logs_dir))
+        except ValueError:
+            disp = cycle.name
         outer = tk.Frame(parent, bg="#ffffff",
                           highlightbackground="#cccccc",
                           highlightthickness=1, relief=tk.FLAT)
@@ -288,10 +459,22 @@ class StrokePicker(tk.Toplevel):
         # title
         ts = entry.get("timestamp") or "?"
         subj = entry.get("subject") or "(no subject)"
+        # n_strokes は表示時に遅延読込 (スキャンでは読まない)。 1 回読んだら
+        # entry にキャッシュ。 表示するカードだけなので ≤MAX_CARDS 件で済む。
         n_st = entry.get("n_strokes")
+        if n_st is None and not entry.get("_n_strokes_tried"):
+            entry["_n_strokes_tried"] = True
+            sj = entry.get("strokes_json")
+            if sj is not None and sj.exists():
+                try:
+                    sd = json.loads(sj.read_text(encoding="utf-8"))
+                    n_st = sd.get("n_strokes")
+                    entry["n_strokes"] = n_st
+                except Exception:
+                    pass
         n_lbl = f"  n={n_st}" if isinstance(n_st, int) else ""
         title = tk.Label(outer,
-                          text=f"📷 {ts}  {key}{n_lbl}",
+                          text=f"{ts}  {disp}{n_lbl}",
                           bg="#ffffff", anchor="w",
                           font=("Monaco", 10, "bold"))
         title.pack(fill=tk.X, padx=4, pady=(4, 0))
@@ -306,9 +489,9 @@ class StrokePicker(tk.Toplevel):
         thumb_row = tk.Frame(outer, bg="#ffffff")
         thumb_row.pack(padx=4, pady=(4, 4))
         self._add_thumb(thumb_row, entry.get("generated_image"),
-                          fallback="(generated.png なし)")
+                          fallback="(generated.png なし)", key=key)
         self._add_thumb(thumb_row, entry.get("strokes_png"),
-                          fallback="(strokes.png なし)")
+                          fallback="(strokes.png なし)", key=key)
 
         # bind click
         def _click(_e=None, k=key):
@@ -324,29 +507,66 @@ class StrokePicker(tk.Toplevel):
             w.bind("<Double-Button-1>", lambda _e, k=key: self._double_click(k))
         return outer
 
-    def _add_thumb(self, parent, path: Optional[Path], fallback: str) -> None:
+    def _add_thumb(self, parent, path: Optional[Path], fallback: str,
+                    key: Optional[str] = None) -> None:
         cell = tk.Frame(parent, bg="#ffffff", width=THUMB_W, height=THUMB_H + 16)
         cell.pack(side=tk.LEFT, padx=4)
         cell.pack_propagate(False)
-        if path and path.exists() and Image is not None:
-            try:
-                photo = self._thumb_for(path)
-                lbl = tk.Label(cell, image=photo, bg="#fafafa", bd=1, relief=tk.SUNKEN)
-                lbl.image = photo  # keep ref
-                lbl.pack()
-                tk.Label(cell, text=path.name, bg="#ffffff",
-                          fg="#555", font=("Monaco", 9)
-                          ).pack()
-                return
-            except Exception as e:
-                fallback = f"({e})"
-        # fallback placeholder
+        loadable = bool(path and path.exists() and Image is not None)
         placeholder = tk.Canvas(cell, width=THUMB_W, height=THUMB_H,
                                   bg="#eeeeee", highlightthickness=1,
                                   highlightbackground="#bbbbbb")
-        placeholder.create_text(THUMB_W // 2, THUMB_H // 2, text=fallback,
+        placeholder.create_text(THUMB_W // 2, THUMB_H // 2,
+                                 text="(読込中…)" if loadable else fallback,
                                  fill="#888")
         placeholder.pack()
+        if key is not None:
+            placeholder.bind("<Button-1>", lambda _e, k=key: self._select(k))
+        if loadable:
+            # 同期で開くと 60×2 枚で固まる → キューに積んで after() で 1 枚ずつ。
+            self._thumb_queue.append((cell, placeholder, path, fallback, key))
+
+    def _start_thumb_loading(self) -> None:
+        if self._thumb_job is not None:
+            try:
+                self.after_cancel(self._thumb_job)
+            except Exception:
+                pass
+        self._thumb_job = None
+        if self._thumb_queue:
+            self._thumb_job = self.after(1, self._load_next_thumb)
+
+    def _load_next_thumb(self) -> None:
+        self._thumb_job = None
+        if not self._thumb_queue:
+            return
+        cell, placeholder, path, fallback, key = self._thumb_queue.pop(0)
+        try:
+            if not cell.winfo_exists():
+                raise RuntimeError("cell destroyed")
+            photo = self._thumb_for(path)
+            placeholder.destroy()
+            lbl = tk.Label(cell, image=photo, bg="#fafafa", bd=1,
+                            relief=tk.SUNKEN)
+            lbl.image = photo  # keep ref
+            lbl.pack()
+            tk.Label(cell, text=path.name, bg="#ffffff", fg="#555",
+                      font=("Monaco", 9)).pack()
+            if key is not None:
+                lbl.bind("<Button-1>", lambda _e, k=key: self._select(k))
+                lbl.bind("<Double-Button-1>",
+                         lambda _e, k=key: self._double_click(k))
+        except Exception as e:
+            try:
+                if placeholder.winfo_exists():
+                    placeholder.delete("all")
+                    placeholder.create_text(THUMB_W // 2, THUMB_H // 2,
+                                             text=f"({e})"[:40], fill="#a00")
+            except Exception:
+                pass
+        # 次の 1 枚 (UI に制御を返してから)
+        if self._thumb_queue:
+            self._thumb_job = self.after(1, self._load_next_thumb)
 
     def _thumb_for(self, path: Path) -> "ImageTk.PhotoImage":
         if path in self._photo_cache:
@@ -373,10 +593,10 @@ class StrokePicker(tk.Toplevel):
         self.btn_ok.config(state=tk.NORMAL)
         # status text
         for e in self._entries:
-            if e["cycle_dir"].name == key:
+            if self._key_for(e["cycle_dir"]) == key:
                 self.lbl_status.config(
-                    text=f"選択中: {key}  ({e.get('subject', '?')})  "
-                         f"→ {e['cycle_dir']}")
+                    text=f"選択中: {e['cycle_dir'].name}  "
+                         f"({e.get('subject', '?')})  -> {e['cycle_dir']}")
                 break
 
     def _double_click(self, key: str) -> None:
@@ -387,7 +607,7 @@ class StrokePicker(tk.Toplevel):
         if not self._selected_key:
             return
         for e in self._entries:
-            if e["cycle_dir"].name == self._selected_key:
+            if self._key_for(e["cycle_dir"]) == self._selected_key:
                 self.result = e
                 break
         self.destroy()

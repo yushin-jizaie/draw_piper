@@ -48,25 +48,36 @@ DEFAULT_CONTROLNET_SCALE = 1.0
 # 2026-05-27: 「中央クリーンな絵 + 周辺スクラッチ noise」 への対処として
 # noise / hatching / scribble 系を強化。
 DEFAULT_NEGATIVE_PROMPT = (
-    # 色味・写実系
-    "color, shading, photo, photorealistic, gradient, "
-    # ロボットアーム描画前提: ペン 1 本で描けない要素は全部 NG。
-    # Vectorizer が strokes に変換する時にノイズと誤認するので、
-    # 紙質感・ハッチング・塗りつぶし・グレー塗り は **絶対 NG**。
-    "scribble, sketchy, crosshatch, hatching, pencil texture, "
-    "scratch marks, noise, multiple overlapping lines, duplicate strokes, "
-    "paper grain, paper texture, sepia tone, aged paper, "
-    "brown background, beige background, "
-    "gray background, dark background, filled background, busy background, "
-    "background pattern, background texture, ink splatter, "
-    "halftone, screentone, dot pattern, "
-    "fabric texture, smudge, blurry, "
-    # 商業データ由来のノイズ
+    # 2026-05-28: CLIP L の 77 token 制限内に収まるよう整理。
+    # 最重要 (ペン 1 本ロボット描画前提) のみ残す:
+    #   - 色 (青背景暴走対策含む)
+    #   - ハッチング・スクリーントーン・塗り (Vectorizer ノイズ源)
+    #   - 文字・ロゴ (LoRA / Illustrious 副産物)
+    "color, blue background, gradient, "
+    "hatching, crosshatch, screentone, halftone, "
+    "filled background, scribble, sketchy, "
+    "shading, gray, fill, silhouette, "
+    "brush stroke, dry brush, faded lines, "
     "watermark, signature, text, frame, border, "
-    "manga panel border, page number, "
-    "jpeg artifacts"
+    "blurry, noise, jpeg artifacts"
 )
 DEFAULT_RESOLUTION = 1024
+
+
+def _coerce_resolution(value) -> tuple[int, int]:
+    """resolution 引数を `(W, H)` tuple に正規化。
+
+    後方互換: int / float は `(n, n)` の正方形扱い。
+    (W, H) は `[W, H]` の list でも tuple でも OK。
+    """
+    if isinstance(value, (int, float)):
+        n = int(value)
+        return (n, n)
+    if isinstance(value, (tuple, list)) and len(value) == 2:
+        return (int(value[0]), int(value[1]))
+    raise ValueError(
+        f"resolution must be int or (W, H) tuple, got {value!r}"
+    )
 
 
 # ----- モデルプリセット (画風比較用) ---------------------------------------
@@ -159,27 +170,231 @@ MODEL_PRESETS: dict[str, dict] = {
         "controlnet_id": "TheMistoAI/MistoLine",
         "variant": None,
         "num_inference_steps": 32,
-        "guidance_scale": 7.0,            # 6.5 → 7.0 で negative の押し込み強化
+        "guidance_scale": 7.0,
         "controlnet_conditioning_scale": 0.85,
-        # style_hint:
-        # - mt_taiyo_style: trigger
-        # - 描いてほしいもの: messy hair, body, clothes (= キャラ線)
-        # - スタイル: clean black line art on white (← 線画モード強制)
-        # - 否定: no shading, no texture (= negative の補強)
+        # 線画 LoRA で学習済の trigger + 描く対象。 短く (77 token 内)。
+        # 「white background」 は DEFAULT_NEGATIVE 側に既にある類語で抑制
+        # 済なので positive で重ねず、 描く対象に集中
         "style_hint": (
-            "mt_taiyo_style, character with body and messy hair, "
-            "clean black line art on pure white background, "
-            "no shading, no texture"
+            "mt_taiyo_style, character with body, messy hair, ink line art"
         ),
         "lora_path": "training/lora/matsumoto_taiyo.safetensors",
-        "lora_scale": 1.0,                # 1.3 だと暴走、 1.0 で松本ぽさ保ちつつ抑制
+        "lora_scale": 1.4,                # 1.0 → 1.4 (lineart LoRA は控えめ気味)
         "guide_dilate_ksize": 5,
         "inpaint_mode": True,
         "inpaint_line_threshold": 200,
         "inpaint_keep_dilate": 4,
-        # 0.9: mask 内に init (白) の prior を 10% 残す。 LoRA の背景埋めを
-        # 弱く抑制しつつ、 線画 (体・髪) を描く自由は ほぼ残す
-        "inpaint_strength": 0.9,
+        "inpaint_strength": 1.0,          # 0.9 → 1.0 (mask 内は完全再生成、
+                                          #   init の白背景 prior を捨てる)
+    },
+    # Plan E: Illustrious XL (manga 寄り SDXL、 Danbooru タグ対応) + MistoLine
+    # ユーザ提案 「漫画を描くようなモデルを使えばいい」 を反映 (2026-05-27)。
+    # 注: OnomaAIResearch/Illustrious-XL-v1.0/v2.0 は single-file safetensors
+    # 形式 (model_index.json なし)。 diffusers から_pretrained() で読めるのは
+    # early-release-v0 (= 全 v 系の base) のみ。 まずこれで manga 寄りタッチが
+    # 出るか確認、 良ければ v2.0 を from_single_file 対応で取り込む。
+    "illustrious_v2_mistoline": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        # Danbooru tags で manga/line art 寄りに誘導:
+        "style_hint": (
+            # Danbooru tags (Illustrious は Danbooru 訓練): underscore 表記
+            "monochrome, greyscale, lineart, sketch, "
+            "white_background, simple_background"
+        ),
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.85,
+        # LoRA は意図的に未指定 (Plan E 第一段階は素の base を見る)
+    },
+    # Plan E + LineAniRedmond LoRA (artificialguybr/LineAniRedmond-LinearMangaSDXL-V2)
+    # Manga lineart 用の汎用 LoRA。 松本特定じゃないが manga 寄りに引き寄せる。
+    "illustrious_v2_inpaint_lineani": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "LineAniAF, lineart, monochrome, manga, "
+            "white_background, simple_background"
+        ),
+        "lora_path": "training/lora/LineAniRedmond_v2.safetensors",
+        "lora_scale": 0.4,
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": True,
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        "inpaint_strength": 1.0,
+    },
+    # Plan E + object mode v2 (2026-05-28 改訂): 非人間 sketch 用。
+    # 旧 (img2img_strength=0.65) は sketch を保持し過ぎて 入力を ほぼ複製。
+    # 新: text2img (img2img off) + CN を soft hint (0.65) として使う構成。
+    # prompt が detail を担い、 ControlNet が sketch の構造を ゆるく追従。
+    # Vectorize 後で detailed lineart の robot strokes を得る。
+    "illustrious_v2_object": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.65,   # 0.85 → 0.65 (soft hint)
+        "style_hint": (
+            "monochrome, lineart, sketch, ink illustration, "
+            "white_background, simple_background, no humans"
+        ),
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.0,    # text2img mode (0.65 → 0.0)
+        "inpaint_mode": False,
+    },
+    # 2026-05-31: object と同じ「輪郭線 lineart + CN0.65 で入力追従」 だが
+    # "no humans" を外し、 人・動物のキャラも輪郭線で生成できるようにした版。
+    # text2img(CN0) は塗りつぶし→中心線化でメッシュ化する問題があったため、
+    # キャラも CN付き輪郭線で出すのが robot 向き (細い輪郭 → きれいな strokes)。
+    "illustrious_v2_lineart": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.65,
+        "style_hint": (
+            "monochrome, lineart, sketch, ink illustration, "
+            "white_background, simple_background, clean outline, no fill"
+        ),
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.0,
+        "inpaint_mode": False,
+    },
+    # 2026-05-31: ダイナミックなキャラを「クリーンな輪郭線」 で生成する勝ちパターン。
+    # text2img(自由構図) + LineAniRedmond 線画 LoRA。 CN0.3 で入力を緩く参照しつつ
+    # 単一キャラに。 正方形(1024)で生成すること (縦長は複数タイル/塗りで不安定)。
+    # 塗りつぶしにならず輪郭線なので vectorize でキャラのまま残る。
+    # trigger word "LineAniAF" を prompt 先頭に付ける運用。
+    "illustrious_v2_lineart_char": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.3,
+        "style_hint": (
+            "LineAniAF, lineart, monochrome, manga, clean outline, no fill, "
+            "no silhouette, white_background, simple_background"
+        ),
+        "lora_path": "training/lora/LineAniRedmond_v2.safetensors",
+        "lora_scale": 1.1,
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.0,
+        "inpaint_mode": False,
+    },
+    # 2026-05-29 (style-pool-rebalance branch): object preset + matsumoto LoRA。
+    # 上記 _object に matsumoto_taiyo LoRA (scale 0.4) を載せた版。
+    # ユーザー所感「Stage 2 (IP-Adapter) はもう不要、 Stage 1 を強化したい」 への対処。
+    # Stage 1 のみで松本タッチが効くようにする (Stage 2 skip との組合せ前提)。
+    "illustrious_v2_object_mt": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.65,
+        "style_hint": (
+            "mt_taiyo_style, monochrome, lineart, sketch, ink illustration, "
+            "white_background, simple_background, no humans"
+        ),
+        "lora_path": "training/lora/matsumoto_taiyo.safetensors",
+        "lora_scale": 0.2,   # 2026-05-29: 0.4 → 0.2 (object 系のシンプル化過剰対策)
+        "guide_dilate_ksize": 5,
+        "img2img_strength": 0.0,
+        "inpaint_mode": False,
+    },
+    # Plan E + v4 LoRA (2026-05-28 学習予定、 厳格 binarize dataset 学習版)
+    # 過去 v0-v3 の失敗原因 (grayscale lineart の VAE hatching 化) への対処。
+    # threshold=50 で完全 2 値化、 rank 8 / lr 5e-5 / 600 step で過学習回避。
+    # 学習が完走するまでは v0 LoRA が training/lora/matsumoto_taiyo.safetensors
+    # にいるので、 完走後 自動的にこの preset が v4 を読む。
+    "illustrious_v2_inpaint_v4": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "mt_taiyo_style, monochrome, lineart, "
+            "white_background, simple_background"
+        ),
+        "lora_path": "training/lora/matsumoto_taiyo.safetensors",
+        "lora_scale": 0.8,    # v4 学習完走後 sweep で振る
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": True,
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        "inpaint_strength": 1.0,
+    },
+    # Plan E + 松本タッチ: Illustrious + v0 LoRA 軽載せ。
+    # v0 LoRA (panel 学習版、 89MB) は Animagine 単体だと黒テクスチャ暴走したが、
+    # Illustrious base + 低 scale なら「松本らしさ」 だけ抽出できる仮説。
+    # まず scale=0.4 で試行、 結果次第で 0.3/0.5 で振る。
+    "illustrious_v2_inpaint_mt": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "mt_taiyo_style, monochrome, greyscale, lineart, "
+            "white_background, simple_background"
+        ),
+        "lora_path": "training/lora/matsumoto_taiyo.safetensors",
+        "lora_scale": 0.2,   # 2026-05-29: 0.4 → 0.2 (object 系のシンプル化過剰対策)
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": True,
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        "inpaint_strength": 1.0,
+    },
+    # Plan E inpaint: Illustrious + MistoLine + inpaint mode で
+    # 顔輪郭 (黒線) を exact 保持しつつ 白部分に体・髪・服を描き足す。
+    "illustrious_v2_inpaint": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.85,
+        "style_hint": (
+            "monochrome, greyscale, lineart, sketch, "
+            "white_background, simple_background"
+        ),
+        "guide_dilate_ksize": 5,
+        "inpaint_mode": True,
+        "inpaint_line_threshold": 200,
+        "inpaint_keep_dilate": 4,
+        "inpaint_strength": 1.0,
+    },
+    # Plan E 診断用 Phase 1/2: Illustrious XL を text2img mode で見る
+    # (ControlNet off, img2img off で 素の base + prompt の挙動)
+    "illustrious_v2_text2img": {
+        "base_model_id": "John6666/illustrious-xl-early-release-v0-sdxl",
+        "controlnet_id": "TheMistoAI/MistoLine",
+        "variant": "fp16",
+        "num_inference_steps": 28,
+        "guidance_scale": 6.5,
+        "controlnet_conditioning_scale": 0.0,   # ControlNet off
+        "style_hint": (
+            # Danbooru tags (Illustrious は Danbooru 訓練): underscore 表記
+            "monochrome, greyscale, lineart, sketch, "
+            "white_background, simple_background"
+        ),
+        "img2img_strength": 0.0,                # text2img mode
+        "inpaint_mode": False,
     },
     # アニメ線画 + 速度寄り (SDXL Lightning + MistoLine)
     # 4-step 推論で SDXL Turbo より画質高め。 比較用
@@ -226,6 +441,13 @@ def load_imagegen_config(path: Optional[_Path] = None) -> dict:
         "base_template": None,    # None = prompt_builder の既定を使う
         "fallback_template": None,
         "confidence_threshold": 0.3,
+        # 画像生成 解像度 ―― 以下の優先順:
+        #   1. resolution: [W, H] が yaml に明示
+        #   2. auto_from_panel: true なら canvas_calibration の panel aspect
+        #      から SDXL bucket を自動選択 (build_image_generator_from_config が解決)
+        #   3. どちらも無ければ DEFAULT_RESOLUTION (1024×1024 正方)
+        "resolution": None,
+        "auto_from_panel": False,
     }
     if not cfg_path.exists():
         return defaults
@@ -245,6 +467,16 @@ def load_imagegen_config(path: Optional[_Path] = None) -> dict:
               "controlnet_conditioning_scale", "negative_prompt"):
         if k in ig:
             out[k] = ig[k]
+    if "resolution" in ig:
+        res = ig["resolution"]
+        if isinstance(res, (list, tuple)) and len(res) == 2:
+            out["resolution"] = [int(res[0]), int(res[1])]
+        elif isinstance(res, (int, float)):
+            out["resolution"] = int(res)
+        elif res in (None, "", "auto", "null"):
+            out["resolution"] = None
+    if "auto_from_panel" in ig:
+        out["auto_from_panel"] = bool(ig["auto_from_panel"])
     if "base_template" in pr:
         out["base_template"] = pr["base_template"] or None
     if "fallback_template" in pr:
@@ -267,19 +499,29 @@ def save_imagegen_config(
     confidence_threshold: float = 0.3,
     preset: Optional[str] = None,
     path: Optional[_Path] = None,
+    resolution: Optional[Union[int, tuple, list]] = None,
+    auto_from_panel: bool = False,
 ) -> _Path:
     """imagegen_config.yaml に書き出し。"""
     cfg_path = _Path(path) if path else DEFAULT_IMAGEGEN_CONFIG_PATH
     cfg_path.parent.mkdir(parents=True, exist_ok=True)
     import yaml as _yaml
+    imagegen_block = {
+        "preset": preset or "",
+        "num_inference_steps": int(num_inference_steps),
+        "guidance_scale": float(guidance_scale),
+        "controlnet_conditioning_scale": float(controlnet_conditioning_scale),
+        "negative_prompt": str(negative_prompt),
+    }
+    if resolution is not None:
+        if isinstance(resolution, (tuple, list)) and len(resolution) == 2:
+            imagegen_block["resolution"] = [int(resolution[0]), int(resolution[1])]
+        else:
+            imagegen_block["resolution"] = int(resolution)
+    if auto_from_panel:
+        imagegen_block["auto_from_panel"] = True
     data = {
-        "imagegen": {
-            "preset": preset or "",
-            "num_inference_steps": int(num_inference_steps),
-            "guidance_scale": float(guidance_scale),
-            "controlnet_conditioning_scale": float(controlnet_conditioning_scale),
-            "negative_prompt": str(negative_prompt),
-        },
+        "imagegen": imagegen_block,
         "prompt": {
             "base_template": base_template or "",
             "fallback_template": fallback_template or "",
@@ -297,6 +539,12 @@ def build_image_generator_from_config(cfg: dict, *, verbose: bool = True) -> "Im
     preset が指定されていれば from_preset() で base + controlnet + LoRA を取り、
     numeric (steps / guidance / cn_scale) と negative_prompt は yaml の値で
     上書きする。
+
+    解像度の決定順:
+        1. cfg["resolution"] = [W, H] or int が明示されていればそれ
+        2. cfg["auto_from_panel"] = True なら canvas_calibration の panel aspect
+           から SDXL bucket を自動選択 (modules.panel_geometry 経由)
+        3. どちらも無ければ preset / ImageGenerator のデフォルト
     """
     preset = cfg.get("preset")
     overrides = {
@@ -307,6 +555,32 @@ def build_image_generator_from_config(cfg: dict, *, verbose: bool = True) -> "Im
             cfg["controlnet_conditioning_scale"]),
         "negative_prompt": str(cfg["negative_prompt"]),
     }
+
+    # 解像度解決
+    resolution_explicit = cfg.get("resolution")
+    if resolution_explicit:
+        overrides["resolution"] = resolution_explicit
+        if verbose:
+            print(f"[image_gen] resolution from yaml: {resolution_explicit}")
+    elif cfg.get("auto_from_panel"):
+        try:
+            from .panel_geometry import load_panel_geometry
+        except ImportError:
+            from modules.panel_geometry import load_panel_geometry  # type: ignore
+        try:
+            geom = load_panel_geometry()
+            overrides["resolution"] = list(geom.panel_image_size)
+            if verbose:
+                print(
+                    f"[image_gen] auto_from_panel: panel="
+                    f"{geom.panel_size_mm[0]:.1f}×{geom.panel_size_mm[1]:.1f} mm "
+                    f"-> SDXL bucket {geom.panel_image_size[0]}×"
+                    f"{geom.panel_image_size[1]} (source={geom.source})"
+                )
+        except Exception as e:
+            print(f"[image_gen] WARN: auto_from_panel failed ({e}); "
+                  "falling back to preset / 1024×1024 default")
+
     if preset and preset in MODEL_PRESETS:
         return ImageGenerator.from_preset(preset, **overrides)
     if preset:
@@ -316,7 +590,14 @@ def build_image_generator_from_config(cfg: dict, *, verbose: bool = True) -> "Im
     return ImageGenerator(**overrides)
 
 
-def _normalize_image(image: ImageLike, size: Optional[int] = None) -> Image.Image:
+def _normalize_image(image: ImageLike, size=None) -> Image.Image:
+    """ImageLike を RGB PIL に揃えて、 size (int or (W, H)) にリサイズ。
+
+    size:
+        None         → そのまま
+        int          → 正方 (size, size)
+        (W, H)       → そのまま resize
+    """
     if isinstance(image, Image.Image):
         img = image.convert("RGB") if image.mode != "RGB" else image
     elif isinstance(image, (str, Path)):
@@ -331,8 +612,10 @@ def _normalize_image(image: ImageLike, size: Optional[int] = None) -> Image.Imag
     else:
         raise TypeError(f"unsupported image type: {type(image)}")
 
-    if size is not None and img.size != (size, size):
-        img = img.resize((size, size), Image.LANCZOS)
+    if size is not None:
+        size_wh = _coerce_resolution(size)
+        if img.size != size_wh:
+            img = img.resize(size_wh, Image.LANCZOS)
     return img
 
 
@@ -427,9 +710,10 @@ class ImageGenerator:
         guidance_scale: float = DEFAULT_GUIDANCE_SCALE,
         controlnet_conditioning_scale: float = DEFAULT_CONTROLNET_SCALE,
         negative_prompt: str = DEFAULT_NEGATIVE_PROMPT,
-        resolution: int = DEFAULT_RESOLUTION,
+        resolution=DEFAULT_RESOLUTION,
         variant: Optional[str] = "fp16",
         style_hint: str = "",
+        style_suffix: str = "",
         lora_path: Optional[str] = None,
         lora_scale: float = 1.0,
         guide_dilate_ksize: int = 0,
@@ -448,12 +732,16 @@ class ImageGenerator:
         self.guidance_scale = guidance_scale
         self.controlnet_conditioning_scale = controlnet_conditioning_scale
         self.negative_prompt = negative_prompt
-        self.resolution = resolution
+        # (W, H) tuple に正規化。 int 渡しも (n, n) として後方互換。
+        self.resolution: tuple[int, int] = _coerce_resolution(resolution)
         # HF variant ("fp16" / "fp32" / None)。 Animagine 等 fp16 variant
         # 無いモデルは None。 ControlNet 側にも同じ variant を試す。
         self.variant = variant
         # caller (prompt_builder 等) が prompt に追加するスタイル指示
         self.style_hint = style_hint
+        # generate() が prompt 末尾に毎回自動付与する線質/スタイル指定
+        # (呼び出し側が毎回 prompt に積まなくて済む 「生成 AI 側のデフォルト」)。
+        self.style_suffix = style_suffix
         # LoRA weights を base に焼き込まずに ロード (推論時に lora_scale で混合)。
         # 相対パスは project_root 起点で解決される (load() で resolve)。
         self.lora_path = lora_path
@@ -637,7 +925,7 @@ class ImageGenerator:
         if not self.is_loaded:
             self.load()
         if guide_image is None:
-            guide_image = Image.new("RGB", (self.resolution, self.resolution), (255, 255, 255))
+            guide_image = Image.new("RGB", self.resolution, (255, 255, 255))
         if self.verbose:
             print("[image_gen] warmup (1-step, discarded) ...")
         t0 = time.time()
@@ -678,8 +966,13 @@ class ImageGenerator:
             else self.controlnet_conditioning_scale
         )
         neg = negative_prompt if negative_prompt is not None else self.negative_prompt
+        # 線質/スタイルのデフォルトを prompt 末尾に自動付与 (呼び出し側は本文=
+        # デザイン指示だけを渡せばよい)。 既に含む場合は二重付与しない。
+        if self.style_suffix and self.style_suffix not in prompt:
+            prompt = f"{prompt.rstrip(', ')}, {self.style_suffix}"
 
         pil_guide = _normalize_image(guide_image, size=self.resolution)
+        gen_w, gen_h = self.resolution
         if self.guide_dilate_ksize > 1:
             pil_guide = _dilate_guide_lines(pil_guide,
                                               ksize=self.guide_dilate_ksize)
@@ -726,6 +1019,8 @@ class ImageGenerator:
                 "guidance_scale": gs,
                 "controlnet_conditioning_scale": cn,
                 "generator": generator,
+                "height": gen_h,
+                "width": gen_w,
             }
         elif use_img2img:
             # init_image は元のユーザ画像 (dilate 前の生画像)。 白背景の
@@ -741,6 +1036,8 @@ class ImageGenerator:
                 "guidance_scale": gs,
                 "controlnet_conditioning_scale": cn,
                 "generator": generator,
+                "height": gen_h,
+                "width": gen_w,
             }
         else:
             pipe_kwargs = {
@@ -751,6 +1048,8 @@ class ImageGenerator:
                 "guidance_scale": gs,
                 "controlnet_conditioning_scale": cn,
                 "generator": generator,
+                "height": gen_h,
+                "width": gen_w,
             }
         # LoRA を有効にする場合は cross_attention_kwargs で scale を渡す
         # (load_lora_weights だけでは fuse されないので、 推論毎に指定が必要)

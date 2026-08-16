@@ -1,0 +1,13 @@
+{
+  "sid": "new_combo_decoaccum2",
+  "route": "flux_decorate_accum2",
+  "variant": "round3_deco",
+  "round": 3,
+  "layer": "deco",
+  "cn": 0.55,
+  "seed": 0,
+  "new_deco": 0,
+  "accum_deco": 138,
+  "vision": "Delicate tendrils of swirling vines and curling leaves dance around the birds' forms, their intricate patterns intertwining with the existing lines. Tiny dots and beads dot the feathers, adding texture and depth. Repeating floral motifs and fine accent strokes weave through the wings and bodies, creating a lush, ornate tapestry that enhances the birds' elegance without obscuring their form.",
+  "note": "元線verbatim+装飾累積+VLMにはOpenCVで元線/前回を消した新規装飾だけ入力 3/4周"
+}

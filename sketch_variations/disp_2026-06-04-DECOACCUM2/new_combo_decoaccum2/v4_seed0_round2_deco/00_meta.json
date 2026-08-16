@@ -1,0 +1,13 @@
+{
+  "sid": "new_combo_decoaccum2",
+  "route": "flux_decorate_accum2",
+  "variant": "round2_deco",
+  "round": 2,
+  "layer": "deco",
+  "cn": 0.55,
+  "seed": 0,
+  "new_deco": 6,
+  "accum_deco": 138,
+  "vision": "Delicate swirls and flourishes dance around the lions' flowing manes, intertwining with the intricate patterns of their open mouths. Curling vines and small leaves sprout from the mane's edges, adding texture and life to the scene. Tiny dots and beads dot the background, enhancing the ornate design without overwhelming the lions' majestic presence. Fine accent strokes follow the contours of the lions' faces, creating a harmonious blend of nature-inspired elements.",
+  "note": "元線verbatim+装飾累積+VLMにはOpenCVで元線/前回を消した新規装飾だけ入力 2/4周"
+}

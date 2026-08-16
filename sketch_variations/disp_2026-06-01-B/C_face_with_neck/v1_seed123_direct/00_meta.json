@@ -1,0 +1,12 @@
+{
+  "sid": "C_face_with_neck",
+  "route": "direct",
+  "subject": "balloon",
+  "category": "object",
+  "scatter_mode": "same",
+  "seed": 123,
+  "prompt": "balloon, manga style, clean bold ink lineart, white background, appealing design, multiple",
+  "preset": null,
+  "cn": null,
+  "pattern": "direct"
+}

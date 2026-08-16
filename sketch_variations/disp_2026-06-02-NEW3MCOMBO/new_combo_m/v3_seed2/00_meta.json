@@ -1,0 +1,15 @@
+{
+  "sid": "new_combo_m",
+  "route": "new3_recombine",
+  "variant": "combo_seed2",
+  "seed": 2,
+  "source": "disp_2026-06-02-NEW3M",
+  "placed_at": "original_bbox_contain",
+  "stroke_order": "center_out_per_object",
+  "center": [
+    352,
+    736
+  ],
+  "start_dist_from_center_px": 88.6,
+  "note": "NEW3Mの3生成を元レイアウトへ合成。 描画順=中心最寄りから外側へ(オブジェクト単位)"
+}

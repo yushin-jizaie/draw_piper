@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4357",
+  "route": "framed",
+  "variant": "clean",
+  "subject": "face",
+  "design": "",
+  "category": "person",
+  "preset": "animagine_xl_31_mistoline",
+  "cn": 0.2,
+  "seed": 59628,
+  "prompt": "a face.",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

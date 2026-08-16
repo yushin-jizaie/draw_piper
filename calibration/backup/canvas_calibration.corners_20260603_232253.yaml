@@ -1,0 +1,119 @@
+schema_version: 3
+created_at: '2026-06-03T22:52:03+09:00'
+whiteboard_corners_mm:
+  tl:
+    pen_yz_mm:
+    - 30.5131
+    - 401.9077
+    joints_deg:
+    - 18.977
+    - 60.996
+    - -49.373
+    - 62.509
+    - -27.874
+    - 0.0
+    end_pose_mm_deg:
+    - 319.3669
+    - 30.5131
+    - 401.9077
+    - 82.7328
+    - 27.3407
+    - 80.9553
+    source: position_control_record
+    timestamp: '2026-06-03T20:03:38.965+09:00'
+  tr:
+    pen_yz_mm:
+    - -52.48
+    - 470.61
+    joints_deg:
+    - -8.42
+    - 59.665
+    - -62.563
+    - -26.98
+    - 0.0
+    - 0.0
+    end_pose_mm_deg:
+    - 223.49
+    - -52.48
+    - 470.61
+    - -73.0049
+    - 61.972
+    - -83.3222
+    source: position_control_record
+    timestamp: '2026-06-03T22:52:01.504+09:00'
+  br:
+    pen_yz_mm:
+    - -87.8206
+    - 146.5508
+    joints_deg:
+    - -23.556
+    - 97.021
+    - -17.467
+    - -18.714
+    - -69.981
+    - 0.0
+    end_pose_mm_deg:
+    - 326.2006
+    - -87.8206
+    - 146.5508
+    - -137.434
+    - 82.7441
+    - -143.1369
+    source: position_control_record
+    timestamp: '2026-06-03T22:46:02.431+09:00'
+  bl:
+    pen_yz_mm:
+    - 90.7736
+    - 145.1856
+    joints_deg:
+    - 36.556
+    - 98.322
+    - -21.614
+    - 42.812
+    - -69.995
+    - 0.0
+    end_pose_mm_deg:
+    - 322.7252
+    - 90.7736
+    - 145.1856
+    - 116.9678
+    - 76.1564
+    - 112.8767
+    source: position_control_record
+    timestamp: '2026-06-03T22:46:53.519+09:00'
+traces:
+  perimeter: []
+  diagonal_tl_br: []
+  diagonal_tr_bl: []
+  surface: []
+whiteboard_computed:
+  center_mm:
+  - -25.0
+  - 340.8
+  center_corner_avg_mm:
+  - 3.32
+  - 331.78
+  width_mm: 108.55
+  height_mm: 259.44
+  center_adjustment_mm:
+  - -28.32
+  - 9.02
+  contact_x_offset_mm: 2.5
+plane_fit:
+  normal:
+  - -0.9888
+  - 0.0925
+  - -0.1169
+  centroid_mm:
+  - 208.49
+  - 3.32
+  - 331.78
+  rms_residual_mm: 1.363
+  n_points: 4
+  source_breakdown:
+    corners: 4
+    perimeter: 0
+    diagonal_tl_br: 0
+    diagonal_tr_bl: 0
+    surface: 0
+    center: 0

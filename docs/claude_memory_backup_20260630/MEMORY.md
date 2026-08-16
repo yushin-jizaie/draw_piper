@@ -1,0 +1,21 @@
+- [Piper S-V1.8-2 bring-up: master-mode + Config Init](piper_firmware_v18_id_offset.md) — both solved; robot.py connect() auto-runs Config Init, GUI-free。★WEB裏取り: 0x3A*シフトはmaster modeの副作用、drag-teachをslave+teachボタンにすればlistener/ros2_control不要(公式issue#76/#33)
+- [Workaround listener for shifted feedback IDs](piper_feedback_listener_workaround.md) — modules/piper_feedback.py decodes 0x3A* via python-can side reader (fallback only)
+- [Piper CAN TX physical fault](piper_can_tx_physical_fault.md) — TX silently fails (error-pass climbs); check error counters, fix by replugging USB-CAN adapter
+- [Wall drawing full_dev branch](wall_drawing_full_dev_branch.md) — piper_test の wall_drawing_gui_full_dev.py が現行 dev、 実機テスト待ち (2026-05-26 時点 86c8479)
+- [中心+サイズ→四隅 試みは廃止→5/26へ全戻し](calibration_center_size_redesign.md) — 6/02の作り替えは台形/描画歪みで断念、72c2c86へ復帰。恒久事実: EndPoseCtrl不動・描画はsolve_ik経由・fkはlink6(ペン先+90mm)
+- [壁面描画 GUI 編集後は毎回起動コマンドを提示](wall_gui_launch_command.md) — `~/draw_piper/scripts/wall_gui` (1 行ラッパー)、 wall_drawing_gui_full_dev.py or 依存 module 編集後にメッセージ末尾に記載
+- [Tk カラー絵文字 segfault](tk_emoji_xft_segfault.md) — ttk widget text に絵文字を入れると実機で間欠 segfault。GUI 文字は ASCII で
+- [示教で arm が落ちる=末端負荷未設定](piper_end_load_gravity_comp.md) — Config Init の end_load effective が 0x00 で無効、0xAE で送れば重力補償が効く。★sag が描画歪みの真因。★WEB裏取り: 重力補償つき示教+feedback読取は slave mode+teachボタンで両立(公式issue#26)
+- [描画歪みの切り分け順序](drawing_distortion_diagnostic.md) — ①キャリブ汚染(sag/台形) ②GUI再起動(in-memory古い) ③MoveJ純キャリブ依存/MoveC壊れ ④FK/IKは正しい
+- [Teleport skipped-branch 復旧手順](claude_code_teleport_skipped_branch.md) — stash -u → 別ターミナルで claude --teleport <id> で再実行
+- [.gitignore は新規ファイルにしか効かない](gitignore_does_not_untrack.md) — tracked 残留は git rm --cached で index から外す
+- [git stash のメッセージは中身を表さない](git_stash_message_is_not_content.md) — drop 前に必ず --name-only で実体確認、誤 drop は fsck → stash store で復元可
+- [Frida Smooth 安定描画リファレンス](frida_well_drawn_reference.md) — 2026-05-31 実機 OK: car_composition_align/strokes.json + speed=1/step=3/点間=100 (= 新 GUI default)
+- [透明ボード線抽出の仕様](transparent_whiteboard_line_extraction.md) — カメラは透明ボード越しに線+人間+背景が重なる→背景差分+色で線抽出 (modules/line_extract.py)
+- [良い絵の確定レシピ](winning_genart_recipe_lineart_cn05.md) — lineart_char + ControlNet 0.5 + 占有率ルーティング(stylize/scatter)。位置保持。scripts/gen_routed.py
+- [framed 加筆+デジタル線設計](framed_enrich_digital_line.md) — enriched=object@CN0.35でVLM加筆反映/clean=mistoline忠実。加筆を出すにはCN0.35必須、mistolineは加筆無視
+- [FLUX schnell+ControlNet 16GBレシピ](flux_schnell_controlnet_setup.md) — ungatedミラーchutesai/FLUX.1-schnell+Shakker Union CN、nf4+offloadで15GB。schnellはnegative無視/薄線はboostで回収
+- [FLUX LoRA 16GB学習レシピ](flux_lora_training_16gb.md) — scripts/train_flux_lora_16gb.py(diffusers公式+nf4パッチ)で実証済。~8.3s/step、style LoRAは単一instance_prompt推奨
+- [デザイン×アライン 2生成→特徴ワープ後合成(方式③)](design_align_warp_compose.md) — design(低CN完成形)を入力生線へDIS flowでワープ。芯に生成画像を使うな=入力線が唯一確実なアライン源
+- [ロボットは入力線を再描画しない(加筆分だけ)](robot_draws_only_additions.md) — 入力は既にボード上→出力から入力線を差し引く。opencvで消すレベル。忘れない
+- [IP-松本 放射状inkを出すフレーミング](ip_matsumoto_radial_ink_framing.md) — inpaintは被写体周りの余白に放射状を描く。被写体を小さく正方枠中央+余白(frame_subject frac0.38)+短主語(face)+クリーン入力の3条件

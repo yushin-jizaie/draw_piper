@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4357",
+  "route": "framed",
+  "variant": "enriched",
+  "subject": "face",
+  "design": "The finished illustration showcases a cheerful, bald-headed figure with large, expressive eyes and a wide, toothy grin. The character's cheeks are rosy, and a pair of small, round glasses rest on their nose, adding a touch of whimsy. Their ears are slightly rounded, and a gentle blush adorns their cheeks.",
+  "category": "person",
+  "preset": "illustrious_v2_object",
+  "cn": 0.2,
+  "seed": 60231,
+  "prompt": "The finished illustration showcases a cheerful, bald-headed figure with large, expressive eyes and a wide, toothy grin. The character's cheeks are rosy, and a pair of small, round glasses rest on their nose, adding a touch of whimsy. Their ears are slightly rounded, and a gentle blush adorns their cheeks.",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

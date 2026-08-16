@@ -1,0 +1,245 @@
+"""ルート別の生成バックエンド (2026-06-04)。
+
+各 backend は「crop画像 + prompt + seed → 生成PIL画像」だけを実装する。
+下流 (線抽出・vectorize・曲率制約・stroke順・warp・出力) は modules/route_driver が担う。
+diffusers などの重い import は各 backend の load() 内で遅延する (VRAM/起動時間配慮)。
+
+make_backend(route_id, args) が 1 つだけ生成する (16GB VRAM・推論排他のため同時生成しない)。
+"""
+from __future__ import annotations
+import gc
+import torch
+from PIL import Image
+
+from modules.route_driver import CW, CH, SIZE, canny_ctrl, log
+
+# --- FLUX-decorate (現行ルート) 定数 ---
+LORA_DIR = "models/flux_lora_winners"; LORA_STR = 0.6; TRIGGER = "tklineart"
+REPO = "chutesai/FLUX.1-schnell"; CN = "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro"
+CN_SCALE = 0.55
+# ロボットが物理的に描ける形に誘導: 太く大胆・滑らかな大曲線・微小ディテール/渦巻き/小円なし。
+STYLE = ("manga style, clean bold black ink lineart on white background, "
+         "thick smooth confident strokes, large gentle curves, simple bold shapes, "
+         "no tiny details, no fine hatching, no spirals, no small concentric circles, "
+         "no intricate texture")
+# SIMPLE: flux_cn_sweep(2026-06-02) の style 文。 太く少ない線・枠いっぱいの単一被写体 →
+# ロボット描画向き(断片化しにくい)。 flux_style="simple" で選択。
+SIMPLE_STYLE = ("bold simple cartoon line art, thick black outlines, one single large "
+                "subject centered and filling the frame, minimal detail, few clean lines, "
+                "white background, no fill, no shading, no background objects, no text")
+# DETAILED: flux_new3(2026-06-02) の細密 style 文。 内部の細部線・パネルライン多め →
+# detail 重視 (フラワー等)。 flux_style="detailed" で選択。
+DETAILED_STYLE = ("highly detailed clean black line art, bold confident outlines with many "
+                  "fine interior detail lines, mechanical and structural detail, panel lines, "
+                  "intricate accurate linework, rich detailing throughout, one main subject "
+                  "filling the frame, white background, no fill, no shading, no color, no text")
+FLUX_STYLES = {"decorate": STYLE, "simple": SIMPLE_STYLE, "detailed": DETAILED_STYLE}
+
+
+def _cn_steps_from_config(args, default_cn):
+    """imagegen_config.yaml から controlnet_conditioning_scale と num_inference_steps を読む。"""
+    cn_scale = default_cn; steps = max(1, int(args.steps))
+    try:
+        from modules.image_gen import load_imagegen_config
+        ig = load_imagegen_config()
+        if ig.get("controlnet_conditioning_scale") is not None:
+            cn_scale = float(ig["controlnet_conditioning_scale"])
+        if ig.get("num_inference_steps"):
+            steps = max(1, min(50, int(ig["num_inference_steps"])))
+    except Exception as e:
+        log(f"imagegen_config 読込スキップ ({e})")
+    return cn_scale, steps
+
+
+class FluxDecorateBackend:
+    """現行 DECORATE ルート: FLUX.1-schnell + winners LoRA@0.6 + ControlNet Union(canny)。"""
+    name = "flux_decorate"
+    route_label = "DECORATE (FLUX+winnersLoRA+decorate+CN0.55+manga+opencv+center-out)"
+    multi_object = True
+    uses_vlm = True
+
+    def __init__(self, args):
+        self.args = args
+        self.cn_scale, self.steps = _cn_steps_from_config(args, CN_SCALE)
+        self.style = FLUX_STYLES.get(getattr(args, "flux_style", "decorate") or "decorate", STYLE)
+        self.lora_str = float(getattr(args, "lora_str", None) or LORA_STR)
+        log(f"flux_decorate: CN_scale={self.cn_scale:.2f} steps={self.steps} "
+            f"style={getattr(args,'flux_style','decorate')} lora={self.lora_str} "
+            f"(preset/guidance/negative は schnell では無効)")
+        self.pipe = None
+
+    def build_prompt(self, vision):
+        return f"{TRIGGER}, {vision.get('vision') or vision.get('scene') or 'subject'} {self.style}"
+
+    def load(self):
+        log("FLUX/imagegen load")
+        from diffusers import (FluxControlNetModel, FluxControlNetPipeline,
+                               FluxTransformer2DModel, BitsAndBytesConfig as DBNB)
+        from transformers import T5EncoderModel, BitsAndBytesConfig as TBNB
+        dnf4 = DBNB(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16)
+        tnf4 = TBNB(load_in_4bit=True, bnb_4bit_quant_type="nf4", bnb_4bit_compute_dtype=torch.bfloat16)
+        tr = FluxTransformer2DModel.from_pretrained(REPO, subfolder="transformer", quantization_config=dnf4, torch_dtype=torch.bfloat16)
+        te2 = T5EncoderModel.from_pretrained(REPO, subfolder="text_encoder_2", quantization_config=tnf4, torch_dtype=torch.bfloat16)
+        cnet = FluxControlNetModel.from_pretrained(CN, torch_dtype=torch.bfloat16)
+        self.pipe = FluxControlNetPipeline.from_pretrained(
+            REPO, transformer=tr, text_encoder_2=te2, controlnet=cnet, torch_dtype=torch.bfloat16)
+        self.pipe.load_lora_weights(LORA_DIR, adapter_name="winners")
+        self.pipe.set_adapters(["winners"], [self.lora_str])
+        self.pipe.enable_model_cpu_offload()
+        log("FLUX ready")
+
+    def generate_object_image(self, crop, prompt, seed):
+        from modules.input_prep import square_pad
+        ctrl = canny_ctrl(square_pad(crop, SIZE))
+        return self.pipe(prompt=prompt, control_image=ctrl, control_mode=0,
+                         controlnet_conditioning_scale=self.cn_scale, width=SIZE, height=SIZE,
+                         num_inference_steps=self.steps, guidance_scale=0.0,
+                         generator=torch.Generator("cpu").manual_seed(seed)).images[0]
+
+    def teardown(self):
+        self.pipe = None; gc.collect(); torch.cuda.empty_cache()
+
+
+class SdxlRoutedBackend:
+    """SDXL + ControlNet(MistoLine) + 占有率ルート判定 (gen_routed 相当)。
+
+    preset は imagegen_config.yaml (= GUI の SDXL/プロンプト設定ダイアログ) から。
+    decide_route で framed(square_pad) / stylize(resize) のガイドを切替。
+    SDXL は negative_prompt も有効 (preset 既定を使う)。
+    """
+    name = "sdxl_routed"
+    route_label = "SDXL routed (preset+ControlNet, square gen)"
+    multi_object = True
+    uses_vlm = True
+    PRESET_OVERRIDE = None      # None = config の preset を使う
+    SQUARE_RES = 1024           # 正方形で生成 (元FLUXルートと同じ)。 strokes は place_fill でパネルへ
+
+    def __init__(self, args):
+        self.args = args
+        self.cn_scale, self.steps = _cn_steps_from_config(args, 0.55)
+        preset = self.PRESET_OVERRIDE
+        if preset is None:
+            try:
+                from modules.image_gen import load_imagegen_config
+                preset = load_imagegen_config().get("preset") or "illustrious_v2_lineart_char"
+            except Exception:
+                preset = "illustrious_v2_lineart_char"
+        self.preset = preset
+        log(f"{self.name}: preset={self.preset} CN={self.cn_scale:.2f} steps={self.steps}")
+        self.gen = None
+
+    def build_prompt(self, vision):
+        # design_instruction 本文をプロンプト本体に (style は preset の style_suffix が付与)。
+        return vision.get("vision") or vision.get("scene") or "a subject"
+
+    def load(self):
+        log(f"SDXL/imagegen load (preset={self.preset}, square {self.SQUARE_RES})")
+        from modules.image_gen import ImageGenerator
+        # 正方形で生成 (縦長パネルに合わせると横長被写体で上下に空白が出て、
+        # その空白にモデルが入力以外の要素を描いてしまう)。 strokes は place_fill でパネルへ。
+        self.gen = ImageGenerator.from_preset(
+            self.preset, resolution=(self.SQUARE_RES, self.SQUARE_RES), verbose=False)
+        self.gen.load()
+        log("SDXL ready")
+
+    def generate_object_image(self, crop, prompt, seed):
+        from modules.input_prep import square_pad
+        # 入力を正方パッドして正方枠を満たす (元FLUXルートと同じ)。 縦横比は保持。
+        guide = square_pad(crop, self.SQUARE_RES)
+        return self.gen.generate(
+            prompt=prompt, guide_image=guide, seed=seed,
+            controlnet_conditioning_scale=self.cn_scale, num_inference_steps=self.steps)
+
+    def teardown(self):
+        self.gen = None; gc.collect(); torch.cuda.empty_cache()
+
+
+class SdxlText2ImgBackend(SdxlRoutedBackend):
+    """SDXL text2img (線ヒントのみ・prompt駆動 detailed lineart, M16 object route)。
+
+    preset を illustrious_v2_text2img に固定 (config 上書き不可 = ルートの同一性を保つ)。
+    """
+    name = "sdxl_text2img"
+    route_label = "SDXL text2img (prompt-driven, line hint only)"
+    PRESET_OVERRIDE = "illustrious_v2_text2img"
+
+
+class IpMatsumotoBackend:
+    """IP-Adapter 松本画風 two-stage (M15)。 全体1枚で生成 (分割しない)。
+
+    実証済みプリセット = gacha_character_autoprompt_C_face_with_neck_20260528_152755:
+      stage1=illustrious_v2_inpaint(character), stage2_strength=0.45, ip_scale=0.6,
+      stage1_prompt = 被写体 + character テンプレ(5/28版)。 これを焼き込んで再現する。
+    """
+    name = "ip_matsumoto"
+    route_label = "IP-Adapter matsumoto two-stage (gacha 20260528 character preset)"
+    multi_object = False
+    uses_vlm = True
+    diff_vs_user = True       # 入力線(顔+首)は既にボード上 → 加筆分だけ描く (diff)
+    STAGE2_STRENGTH = 0.45
+    IP_SCALE = 0.6
+    # 5/28 gacha は正方で生成 (stage1=1024², stage2=768²)。 パネル縦長(704×1472)で生成すると
+    # 中央の顔+首が歪むので、 当時と同じ正方解像度で生成し、 strokes は place_fill でパネルへ収める。
+    STAGE1_RES = (1024, 1024)
+    STAGE2_RES = (768, 768)
+    # 5/28 gacha の character テンプレ (00_auto_prompt.txt から、 被写体に続く suffix)。
+    CHAR_SUFFIX = ("manga style character, dynamic pose, expressive ink lines, "
+                   "detailed lineart, single continuous black line on plain white background, "
+                   "clean smooth strokes, no shading")
+
+    def __init__(self, args):
+        self.args = args
+        self.category = getattr(args, "category", "character") or "character"
+        self.style_ref = getattr(args, "style_ref", None)
+        # 濃さレバー (args 優先、 無ければ実証プリセット既定)。
+        self.ip_scale = float(getattr(args, "ip_scale", None) or self.IP_SCALE)
+        self.stage2_strength = float(getattr(args, "stage2_strength", None) or self.STAGE2_STRENGTH)
+        self.diff_vs_user = not getattr(args, "ip_no_diff", False)   # OFFで顔も含め全線描く
+        # 被写体フレーミング率 (小さいほど余白大→放射状ink増)。
+        self.frac = float(getattr(args, "ip_frac", None) or 0.38)
+        log(f"{self.name}: category={self.category} style_ref={self.style_ref or '(auto)'} "
+            f"(stage2_str={self.stage2_strength} ip={self.ip_scale} diff={self.diff_vs_user} frac={self.frac})")
+
+    def build_prompt(self, vision):
+        if self.category == "object":
+            return (vision.get("scene") or vision.get("literal") or "object").strip()
+        # character: 短い主語(literal 1-2語) + 5/28テンプレ。 長い顔記述だとモデルが顔だけに
+        # 集中して dynamic pose/放射状ink が出ない (5/28 は "face"/"person" の短主語)。
+        subj = (vision.get("literal") or vision.get("scene") or "person").strip()
+        subj = " ".join(subj.split()[:3])         # 念のため3語に短縮
+        return f"{subj}, {self.CHAR_SUFFIX}"
+
+    def load(self):
+        # two_stage_generate 内で stage2 の SDXL+IP-Adapter を都度ロードする (関数側に委譲)。
+        log("IP-Adapter/imagegen load (two-stage, lazy)")
+
+    def generate_object_image(self, crop, prompt, seed):
+        from scripts.test_ip_adapter_two_stage import two_stage_generate
+        from modules.route_driver import frame_subject
+        # 被写体を小さく正方枠中央に配置し余白を確保 → inpaint が余白に放射状 ink を描く
+        # (5/28 B_round_smiley と同じフレーミング。 検証: 12→24→34本と余白増で放射状増)。
+        guide = frame_subject(crop, frac=self.frac, size=self.STAGE1_RES[0])
+        return two_stage_generate(
+            guide, category=self.category, style_ref=self.style_ref,
+            stage1_prompt=prompt, stage2_strength=self.stage2_strength,
+            ip_scale=self.ip_scale, seed=seed,
+            resolution=self.STAGE2_RES, stage1_resolution=self.STAGE1_RES)
+
+    def teardown(self):
+        gc.collect(); torch.cuda.empty_cache()
+
+
+_BACKENDS = {
+    "flux_decorate": FluxDecorateBackend,
+    "sdxl_routed": SdxlRoutedBackend,
+    "sdxl_text2img": SdxlText2ImgBackend,
+    "ip_matsumoto": IpMatsumotoBackend,
+}
+
+
+def make_backend(route_id, args):
+    cls = _BACKENDS.get(route_id)
+    if cls is None:
+        log(f"unknown route '{route_id}' — flux_decorate にフォールバック")
+        cls = FluxDecorateBackend
+    return cls(args)

@@ -1,0 +1,15 @@
+{
+  "sid": "new_car",
+  "route": "flux_new3",
+  "variant": "strong_cn20_seed0",
+  "cn": 0.2,
+  "min_feature_px": 8,
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.6,
+  "seed": 0,
+  "prompt": "tklineart, A robust, gleaming truck stands proudly, its large cab towering above two sturdy wheels. The front grille glints with chrome, while the side mirrors reflect the world around it. A bold, red stripe runs along the hood, adding a touch of flair. The truck's windows are tinted dark, giving it. highly detailed clean black line art, bold confident outlines with many fine interior detail lines, mechanical and structural detail, panel lines, intricate accurate linework, rich detailing throughout, one main subject filling the frame, white background, no fill, no shading, no color, no text",
+  "vision": "A robust, gleaming truck stands proudly, its large cab towering above two sturdy wheels. The front grille glints with chrome, while the side mirrors reflect the world around it. A bold, red stripe runs along the hood, adding a touch of flair. The truck's windows are tinted dark, giving it.",
+  "placed_at": "fill_board",
+  "line_extract": "opencv_bgremove_adaptive",
+  "note": "新規手描き3枚 strong_cn20 ガチャ"
+}

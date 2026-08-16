@@ -53,16 +53,29 @@ def _build_prompt() -> str:
 【動作の選択肢】
 {format_choices(ACTIONS)}
 
-スケッチが選択肢のどれにも当てはまらないと判断したカテゴリは "不明" としてください。
+重要 — 主体 (subject) の選び方:
+ラクガキは線が少なくシンプルです。線が 1 本でも描かれていれば、形の特徴から
+最も近い選択肢を**必ず 1 つ**選んでください。「どれにも完全には当てはまらない」
+からといって "不明" にしないでください。多少こじつけでも一番近いものを選びます。
+形からの手がかり (例、 これに限らない):
+- 丸・円 → 顔 (中に点や線があれば) / 太陽 / 花 / 魚 のいずれか最も近いもの
+- 三角・幹のある形・とがった上 → 木 / 星
+- 四角い箱・直線的 → 家 / 車 / ロボット
+- 曲線・ヒレ・流線 → 魚 / 鳥
+- 頭 + 胴 + 手足・棒人間 → 人
+subject を "不明" にしてよいのは、 画像が**完全な白紙 (線が全く無い)** ときだけです。
+
+場所 (location) と動作 (action) は、 手がかりが無ければ "不明" で構いません
+(主体さえ選べていれば十分です)。
 
 回答は以下の JSON 形式のみで返してください。前後に説明文や ```json などのマークダウンを入れないでください。
 
 {{
-  "subject_ja": "<選択肢の中から1つ、または '不明'>",
+  "subject_ja": "<選択肢の中から必ず1つ。 線が少しでもあれば最も近いものを選ぶ。 完全な白紙のときだけ '不明'>",
   "location_ja": "<選択肢の中から1つ、または '不明'>",
   "action_ja": "<選択肢の中から1つ、または '不明'>",
   "missing_elements": ["<まだ描かれていない要素を日本語で短く列挙>"],
-  "confidence": <0.0 から 1.0 の数値。ほぼ白紙なら 0.1 程度、明確に判別できれば 0.8+>
+  "confidence": <0.0 から 1.0 の数値。 完全な白紙のみ 0.1。 形が描かれて最も近い選択肢を選べたら 0.5 前後、 明確に判別できれば 0.8+>
 }}
 """
 
@@ -172,6 +185,701 @@ class VLM:
     def __exit__(self, *exc) -> None:
         self.unload()
 
+    # 2026-05-29: shift モード用 companion subject 推論プロンプト 3 パターン。
+    # 入力 sketch の主題に対し、 隣に配置すると自然な「別の」 主題を 1 語で提案。
+    # v1 = 現状 (関係パターンを方向ヒント)
+    # v2 = noun-only 強化 (形容詞 "angry" 失敗対策)
+    # v3 = 「動詞 + 物」 物語性重視 (情景的なフレーズ可)
+
+    _COMPANION_PROMPT_V2 = (
+        "You see a simple line-art sketch.\n"
+        "Look at it, then name ONE other concrete object/being that would "
+        "naturally appear next to it in the same drawing.\n\n"
+        "Strict rules — failure to follow voids the answer:\n"
+        "1. Output MUST be a noun (a thing you can point at), NOT an adjective "
+        "and NOT a feeling.\n"
+        "   - Wrong: angry, happy, fast, dark, sleeping, broken, sad\n"
+        "   - Right: bird, person, chair, cloud, hand, fish, lamp\n"
+        "2. The noun must refer to a DIFFERENT KIND of thing from what's drawn.\n"
+        "   - If the sketch is a face, do NOT propose another face.\n"
+        "3. Pick something a line-art artist can easily draw.\n"
+        "4. Lowercase. No article. No punctuation. Single word.\n\n"
+        "Think first about what naturally accompanies the main subject "
+        "(tools need users; vehicles need riders; plants need animals or "
+        "weather; foods need eaters; weather affects objects; buildings "
+        "anchor scenes). Then output one matching concrete noun.\n\n"
+        "Output:"
+    )
+
+    _COMPANION_PROMPT_V3 = (
+        "You see a simple line-art sketch.\n"
+        "Identify the main subject. Then imagine a short story moment that "
+        "completes the scene, and name what to draw NEXT TO the main subject "
+        "to tell that story.\n\n"
+        "The accompanying element should:\n"
+        "- be a concrete drawable thing (object, animal, person, weather, etc.)\n"
+        "- be DIFFERENT in kind from the main subject\n"
+        "- evoke an action or cause-and-effect with the main subject\n\n"
+        "Inspiration for the *kind of relationship* (these are pattern hints, "
+        "not vocabulary — apply the idea to whatever you see):\n"
+        "- a tool implies its user mid-action (scissors → cutting hand)\n"
+        "- a vehicle implies motion (bicycle → rider leaning)\n"
+        "- a plant implies a tiny visitor or weather (tree → bird flying, "
+        "tree → falling leaves)\n"
+        "- a container implies what fills it (bowl → steaming soup)\n"
+        "- weather implies who reacts (rain → person under umbrella)\n"
+        "- food implies eating (apple → bite mark)\n"
+        "- a creature implies its prey, pet, or counterpart\n\n"
+        "Output format: a short phrase 1-3 words (noun, optionally with a "
+        "describing verb participle). Lowercase, no article, no period.\n"
+        "Examples of acceptable phrase shapes (do not copy these literally):\n"
+        "  'flying bird'   'falling leaf'   'cutting hand'   'curled cat'\n\n"
+        "Output:"
+    )
+
+    # 互換: 既存 _COMPANION_PROMPT_TEXT は v1 として残す
+    _COMPANION_PROMPT_TEXT = (
+        "You are looking at a simple line-art sketch.\n"
+        "Step 1: identify the main subject of the sketch silently in your head.\n"
+        "Step 2: propose ONE different subject that would naturally accompany or "
+        "complement the main subject, as if drawn next to it in the same scene.\n\n"
+        "Guidelines:\n"
+        "- The proposed companion must NOT be the same kind of object as the main subject.\n"
+        "- Choose something that makes the scene feel richer, tells a small story, or "
+        "shows a natural cause/effect relationship.\n"
+        "- Pick a single, concrete, drawable thing — preferably one word.\n"
+        "- Avoid abstract concepts (love, time, music). Prefer tangible things "
+        "(animal, person, weather, object, plant, furniture, vehicle).\n\n"
+        "Examples of the *shape* of relationship to use (do NOT copy these literally, "
+        "just understand the pattern):\n"
+        "- tool → its user or what it acts upon\n"
+        "- vehicle → its rider, passenger, or the road\n"
+        "- plant → an animal, weather, or season element near it\n"
+        "- container → its content or what fills it\n"
+        "- food → an eater, utensil, or table setting\n"
+        "- weather → what it affects (umbrella, puddle, shivering person)\n"
+        "- building → a person entering it, a vehicle near it, or a tree beside it\n\n"
+        "Apply the same kind of associative thinking to whatever you see. "
+        "If the main subject is unclear, pick any plausible companion that "
+        "would form a coherent line-art scene.\n\n"
+        "Output format: a single English noun in lowercase, no article, no "
+        "punctuation, no explanation. Output ONLY the noun."
+    )
+
+    # 2026-05-30 (Phase 1): composition refinement プロンプト 正式化。
+    # 入力 sketch の主題を「より魅力的な構図」 に翻訳。 orientation や pose、
+    # angle、 motion などを含む。 ハードコード例なし、 方向ヒントで汎化。
+    _COMPOSITION_PROMPT_TEXT = (
+        "You see a simple line-art sketch.\n"
+        "The user drew the main subject in a basic pose / viewpoint, but "
+        "rendering it as-is in detail would feel static and boring.\n"
+        "Propose a more interesting composition for the SAME subject "
+        "(do not change what the subject is — only refine HOW it is posed/"
+        "viewed/captured).\n\n"
+        "Apply ONE of these kinds of refinement (or invent a similar one):\n"
+        "- animals: face one way, body another (looking back, twisting, "
+        "mid-jump, curled)\n"
+        "- vehicles: 3/4 angle, motion blur, slight tilt, in motion\n"
+        "- people: dynamic pose, mid-stride, action, leaning, gesture\n"
+        "- buildings/structures: low-angle view, perspective, dramatic angle\n"
+        "- plants: low-angle, weather element (wind-bent, with falling leaves)\n"
+        "- static objects: tilted angle, partial occlusion, dramatic lighting hint\n\n"
+        "These are *patterns* to apply — do not copy literally. Look at the "
+        "actual sketch and invent a refinement that fits it.\n\n"
+        "Output format: a short phrase (3-8 words) describing the refinement. "
+        "Lowercase, no period, no quotes. Just the phrase.\n"
+        "Examples of the *shape* of acceptable phrases (not vocabulary to "
+        "copy):\n"
+        "  'looking back over shoulder'   'in mid-stride from behind'\n"
+        "  'three-quarter view with motion'   'low-angle dramatic'\n"
+        "  'curled up sleeping pose'   'leaning with one foot raised'\n\n"
+        "Output:"
+    )
+
+    def predict_composition_refinement(self, image: ImageLike) -> str:
+        """sketch から「魅力的な構図」 refinement phrase を 1 つ返す。
+
+        例: 正面の猫 → 'looking back over shoulder'、
+        横向きの車 → '3/4 angle with motion lines' 等。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        pil_image = _normalize_image(image)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": self._COMPOSITION_PROMPT_TEXT},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template],
+            images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt",
+        ).to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=32, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0].strip()
+        import re
+        cleaned = raw_text.replace("\n", " ").replace('"', "").replace("'", "")
+        cleaned = re.sub(r"[.!?,;:]+$", "", cleaned).strip().lower()
+        words = cleaned.split()
+        phrase = " ".join(words[:8])
+        if self.verbose:
+            print(f"[vlm] composition '{phrase}' from '{raw_text}' "
+                  f"({infer_time:.2f}s)")
+        return phrase
+
+    # カード分類 (predict_intent) が "不明" のときの保険。 カードに縛らず、
+    # 線画が「何に見えるか」 を素直に英語 1-2 語で言わせる。 円→"circle"、
+    # 棒人間→"stick figure" 等。 これを生成 prompt の subject に使うと、 汎用
+    # フォールバック ("abstract line drawing") より入力に即した絵が出せる。
+    _LITERAL_PROMPT_TEXT = (
+        "Look at this simple line drawing. What everyday object or shape does "
+        "it most look like? Answer with ONE or TWO plain English words only "
+        "(e.g. circle, ball, face, sun, star, house, fish). "
+        "Lowercase, no article, no punctuation, no explanation. Output ONLY "
+        "the word(s)."
+    )
+
+    def describe_literal(self, image: ImageLike) -> str:
+        """線画を「何に見えるか」 で英語 1-2 語に記述 (カード非依存の保険)。
+
+        predict_intent が "不明" を返したときの fallback subject 用。
+        失敗時は空文字を返す (生成を止めない)。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        import re
+        pil_image = _normalize_image(image)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": self._LITERAL_PROMPT_TEXT},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template],
+            images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt",
+        ).to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=16, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0]
+        cleaned = raw_text.replace("\n", " ").replace('"', "").replace("'", "")
+        cleaned = re.sub(r"[.!?,;:]+", " ", cleaned).strip().lower()
+        # 英字と空白のみ残し 先頭 2 語まで
+        cleaned = re.sub(r"[^a-z\s]", "", cleaned)
+        phrase = " ".join(cleaned.split()[:2])
+        if self.verbose:
+            print(f"[vlm] literal '{phrase}' from '{raw_text.strip()}' "
+                  f"({infer_time:.2f}s)")
+        return phrase
+
+    # 主題 1-2 語だけでなく、 「絵の具体的な解釈」 を短い名詞句で返す。
+    # 数・ポーズ・表情・向き・特徴的なパーツを 1 つ拾わせ、 生成 prompt の
+    # subject をリッチにする (デフォルトの汎用 subject だと入力ごとの個性が
+    # 消えるため、 2026-06-02 ユーザー要望)。 スタイル語は付けない (テンプレ側で
+    # 付与)。 冠詞なし・小文字・カンマ無しの 1 フレーズ。
+    _SCENE_PROMPT_TEXT = (
+        "Look at this simple line drawing and describe WHAT IS DRAWN as a single "
+        "short noun phrase for an illustration prompt. Capture the concrete, "
+        "drawing-specific details you actually see: the main subject plus its "
+        "count, pose or orientation, facial expression, and one or two distinctive "
+        "visible features. Do NOT mention art style, colors, line, sketch, or the "
+        "fact that it is a drawing. No leading article, lowercase, no commas, "
+        "8 to 16 words. Example outputs: 'round smiling face with big ears and a "
+        "wide grin' / 'three diamonds arranged in a row' / 'dog sitting upright "
+        "with tongue out and floppy ears'. Output ONLY the phrase."
+    )
+
+    def describe_scene(self, image: ImageLike) -> str:
+        """線画を解釈し、 生成 prompt 用のリッチな名詞句 (数/ポーズ/表情/特徴) を返す。
+
+        describe_literal が 1-2 語の主題だけなのに対し、 これは「絵が具体的に
+        何を描いているか」 を 1 フレーズで返す。 失敗時は空文字 (呼び出し側で
+        describe_literal にフォールバック)。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        import re
+        pil_image = _normalize_image(image)
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": self._SCENE_PROMPT_TEXT},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template], images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt").to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=48, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0]
+        s = raw_text.replace("\n", " ").replace('"', "").replace("'", "").strip()
+        s = s.lower()
+        # スタイル混入語・冠詞・句読点を除去し 1 フレーズ化
+        s = re.sub(r"[.;:]+", " ", s)
+        s = re.sub(r"\b(a|an|the)\b", " ", s)
+        s = re.sub(r"\b(line drawing|drawing|sketch|lineart|image|picture|"
+                   r"black and white|monochrome|simple)\b", " ", s)
+        s = s.replace(",", " ")
+        s = re.sub(r"[^a-z0-9\s]", " ", s)
+        phrase = " ".join(s.split()[:16]).strip()
+        if self.verbose:
+            print(f"[vlm] scene '{phrase}' from '{raw_text.strip()}' "
+                  f"({infer_time:.2f}s)")
+        return phrase
+
+    # 「絵の解説」 ではなく 「何を描き足すべきか」 を VLM に出させる。
+    # crude なスケッチに似合う具体的な追加要素 (髪/服/小物/表情/効果) を提案させ、
+    # 生成 prompt に注入して “魅力的なイラストへの加筆” を方向づける
+    # (2026-06-02 ユーザー: 解説ではなく加筆指示が欲しい / 中程度の加筆)。
+    _ADDITIONS_PROMPT_TEXT = (
+        "This is a crude, simple line drawing of a {subject}. Suggest concrete "
+        "visual details to ADD that would turn it into a more complete and "
+        "appealing illustration, WHILE keeping the same subject and the same pose "
+        "and composition. Name 3 to 5 fitting elements to add, such as hairstyle, "
+        "clothing, accessories, facial expression, small props, or simple "
+        "decorative touches that suit a {subject}. Output ONLY the additions as a "
+        "short comma-free phrase of plain adjectives and nouns. Do NOT restate the "
+        "subject, do NOT mention art style, colors, line, sketch or drawing, no "
+        "explanation. 6 to 14 words."
+    )
+
+    def suggest_additions(self, image: ImageLike, subject: str = "subject") -> str:
+        """スケッチに似合う 「描き足すべき要素」 を短いフレーズで返す (加筆指示)。
+
+        describe_literal/scene が 「何が描かれているか」 なのに対し、 これは
+        「何を足すと良いイラストになるか」 を返す。 生成 prompt に subject と
+        並べて差し込む。 失敗時は空文字。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        import re
+        pil_image = _normalize_image(image)
+        ptext = self._ADDITIONS_PROMPT_TEXT.format(subject=subject or "subject")
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": ptext},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template], images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt").to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=48, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0]
+        s = raw_text.replace("\n", " ").replace('"', "").replace("'", "").strip().lower()
+        s = re.sub(r"[.;:]+", " ", s)
+        # スタイル混入語を除去 (テンプレ側で線質を指定するため)
+        s = re.sub(r"\b(line drawing|drawing|sketch|lineart|line art|style|"
+                   r"black and white|monochrome|ink|pencil|color\w*)\b", " ", s)
+        s = s.replace(",", " ")
+        s = re.sub(r"[^a-z0-9\s]", " ", s)
+        phrase = " ".join(s.split()[:16]).strip()
+        if self.verbose:
+            print(f"[vlm] additions '{phrase}' from '{raw_text.strip()}' "
+                  f"({infer_time:.2f}s)")
+        return phrase
+
+    # 箇条書きキーワードではなく 「前提 + 指示」 の自然文を出させる。 指示の動詞は
+    # route/モードで変わる (2026-06-02 ユーザー):
+    #   finish (CN あり/framed)   : 下書きを清書 →「これは〜の下書き。〜に仕上げて」
+    #   add    (CN あり/関連要素) : 主題を保ち関連物を追加 →「これは傘です。雨を書き足して」
+    #   draw   (CN なし/companion): 空白に別主題を新規 →「てるてる坊主を描いて」
+    # ※ SDXL は CLIP 77 token 制限があるので短く (mode 別に語数上限)。
+    _DESIGN_PROMPTS = {
+        # decorate — 元の線を骨格として KEEP し、 その線に絡む装飾を増やす方向
+        # (2026-06-04 ユーザー: 元線を活かし、 線に絡むように装飾を増やす)。
+        "decorate": (
+            "This is a simple line drawing of a {subject}. Do NOT redraw or restyle the "
+            "existing lines — treat them as a fixed skeleton that stays. Describe ONLY the "
+            "ORNAMENTAL DECORATION to add that weaves around, clings to and follows those "
+            "existing lines: flourishes, swirls, curling vines, small leaves, dots, beads, "
+            "delicate repeating patterns and fine accent strokes that hug and intertwine "
+            "with the outlines and grow outward from them, embellishing the {subject} "
+            "densely while keeping its original shape readable. Write flowing concrete "
+            "visual prose describing the decoration, 40 to 70 words. Do NOT mention art "
+            "style, colors, line, ink, pencil or medium, and do NOT use lists."
+        ),
+        "finish": (
+            "This image is a rough DRAFT sketch of a {subject}. Write ONE short "
+            "instruction telling an illustrator to FINISH this draft into a "
+            "polished, appealing illustration of the same {subject}, keeping its "
+            "pose and composition. Use exactly this format: 'This is a rough draft "
+            "of a {subject}. Finish it as <one vivid concrete design with "
+            "distinctive features, accessories and expression>.' Flowing prose, "
+            "under 28 words, no keyword lists, no line/color/medium words."
+        ),
+        "add": (
+            "This image shows a {subject}. Write ONE short instruction to ADD "
+            "{companion} to it naturally while keeping the {subject}. Use exactly "
+            "this format: 'This is a {subject}. Add <{companion} described "
+            "vividly> to the scene.' Flowing prose, under 22 words, no "
+            "line/color/medium words."
+        ),
+        "draw": (
+            "Write ONE short instruction to DRAW a simple, appealing {companion} "
+            "as a standalone subject (it will be placed next to another drawing). "
+            "Use exactly this format: 'Draw a <vivid {companion} with a fitting "
+            "pose or expression>.' Flowing prose, under 16 words, no "
+            "line/color/medium words."
+        ),
+        # complete — 「途中の下書きから人が描こうとしている完成形」 を積極補完して
+        # 1 つの絵として vivid に記述 (FLUX/T5 は長プロンプト可なので語数多め)。
+        # finish と違い pose/composition 縛りを外し、 欠け/未完の部分も補って描かせる
+        # (2026-06-02 ユーザー: VLM は入力に対する「未来の完成形」を指示すべき)。
+        # 出力は命令文でなく「完成画の描写」 (FLUX prompt は記述が効く)。
+        "complete": (
+            "This is a rough, partly-drawn line sketch that a person is still in the "
+            "middle of making. Picture the FINISHED illustration they are aiming for "
+            "and describe that finished picture in RICH, DETAILED design terms. Keep "
+            "the same main subject ({subject}) and its rough placement, but COMPLETE "
+            "and elaborate it: add every part that is missing or only hinted at, and "
+            "pile on distinctive, appealing, concrete DESIGN: a clear expression, a "
+            "definite dynamic pose, characteristic shapes and proportions, surface "
+            "details and textures, several fitting accessories, small props, and a bit "
+            "of supporting setting or background element that suits it. Be specific and "
+            "imaginative about the design. Write flowing, concrete, visual prose "
+            "describing the finished picture, 45 to 75 words. Do NOT say it is a "
+            "sketch, draft or drawing, do NOT mention art style, colors, line, ink, "
+            "pencil or medium, and do NOT use lists."
+        ),
+    }
+    _DESIGN_WORDCAP = {"finish": 30, "add": 24, "draw": 18, "complete": 75, "decorate": 70}
+
+    def design_instruction(self, image: ImageLike, subject: str = "subject",
+                           mode: str = "finish", companion: str = "") -> str:
+        """生成 prompt 本体に使う 「前提+指示」 の自然文を返す。
+
+        mode:
+          finish — 下書きを「〜に仕上げて」 (framed, CN あり)
+          add    — 主題を保ち関連物を「書き足して」 (CN あり, companion 指定)
+          draw   — 別主題を「描いて」 (companion route, CN なし。 空白に配置)
+        失敗時は空文字。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        import re
+        pil_image = _normalize_image(image)
+        tmpl = self._DESIGN_PROMPTS.get(mode, self._DESIGN_PROMPTS["finish"])
+        ptext = tmpl.format(subject=subject or "subject",
+                            companion=companion or "a companion")
+        messages = [{
+            "role": "user",
+            "content": [
+                {"type": "image", "image": pil_image},
+                {"type": "text", "text": ptext},
+            ],
+        }]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template], images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt").to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=160, do_sample=False)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0]
+        # 散文なので句読点は残す。 改行/引用符/medium 語のみ除去し mode 別語数に制限。
+        s = raw_text.replace("\n", " ").replace('"', "").replace("*", "").strip()
+        s = re.sub(r"\b(line ?art|line drawing|monochrome|black and white|"
+                   r"ink|pencil|colou?r\w*|drawing|sketch style)\b", "", s,
+                   flags=re.I)
+        s = re.sub(r"\s+,", ",", s)
+        s = re.sub(r"\s{2,}", " ", s).strip()
+        cap = self._DESIGN_WORDCAP.get(mode, 30)
+        words = s.split()
+        if len(words) > cap:
+            s = " ".join(words[:cap]).rstrip(",;: ") + "."
+        if self.verbose:
+            print(f"[vlm] design[{mode}] '{s}' ({infer_time:.2f}s)")
+        return s
+
+    def classify_category(self, image: ImageLike) -> str:
+        """主題のカテゴリを person / animal / object のいずれかで返す。
+
+        stylize の prompt をカテゴリ別に切り替えるため (人=ポーズ、 動物=躍動、
+        オブジェクト=構図)。 判定不能時は "object" (最も無難なテンプレ) を返す。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        pil_image = _normalize_image(image)
+        prompt = ("Classify the main subject of this line drawing into exactly one "
+                  "category. Answer with only one word: 'person' (a human or "
+                  "character), 'animal' (any creature), or 'object' (anything else "
+                  "like a house, car, tree, food). One word only.")
+        messages = [{"role": "user", "content": [
+            {"type": "image", "image": pil_image},
+            {"type": "text", "text": prompt}]}]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True)
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template], images=image_inputs, videos=video_inputs,
+            padding=True, return_tensors="pt").to(self.device)
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=8, do_sample=False)
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw = self._processor.batch_decode(
+            generated, skip_special_tokens=True)[0].lower()
+        cat = "object"
+        if "person" in raw or "human" in raw or "character" in raw:
+            cat = "person"
+        elif "animal" in raw or "creature" in raw:
+            cat = "animal"
+        if self.verbose:
+            print(f"[vlm] category '{cat}' from '{raw.strip()}'")
+        return cat
+
+    def predict_companion_subject(self, image: ImageLike,
+                                    prompt_version: str = "v1") -> str:
+        """スケッチ画像から companion subject (関連する別の subject) を 1 単語で返す。
+
+        shift モード (位置ずらし) 用。 入力主題と「同じもの」 ではなく、 自然に
+        組み合わさる別の subject を VLM に提案させる。 例えば:
+          ハサミ → hand、 自転車 → rider、 木 → bird、 傘 → rain、 鍋 → soup
+        例示は VLM に渡す prompt の「方向性ヒント」 として埋め込み済 (汎化を促す)。
+
+        Returns
+        -------
+        英語の単数名詞 (lowercase、 article なし)。 例: "bird", "person", "umbrella"
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        # prompt version 選択
+        prompt_map = {
+            "v1": self._COMPANION_PROMPT_TEXT,
+            "v2": self._COMPANION_PROMPT_V2,
+            "v3": self._COMPANION_PROMPT_V3,
+        }
+        prompt = prompt_map.get(prompt_version, self._COMPANION_PROMPT_TEXT)
+        pil_image = _normalize_image(image)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": pil_image},
+                    {"type": "text", "text": prompt},
+                ],
+            }
+        ]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        ).to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=16, do_sample=False
+            )
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True
+        )[0].strip()
+        # 単語/フレーズ抽出 (改行 / 句読点 / 冠詞を除去)
+        import re
+        cleaned = re.sub(r"[^a-zA-Z\s-]", " ", raw_text).strip().lower()
+        words = cleaned.split()
+        # よくある article を除去
+        articles = {"a", "an", "the"}
+        words = [w for w in words if w not in articles]
+        # v3 は phrase (1-3 単語) 許容、 v1/v2 は単一単語
+        max_words = 3 if prompt_version == "v3" else 1
+        companion = " ".join(words[:max_words]) if words else "person"
+        if self.verbose:
+            print(
+                f"[vlm] companion ({prompt_version}) '{companion}' "
+                f"from '{raw_text}' ({infer_time:.2f}s)"
+            )
+        return companion
+
+    def pick_best_companion(self, image: ImageLike,
+                              candidates: list) -> tuple:
+        """3 候補から best を 1 つ選ぶ meta-judging。
+
+        Parameters
+        ----------
+        image : ImageLike
+            入力 sketch (companion を選ぶ context)
+        candidates : list of (version, name) tuples or list of names
+            候補 companion 名のリスト。 例: [("v1", "balloon"), ("v2", "cloud"),
+            ("v3", "smiling face")]
+
+        Returns
+        -------
+        (chosen_index, chosen_name, infer_time_s) : tuple
+            chosen_index は候補リストの 0-indexed 位置。 不明な場合は 0。
+        """
+        if not self.is_loaded:
+            self.load()
+        from qwen_vl_utils import process_vision_info
+        # candidates を正規化 ((version, name) → name のみのリスト)
+        names = []
+        labels = []
+        for c in candidates:
+            if isinstance(c, tuple) and len(c) >= 2:
+                labels.append(str(c[0]))
+                names.append(str(c[1]))
+            else:
+                labels.append(f"#{len(names)+1}")
+                names.append(str(c))
+        if not names:
+            return (0, "person", 0.0)
+        # judge prompt: 候補を提示して、 sketch との相性で 1 つ選ばせる
+        cand_list_text = "\n".join(
+            f"  {i+1}. {labels[i]}: {names[i]}"
+            for i in range(len(names))
+        )
+        judge_prompt = (
+            "You see a simple line-art sketch.\n\n"
+            "Three different ideas have been proposed for what to draw NEXT TO "
+            "the main subject as a scene companion:\n\n"
+            f"{cand_list_text}\n\n"
+            "Evaluate them against these criteria:\n"
+            "1. Is it a concrete drawable noun (not an adjective like 'angry')?\n"
+            "2. Is it DIFFERENT in kind from what's in the sketch (not the same "
+            "type of object)?\n"
+            "3. Does it form a natural, story-telling pair with the sketch?\n"
+            "4. Would it look good as a simple ink-line drawing next to the sketch?\n\n"
+            "Pick the SINGLE BEST candidate.\n"
+            "Output format: only the chosen number (1, 2, or 3). No explanation, "
+            "no punctuation, just one digit."
+        )
+        pil_image = _normalize_image(image)
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": pil_image},
+                    {"type": "text", "text": judge_prompt},
+                ],
+            }
+        ]
+        text_template = self._processor.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True
+        )
+        image_inputs, video_inputs = process_vision_info(messages)
+        inputs = self._processor(
+            text=[text_template],
+            images=image_inputs,
+            videos=video_inputs,
+            padding=True,
+            return_tensors="pt",
+        ).to(self.device)
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        t0 = time.time()
+        with torch.inference_mode():
+            output_ids = self._model.generate(
+                **inputs, max_new_tokens=8, do_sample=False
+            )
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        infer_time = time.time() - t0
+        generated = output_ids[:, inputs.input_ids.shape[1]:]
+        raw_text = self._processor.batch_decode(
+            generated, skip_special_tokens=True
+        )[0].strip()
+        # 1-3 の数字を抽出
+        import re
+        m = re.search(r"\b([123])\b", raw_text)
+        if m:
+            chosen_idx = int(m.group(1)) - 1
+        else:
+            chosen_idx = 0
+        chosen_idx = max(0, min(chosen_idx, len(names) - 1))
+        chosen_name = names[chosen_idx]
+        if self.verbose:
+            print(
+                f"[vlm] judge picked #{chosen_idx + 1} "
+                f"({labels[chosen_idx]}: '{chosen_name}') "
+                f"from {names} ({infer_time:.2f}s) raw='{raw_text}'"
+            )
+        return (chosen_idx, chosen_name, infer_time)
+
     def predict_intent(self, image: ImageLike) -> TopicGuess:
         """スケッチ画像から TopicGuess を返す。例外は投げない。"""
         if not self.is_loaded:
@@ -232,6 +940,15 @@ class VLM:
             infer_time_s=infer_time,
             n_tokens=n_tokens,
         )
+        # カード分類が "不明" / 低 confidence のときは、 カード非依存のリテラル
+        # 記述 (例: "circle") を保険として取り、 build_prompt がそれを subject に
+        # 使えるようにする (汎用 fallback より入力に即した絵が出せる)。
+        if not result.has_known_subject() or result.confidence < 0.3:
+            try:
+                result.literal_en = self.describe_literal(pil_image)
+            except Exception as e:  # noqa: BLE001 - 保険なので失敗しても続行
+                if self.verbose:
+                    print(f"[vlm] describe_literal failed: {e}")
         if self.verbose:
             status = "OK" if result.has_known_subject() else "UNKNOWN"
             print(

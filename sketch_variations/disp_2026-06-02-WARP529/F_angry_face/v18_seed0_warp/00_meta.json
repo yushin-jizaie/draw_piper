@@ -1,0 +1,19 @@
+{
+  "sid": "F_angry_face",
+  "route": "flux_warp_compose",
+  "variant": "warp",
+  "cn": 0.2,
+  "cn_align": 0.7,
+  "cn_design": 0.2,
+  "flow_mean_px": 7.87,
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.8,
+  "seed": 0,
+  "prompt": "tklineart, The angry face now has a full, expressive brow furrowed into a sharp V-shape, with piercing eyes that seem to glare with intensity. The straight mouth tightens into a firm line, emphasizing the fury. A pair of clenched fists rests on either side of the head, suggesting readiness to act.. bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "vision": "The angry face now has a full, expressive brow furrowed into a sharp V-shape, with piercing eyes that seem to glare with intensity. The straight mouth tightens into a firm line, emphasizing the fury. A pair of clenched fists rests on either side of the head, suggesting readiness to act..",
+  "placed_at": "input_aligned",
+  "input_fit": "contain",
+  "vectorize": "binarize+hardboost250",
+  "align_source": "input_lines",
+  "note": "方式③ warp合成: align=入力生線/design=低CN完成形/warp=designをDIS flowで入力へ"
+}

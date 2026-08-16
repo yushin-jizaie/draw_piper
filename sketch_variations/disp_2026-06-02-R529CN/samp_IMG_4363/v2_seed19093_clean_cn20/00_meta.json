@@ -1,0 +1,14 @@
+{
+  "sid": "samp_IMG_4363",
+  "route": "framed",
+  "variant": "clean",
+  "subject": "dog",
+  "design": "",
+  "category": "animal",
+  "preset": "animagine_xl_31_mistoline",
+  "cn": 0.2,
+  "seed": 19093,
+  "prompt": "a dog.",
+  "placed_at": "input_bbox",
+  "input_fit": "contain"
+}

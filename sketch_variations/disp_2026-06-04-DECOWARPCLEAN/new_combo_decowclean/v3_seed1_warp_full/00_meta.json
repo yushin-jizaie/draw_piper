@@ -1,0 +1,12 @@
+{
+  "sid": "new_combo_decowclean",
+  "route": "flux_decowarp_clean",
+  "variant": "warp_full_s1",
+  "layer": "warp_full",
+  "cn": 0.3,
+  "seed": 1,
+  "flow_mean_px": 21.86,
+  "prompt": "tklineart, Delicate tendrils of swirling vines and intricate beadwork dance along the contours of the palm trees, intertwining with the car's sleek form. Tiny leaves and dots sprinkle the scene, adding texture and life to the minimalist framework. Curlicues and floral motifs weave through the lines, creating a harmonious blend of nature and structure. clean smooth flowing thin line decoration, elegant sparse ornament, simple curved vines, no stippling, no crosshatch, no hatching, no dotted texture, no scribble, no fill, manga style, clean bold black ink lineart on white background",
+  "vision": "Delicate tendrils of swirling vines and intricate beadwork dance along the contours of the palm trees, intertwining with the car's sleek form. Tiny leaves and dots sprinkle the scene, adding texture and life to the minimalist framework. Curlicues and floral motifs weave through the lines, creating a harmonious blend of nature and structure.",
+  "note": "DECOWARPクリーン路線(CN0.3+decorate+warp 単発, クラックル抑制)を1枚で"
+}

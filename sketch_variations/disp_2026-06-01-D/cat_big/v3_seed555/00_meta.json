@@ -1,0 +1,10 @@
+{
+  "sid": "cat_big",
+  "route": "stylize",
+  "subject": "cat",
+  "category": "object",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 555,
+  "prompt": "stylish cat, manga style illustration, appealing bold design, interesting angle, dynamic composition, clean bold ink lineart, white background"
+}

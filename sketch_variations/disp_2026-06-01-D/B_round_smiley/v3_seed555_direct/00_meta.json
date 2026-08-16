@@ -1,0 +1,12 @@
+{
+  "sid": "B_round_smiley",
+  "route": "direct",
+  "subject": "face",
+  "category": "object",
+  "scatter_mode": "same",
+  "pattern": "direct",
+  "preset": "illustrious_v2_lineart_char",
+  "cn": 0.5,
+  "seed": 555,
+  "prompt": "face, manga style, clean bold ink lineart, white background, appealing design, multiple"
+}

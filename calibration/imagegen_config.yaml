@@ -1,0 +1,14 @@
+imagegen:
+  preset: illustrious_v2_lineart_char
+  num_inference_steps: 28
+  guidance_scale: 3.0
+  controlnet_conditioning_scale: 0.5
+  negative_prompt: color, blue background, gradient, hatching, crosshatch, screentone,
+    halftone, filled background, scribble, sketchy, shading, gray, fill, silhouette,
+    brush stroke, dry brush, faded lines, watermark, signature, text, frame, border,
+    blurry, noise, jpeg artifacts
+  auto_from_panel: true
+prompt:
+  base_template: ''
+  fallback_template: ''
+  confidence_threshold: 0.3

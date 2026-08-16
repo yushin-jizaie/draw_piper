@@ -43,6 +43,55 @@ _FALLBACK_TEMPLATE = (
 )
 
 
+COMPANION_TEMPLATE = (
+    "a stylish Matsumoto-style {subject_en} {action_en} {location_en}, "
+    # 2026-05-31: 線の細密さより「構図・デザイン性」 を重視。 簡潔な線でも
+    # 魅力的に見えるよう、 dynamic な構図 / 大きな主題 / 大胆なデザインを明示。
+    "dynamic striking composition, appealing bold design, "
+    "large subject filling the frame, interesting angle, "
+    "manga style, bold confident ink lines, "
+    "single continuous black line on plain white background, "
+    "clean smooth strokes, illustrative, "
+    # Frida 適合: discrete contours + ハッチング禁止 + 20-40 stroke 目安
+    # (docs/frida_stroke_guideline.md)
+    "discrete clean contours per element, no shading, "
+    "no hatching, no cross-hatching, approximately 20 to 40 separate strokes"
+)
+
+COMPANION_FALLBACK_TEMPLATE = (
+    "a stylish Matsumoto-style illustration, "
+    "appealing bold design, dynamic composition, "
+    "manga style, expressive ink lines, "
+    "single continuous black line on plain white background, "
+    "clean smooth strokes, discrete clean contours per element, "
+    "no shading, no hatching, no cross-hatching"
+)
+
+
+# 重ね合わせモード (M15/M16 character) 用。 IP-Adapter two-stage の
+# Stage 1 prompt として使う想定。 VLM の subject を 主役にしつつ、
+# style ref で 松本タッチを後段の Stage 2 で重ねる。
+CHARACTER_TEMPLATE = (
+    "{subject_en} {action_en} {location_en}, "
+    # 2026-05-31: 構図・デザイン性重視。 簡潔な線でも魅力的に。
+    "manga style character, dynamic striking pose, appealing bold design, "
+    "interesting angle, bold confident ink lines, clean lineart, "
+    "single continuous black line on plain white background, "
+    "clean smooth strokes, "
+    # Frida 適合 (docs/frida_stroke_guideline.md)
+    "discrete clean contours per element, no shading, "
+    "no hatching, no cross-hatching, approximately 20 to 40 separate strokes"
+)
+
+CHARACTER_FALLBACK_TEMPLATE = (
+    "1boy, solo, young boy with full body, messy hair, simple t-shirt, "
+    "manga style character, dynamic pose, expressive ink lines, "
+    "bold confident lineart, single continuous black line on plain white background, "
+    "appealing bold design, clean smooth strokes, discrete clean contours per element, "
+    "no shading, no hatching, no cross-hatching"
+)
+
+
 def build_prompt(guess: TopicGuess, confidence_threshold: float = 0.3,
                   base_template: str = None,
                   fallback_template: str = None) -> str:
@@ -56,9 +105,15 @@ def build_prompt(guess: TopicGuess, confidence_threshold: float = 0.3,
     """
     base = base_template if base_template else _BASE_TEMPLATE
     fallback = fallback_template if fallback_template else _FALLBACK_TEMPLATE
-    if guess.confidence < confidence_threshold:
-        return _normalize_spaces(fallback)
-    if guess.subject is UNKNOWN_SUBJECT:
+
+    if guess.confidence < confidence_threshold or guess.subject is UNKNOWN_SUBJECT:
+        # カード分類が低 confidence / 不明。 リテラル記述 (例: "circle") が
+        # あれば、 それを subject として base テンプレに埋める (汎用フォールバック
+        # は入力を完全に無視するため、 リテラル記述の方が入力に即した絵になる)。
+        literal = (getattr(guess, "literal_en", "") or "").strip()
+        if literal:
+            return _normalize_spaces(base.format(
+                subject_en=literal, action_en="", location_en=""))
         return _normalize_spaces(fallback)
 
     return _normalize_spaces(base.format(
@@ -126,3 +181,43 @@ if __name__ == "__main__":
     )
     print(f"  input:  {g4.to_text()}")
     print(f"  prompt: {build_prompt(g4)}")
+
+    print("\n=== companion mode (Matsumoto style) ===")
+    g5 = TopicGuess(
+        subject=find_subject("猫"),
+        location=UNKNOWN_LOCATION,
+        action=UNKNOWN_ACTION,
+        confidence=0.7,
+    )
+    print(f"  input:  {g5.to_text()}")
+    print(f"  prompt: {build_prompt(g5, base_template=COMPANION_TEMPLATE, fallback_template=COMPANION_FALLBACK_TEMPLATE)}")
+
+    print("\n=== companion fallback (low confidence) ===")
+    g6 = TopicGuess(
+        subject=find_subject("猫"),
+        location=UNKNOWN_LOCATION,
+        action=UNKNOWN_ACTION,
+        confidence=0.1,
+    )
+    print(f"  input:  {g6.to_text()}")
+    print(f"  prompt: {build_prompt(g6, base_template=COMPANION_TEMPLATE, fallback_template=COMPANION_FALLBACK_TEMPLATE)}")
+
+    print("\n=== character mode (Stage 1 prompt) ===")
+    g7 = TopicGuess(
+        subject=find_subject("人"),
+        location=find_location("公園"),
+        action=find_action("走っている"),
+        confidence=0.8,
+    )
+    print(f"  input:  {g7.to_text()}")
+    print(f"  prompt: {build_prompt(g7, base_template=CHARACTER_TEMPLATE, fallback_template=CHARACTER_FALLBACK_TEMPLATE)}")
+
+    print("\n=== character fallback (low conf → 1boy default) ===")
+    g8 = TopicGuess(
+        subject=UNKNOWN_SUBJECT,
+        location=UNKNOWN_LOCATION,
+        action=UNKNOWN_ACTION,
+        confidence=0.1,
+    )
+    print(f"  input:  {g8.to_text()}")
+    print(f"  prompt: {build_prompt(g8, base_template=CHARACTER_TEMPLATE, fallback_template=CHARACTER_FALLBACK_TEMPLATE)}")

@@ -1,0 +1,16 @@
+{
+  "sid": "samp_IMG_4361",
+  "route": "flux_big",
+  "variant": "big",
+  "preset": "chutesai/FLUX.1-schnell",
+  "controlnet": "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro",
+  "cn": 0.5,
+  "seed": 2,
+  "prompt": "a bold graphic sun, bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "subject": "sun",
+  "placed_at": "fill_board",
+  "input_fit": "contain",
+  "vectorize": "binarize+hardboost250",
+  "min_feature_px": 15,
+  "note": "marker 2-3mm 向け 大きくシンプル"
+}

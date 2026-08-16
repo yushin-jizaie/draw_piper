@@ -32,3 +32,9 @@ training/lora/*.bin
 training/lora/*.pt
 # dataset (リサイズ済み画像 + caption) も漏れ防止のため除外
 training/*/dataset/
+
+# 学習成果物 (LoRA 重み / checkpoint / optimizer) はリポに置かない (~1GB)
+models/
+# LoRA 学習データセット (著作権を含む可能性 / 特に matsumoto)
+sketch_variations/lora_winners_dataset/
+sketch_variations/matsumoto_lora_dataset/

@@ -1,0 +1,34 @@
+{
+  "B_round_smiley": {
+    "scene": "smiling circle with two dots and curved line",
+    "vision": "A cheerful, round face radiates happiness with wide, gleaming eyes and a broad, open-mouthed smile. The simple circle is adorned with a pair of small, delicate earrings, adding a touch of whimsy. The background is a soft, dreamy blur, enhancing the joyful essence of the character."
+  },
+  "car": {
+    "scene": "two wheels on rectangular car body",
+    "vision": "The completed illustration showcases a charming, vintage-style car with a sleek, elongated rectangular body. The car boasts a prominent, rounded front grille and a smooth, streamlined hood. Two large, circular wheels sit firmly beneath the vehicle, and a small, rectangular rear window adds a touch of classic elegance. A subtle."
+  },
+  "cat": {
+    "scene": "cat face with triangular ears and whiskers",
+    "vision": "The cat's face is now fully round, with expressive black eyes and a small, triangular nose giving it a curious look. Its triangular ears stand alert, and delicate whiskers extend from either side of its mouth. A fluffy tail curls gently behind, adding a touch of whimsy. The cat's cheeks."
+  },
+  "C_face_with_neck": {
+    "scene": "stick figure with oval head and straight arms",
+    "vision": "The stick figure stands confidently with a broad smile, eyes sparkling with joy. Its arms are slightly bent, hands clasped together in a welcoming gesture. A small, round hat sits snugly atop its head, adding a touch of whimsy. The figure's cheeks are rosy, and a gentle blush adorns its."
+  },
+  "D_stick_figure": {
+    "scene": "stick figure standing straight with arms down and legs apart",
+    "vision": "A stick figure stands tall and proud, arms relaxed by its sides, legs wide apart, exuding confidence. The head is adorned with a cheerful smile, eyes sparkling with life. A simple, elegant bow tie graces the neck, adding a touch of sophistication. The figure's hands rest gently on hips, suggesting."
+  },
+  "F_angry_face": {
+    "scene": "angry face with raised eyebrows and straight mouth",
+    "vision": "The angry face now has a full, expressive brow furrowed into a sharp V-shape, with piercing eyes that seem to glare with intensity. The straight mouth tightens into a firm line, emphasizing the fury. A pair of clenched fists rests on either side of the head, suggesting readiness to act.."
+  },
+  "house": {
+    "scene": "two story house with triangular roof and rectangular windows",
+    "vision": "A charming two-story house stands proudly with a triangular roof, adorned with a small chimney on the left side. The front features three rectangular windows, each framed by delicate trims, and a central door with a small window above it. A quaint porch with a wooden railing extends from the."
+  },
+  "tree": {
+    "scene": "circle with vertical line inside",
+    "vision": "A whimsical, animated circle with a lively vertical line inside stands proudly, its face adorned with rosy cheeks and a cheerful smile. A playful, curved tail extends from below, adding a touch of whimsy. The circle's eyes sparkle with joy, and a small, delicate flower blooms near the base, enhancing."
+  }
+}

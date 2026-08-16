@@ -1,0 +1,13 @@
+{
+  "sid": "new_combo_decoaccum2",
+  "route": "flux_decorate_accum2",
+  "variant": "round1_full",
+  "round": 1,
+  "layer": "full",
+  "cn": 0.55,
+  "seed": 0,
+  "new_deco": 132,
+  "accum_deco": 132,
+  "vision": "Delicate tendrils of swirling vines and graceful flourishes dance around the two dogs, their tails gracefully wagging. Tiny leaves and dots sprinkle like dewdrops, adding a touch of whimsy. Curving vines and intricate patterns weave through the dogs' forms, creating a lush, organic tapestry that enhances their playful essence without obscuring their outlines.",
+  "note": "元線verbatim+装飾累積+VLMにはOpenCVで元線/前回を消した新規装飾だけ入力 1/4周"
+}

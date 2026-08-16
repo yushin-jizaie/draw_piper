@@ -1,0 +1,12 @@
+{
+  "sid": "tree_big",
+  "route": "stylize",
+  "subject": "tree",
+  "category": "object",
+  "scatter_mode": "same",
+  "seed": 555,
+  "prompt": "stylish tree, manga style illustration, appealing bold design, interesting angle, dynamic composition, clean bold ink lineart, white background",
+  "preset": null,
+  "cn": null,
+  "pattern": null
+}

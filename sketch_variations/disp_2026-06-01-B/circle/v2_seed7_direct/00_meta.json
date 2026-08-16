@@ -1,0 +1,12 @@
+{
+  "sid": "circle",
+  "route": "direct",
+  "subject": "circle",
+  "category": "object",
+  "scatter_mode": "same",
+  "seed": 7,
+  "prompt": "circle, manga style, clean bold ink lineart, white background, appealing design, multiple",
+  "preset": null,
+  "cn": null,
+  "pattern": "direct"
+}

@@ -1,0 +1,19 @@
+{
+  "sid": "D_stick_figure",
+  "route": "flux_warp_compose",
+  "variant": "design",
+  "cn": 0.2,
+  "cn_align": 0.7,
+  "cn_design": 0.2,
+  "flow_mean_px": 5.12,
+  "lora": "models/flux_lora_winners",
+  "lora_strength": 0.8,
+  "seed": 0,
+  "prompt": "tklineart, A stick figure stands tall and proud, arms relaxed by its sides, legs wide apart, exuding confidence. The head is adorned with a cheerful smile, eyes sparkling with life. A simple, elegant bow tie graces the neck, adding a touch of sophistication. The figure's hands rest gently on hips, suggesting. bold simple cartoon line art, thick black outlines, one single large subject centered and filling the frame, minimal detail, few clean lines, white background, no fill, no shading, no background objects, no text",
+  "vision": "A stick figure stands tall and proud, arms relaxed by its sides, legs wide apart, exuding confidence. The head is adorned with a cheerful smile, eyes sparkling with life. A simple, elegant bow tie graces the neck, adding a touch of sophistication. The figure's hands rest gently on hips, suggesting.",
+  "placed_at": "input_aligned",
+  "input_fit": "contain",
+  "vectorize": "binarize+hardboost250",
+  "align_source": "input_lines",
+  "note": "方式③ warp合成: align=入力生線/design=低CN完成形/warp=designをDIS flowで入力へ"
+}
